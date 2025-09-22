@@ -199,7 +199,6 @@ class ProgressiveTrainer:
         base_weights = {
             'mse': 1.0,
             'symmetry': 0.3 - 0.2 * progress,  # 对称性约束逐渐减弱
-            'frequency_consistency': 0.1 - 0.05 * progress,
             'multiscale': 0.5 - 0.3 * progress  # 多尺度损失逐渐减弱
         }
 
@@ -217,7 +216,7 @@ class ProgressiveTrainer:
         loss_fn.loss_weights = progressive_weights
 
         epoch_losses = {'total': 0, 'mse': 0, 'symmetry': 0,
-                       'frequency_consistency': 0, 'multiscale': 0}
+                       'multiscale': 0}
         num_batches = 0
 
         for batch_idx, (params, targets) in enumerate(train_loader):
@@ -246,8 +245,13 @@ class ProgressiveTrainer:
             num_batches += 1
 
         # 平均损失
-        for key in epoch_losses:
-            epoch_losses[key] /= num_batches
+        if num_batches > 0:
+            for key in epoch_losses:
+                epoch_losses[key] /= num_batches
+        else:
+            print("警告: 训练批次数为0，可能是批次大小配置问题")
+            # 返回零损失以避免除零错误
+            epoch_losses = {key: 0.0 for key in epoch_losses}
 
         return epoch_losses
 
@@ -259,7 +263,7 @@ class ProgressiveTrainer:
         self.model.eval()
 
         epoch_losses = {'total': 0, 'mse': 0, 'symmetry': 0,
-                       'frequency_consistency': 0, 'multiscale': 0}
+                       'multiscale': 0}
         num_batches = 0
 
         with torch.no_grad():
@@ -275,8 +279,13 @@ class ProgressiveTrainer:
                 num_batches += 1
 
         # 平均损失
-        for key in epoch_losses:
-            epoch_losses[key] /= num_batches
+        if num_batches > 0:
+            for key in epoch_losses:
+                epoch_losses[key] /= num_batches
+        else:
+            print("警告: 验证批次数为0，可能是批次大小配置问题")
+            # 返回高损失值以避免除零错误
+            epoch_losses = {key: float('inf') for key in epoch_losses}
 
         return epoch_losses
 
@@ -313,6 +322,9 @@ class CrossValidationTrainer:
         """
         执行交叉验证
         """
+        # 应用CUDA优化设置
+        self._apply_cuda_optimizations()
+
         kfold = KFold(n_splits=self.n_folds, shuffle=True, random_state=42)
         fold_scores = []
 
@@ -332,12 +344,21 @@ class CrossValidationTrainer:
             train_dataset = RCSDataset(train_params, train_rcs, augment=True)
             val_dataset = RCSDataset(val_params, val_rcs, augment=False)
 
+            # 应用CUDA内存优化的批次大小调整
+            memory_config = training_config.get('memory_optimization', {})
+            batch_size = self._get_safe_batch_size(training_config['batch_size'],
+                                                 len(train_dataset), memory_config)
+
             train_loader = TorchDataLoader(train_dataset,
-                                    batch_size=training_config['batch_size'],
-                                    shuffle=True)
+                                    batch_size=batch_size,
+                                    shuffle=True,
+                                    pin_memory=memory_config.get('pin_memory', True),
+                                    drop_last=True)
             val_loader = TorchDataLoader(val_dataset,
-                                  batch_size=training_config['batch_size'],
-                                  shuffle=False)
+                                  batch_size=batch_size,
+                                  shuffle=False,
+                                  pin_memory=memory_config.get('pin_memory', True),
+                                  drop_last=False)  # 保留小批次以确保验证集不为空
 
             # 创建模型
             model = create_model(**self.model_params)
@@ -356,6 +377,68 @@ class CrossValidationTrainer:
         self.cv_results['best_fold'] = np.argmin(fold_scores)
 
         return self.cv_results
+
+    def _get_safe_batch_size(self, requested_batch_size: int, dataset_size: int,
+                           memory_config: Dict) -> int:
+        """
+        获取安全的批次大小，避免CUDA内存错误和除零错误
+        """
+        # 确保批次大小不超过数据集大小 - 这是关键修复
+        max_possible = min(requested_batch_size, dataset_size)
+
+        # 额外检查：确保批次大小至少为1，且不超过数据集大小
+        if max_possible <= 0:
+            print(f"警告: 数据集大小为 {dataset_size}，使用最小批次大小 1")
+            return 1
+
+        # 获取GPU内存限制
+        max_batch_size = memory_config.get('max_batch_size', 48)
+        fallback_batch_size = memory_config.get('fallback_batch_size', 16)
+
+        # 对于小数据集，使用更保守的策略
+        if dataset_size <= 10:
+            # 非常小的数据集，使用最小可能的批次大小
+            safe_batch_size = min(2, dataset_size)
+            print(f"小数据集检测 (大小={dataset_size})，使用保守批次大小: {safe_batch_size}")
+            return safe_batch_size
+
+        # 检查GPU内存状态
+        if torch.cuda.is_available():
+            # 获取可用内存
+            total_memory = torch.cuda.get_device_properties(0).total_memory
+            allocated_memory = torch.cuda.memory_allocated()
+            free_memory = total_memory - allocated_memory
+
+            # 如果可用内存少于总内存的30%，使用保守的批次大小
+            if free_memory < total_memory * 0.3:
+                conservative_batch = min(fallback_batch_size, max_possible)
+                print(f"GPU内存不足，使用保底批次大小: {conservative_batch}")
+                return conservative_batch
+
+        # 限制最大批次大小
+        safe_batch_size = min(max_possible, max_batch_size)
+
+        if safe_batch_size != requested_batch_size:
+            print(f"批次大小调整: {requested_batch_size} -> {safe_batch_size}")
+
+        return safe_batch_size
+
+    def _apply_cuda_optimizations(self):
+        """
+        应用CUDA优化设置
+        """
+        if torch.cuda.is_available():
+            # 启用cuDNN基准测试模式
+            torch.backends.cudnn.benchmark = True
+
+            # 清理GPU内存
+            torch.cuda.empty_cache()
+
+            # 限制GPU内存使用
+            if hasattr(torch.cuda, 'set_per_process_memory_fraction'):
+                torch.cuda.set_per_process_memory_fraction(0.9)
+
+            print("CUDA优化设置已应用")
 
     def _train_fold(self, trainer: ProgressiveTrainer, train_loader: TorchDataLoader,
                    val_loader: TorchDataLoader, config: Dict, fold: int) -> float:
@@ -486,10 +569,10 @@ class RCSDataLoader:
 
 def create_training_config() -> Dict:
     """
-    创建默认训练配置
+    创建默认训练配置 - 优化CUDA内存使用
     """
     return {
-        'batch_size': 8,  # 小数据集使用小批次
+        'batch_size': 8,  # 适合小数据集的批次大小
         'learning_rate': 1e-3,
         'weight_decay': 1e-4,
         'epochs': 200,
@@ -497,8 +580,16 @@ def create_training_config() -> Dict:
         'loss_weights': {
             'mse': 1.0,
             'symmetry': 0.1,
-            'frequency_consistency': 0.05,
             'multiscale': 0.2
+        },
+        # 新增：CUDA内存优化配置
+        'memory_optimization': {
+            'max_batch_size': 48,           # RTX 3080最大安全批次大小
+            'fallback_batch_size': 16,     # 出错时的保底批次大小
+            'gradient_accumulation': True, # 启用梯度累积
+            'mixed_precision': True,       # 启用混合精度训练
+            'pin_memory': True,           # 启用内存固定
+            'empty_cache_frequency': 10   # 每10个epoch清理缓存
         }
     }
 
