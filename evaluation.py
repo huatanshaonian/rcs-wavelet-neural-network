@@ -385,7 +385,7 @@ class RCSEvaluator:
     def _plot_sample_comparison(self, prediction: np.ndarray, target: np.ndarray,
                                sample_idx: int, save_path: str = None):
         """
-        绘制单个样本的预测对比
+        绘制单个样本的预测对比 (使用分贝显示)
         """
         fig, axes = plt.subplots(2, 4, figsize=(20, 10))
 
@@ -397,42 +397,52 @@ class RCSEvaluator:
         extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
 
         for freq_idx, freq_name in enumerate(freq_names):
-            # 真实值
-            im1 = axes[freq_idx, 0].imshow(target[:, :, freq_idx], cmap='jet', aspect='equal', extent=extent)
+            # 转换为分贝 (dB = 10 * log10(RCS))
+            # 确保正值，添加小的epsilon避免log(0)
+            epsilon = 1e-10
+            target_db = 10 * np.log10(np.maximum(target[:, :, freq_idx], epsilon))
+            pred_db = 10 * np.log10(np.maximum(prediction[:, :, freq_idx], epsilon))
+
+            # 真实值 (dB)
+            im1 = axes[freq_idx, 0].imshow(target_db, cmap='jet', aspect='equal', extent=extent)
             axes[freq_idx, 0].set_title(f'真实RCS - {freq_name}')
             axes[freq_idx, 0].set_xlabel('φ (方位角, 度)')
             axes[freq_idx, 0].set_ylabel('θ (俯仰角, 度)')
-            plt.colorbar(im1, ax=axes[freq_idx, 0])
+            cbar1 = plt.colorbar(im1, ax=axes[freq_idx, 0])
+            cbar1.set_label('RCS (dB)')
 
-            # 预测值
-            im2 = axes[freq_idx, 1].imshow(prediction[:, :, freq_idx], cmap='jet', aspect='equal', extent=extent)
+            # 预测值 (dB)
+            im2 = axes[freq_idx, 1].imshow(pred_db, cmap='jet', aspect='equal', extent=extent)
             axes[freq_idx, 1].set_title(f'预测RCS - {freq_name}')
             axes[freq_idx, 1].set_xlabel('φ (方位角, 度)')
             axes[freq_idx, 1].set_ylabel('θ (俯仰角, 度)')
-            plt.colorbar(im2, ax=axes[freq_idx, 1])
+            cbar2 = plt.colorbar(im2, ax=axes[freq_idx, 1])
+            cbar2.set_label('RCS (dB)')
 
-            # 误差图
-            error = np.abs(prediction[:, :, freq_idx] - target[:, :, freq_idx])
-            im3 = axes[freq_idx, 2].imshow(error, cmap='Reds', aspect='equal', extent=extent)
+            # 误差图 (dB差值)
+            error_db = np.abs(pred_db - target_db)
+            im3 = axes[freq_idx, 2].imshow(error_db, cmap='Reds', aspect='equal', extent=extent)
             axes[freq_idx, 2].set_title(f'绝对误差 - {freq_name}')
             axes[freq_idx, 2].set_xlabel('φ (方位角, 度)')
             axes[freq_idx, 2].set_ylabel('θ (俯仰角, 度)')
-            plt.colorbar(im3, ax=axes[freq_idx, 2])
+            cbar3 = plt.colorbar(im3, ax=axes[freq_idx, 2])
+            cbar3.set_label('误差 (dB)')
 
-            # 散点图对比
-            pred_flat = prediction[:, :, freq_idx].reshape(-1)
-            target_flat = target[:, :, freq_idx].reshape(-1)
+            # 散点图对比 (dB)
+            pred_db_flat = pred_db.reshape(-1)
+            target_db_flat = target_db.reshape(-1)
 
-            valid_mask = ~(np.isnan(pred_flat) | np.isnan(target_flat))
-            pred_valid = pred_flat[valid_mask]
-            target_valid = target_flat[valid_mask]
+            valid_mask = ~(np.isnan(pred_db_flat) | np.isnan(target_db_flat) |
+                          np.isinf(pred_db_flat) | np.isinf(target_db_flat))
+            pred_valid = pred_db_flat[valid_mask]
+            target_valid = target_db_flat[valid_mask]
 
             axes[freq_idx, 3].scatter(target_valid, pred_valid, alpha=0.5, s=1)
             axes[freq_idx, 3].plot([target_valid.min(), target_valid.max()],
                                  [target_valid.min(), target_valid.max()], 'r--')
             axes[freq_idx, 3].set_title(f'预测vs真实 - {freq_name}')
-            axes[freq_idx, 3].set_xlabel('真实RCS')
-            axes[freq_idx, 3].set_ylabel('预测RCS')
+            axes[freq_idx, 3].set_xlabel('真实RCS (dB)')
+            axes[freq_idx, 3].set_ylabel('预测RCS (dB)')
 
             # 计算相关系数
             corr = stats.pearsonr(target_valid, pred_valid)[0]
