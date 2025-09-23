@@ -744,7 +744,7 @@ def adaptive_plot_2d(data, title_suffix="", figsize=None, save_path=None):
             im = ax.imshow(rcs_db,
                           extent=[phi_values.min(), phi_values.max(),
                                  theta_values.max(), theta_values.min()],
-                          aspect='auto', origin='upper', cmap='jet')
+                          aspect='equal', origin='upper', cmap='jet')
 
             cbar = plt.colorbar(im, ax=ax)
             cbar.set_label('RCS (dB)')

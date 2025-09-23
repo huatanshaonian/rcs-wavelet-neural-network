@@ -171,7 +171,7 @@ def plot_2d_heatmap(model_id="001", freq_suffix="1.5G", data_dir=None,
     im1 = ax1.imshow(rcs_matrix,
                     extent=[phi_values.min(), phi_values.max(),
                            theta_values.max(), theta_values.min()],
-                    aspect='auto', origin='upper', cmap=colormap,
+                    aspect='equal', origin='upper', cmap=colormap,
                     vmin=linear_vmin, vmax=linear_vmax)
 
     cbar1 = plt.colorbar(im1, ax=ax1)
@@ -185,7 +185,7 @@ def plot_2d_heatmap(model_id="001", freq_suffix="1.5G", data_dir=None,
     im2 = ax2.imshow(rcs_db_matrix,
                     extent=[phi_values.min(), phi_values.max(),
                            theta_values.max(), theta_values.min()],
-                    aspect='auto', origin='upper', cmap=colormap,
+                    aspect='equal', origin='upper', cmap=colormap,
                     vmin=db_vmin, vmax=db_vmax)
 
     cbar2 = plt.colorbar(im2, ax=ax2)
@@ -456,7 +456,7 @@ def compare_models(model_ids, freq_suffix="1.5G", data_dir=None,
         im1 = axes[0, i].imshow(rcs_db,
                                extent=[phi_values.min(), phi_values.max(),
                                       theta_values.max(), theta_values.min()],
-                               aspect='auto', origin='upper', cmap='jet')
+                               aspect='equal', origin='upper', cmap='jet')
         axes[0, i].set_title(f'Model {model_id} - 2D Heatmap')
         axes[0, i].set_xlabel('Phi (degrees)')
         axes[0, i].set_ylabel('Theta (degrees)')

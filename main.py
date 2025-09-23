@@ -244,6 +244,8 @@ class RCSWaveletApp:
                 training_config['batch_size'] = args.batch_size
             if args.learning_rate:
                 training_config['learning_rate'] = args.learning_rate
+            if args.patience:
+                training_config['early_stopping_patience'] = args.patience
 
             # 开始训练
             if training_config['use_cross_validation']:
@@ -493,18 +495,23 @@ class RCSWaveletApp:
 
             fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
+            # 定义角度范围 (基于实际数据)
+            phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
+            theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
+            extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
+
             # 1.5GHz
-            im1 = axes[0].imshow(prediction[:, :, 0], cmap='jet', aspect='auto')
+            im1 = axes[0].imshow(prediction[:, :, 0], cmap='jet', aspect='equal', extent=extent)
             axes[0].set_title('1.5GHz RCS预测')
-            axes[0].set_xlabel('θ (俯仰角)')
-            axes[0].set_ylabel('φ (偏航角)')
+            axes[0].set_xlabel('φ (方位角, 度)')
+            axes[0].set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im1, ax=axes[0])
 
             # 3GHz
-            im2 = axes[1].imshow(prediction[:, :, 1], cmap='jet', aspect='auto')
+            im2 = axes[1].imshow(prediction[:, :, 1], cmap='jet', aspect='equal', extent=extent)
             axes[1].set_title('3GHz RCS预测')
-            axes[1].set_xlabel('θ (俯仰角)')
-            axes[1].set_ylabel('φ (偏航角)')
+            axes[1].set_xlabel('φ (方位角, 度)')
+            axes[1].set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im2, ax=axes[1])
 
             plt.tight_layout()
@@ -528,6 +535,7 @@ def create_argument_parser():
 使用示例:
   python main.py --mode gui                              # 启动GUI界面
   python main.py --mode train --epochs 100              # 训练100轮
+  python main.py --mode train --epochs 100 --patience 30 # 训练100轮，早停耐心30轮
   python main.py --mode evaluate --model models/best.pth # 评估模型
   python main.py --mode predict --model models/best.pth --params "1,2,3,4,5,6,7,8,9"
   python main.py --mode batch --input-dir data/         # 批量处理
@@ -543,6 +551,7 @@ def create_argument_parser():
     parser.add_argument('--epochs', type=int, help='训练轮数')
     parser.add_argument('--batch-size', type=int, help='批次大小')
     parser.add_argument('--learning-rate', type=float, help='学习率')
+    parser.add_argument('--patience', type=int, help='早停耐心值，连续多少轮验证损失不改善就停止训练')
 
     # 评估和预测相关参数
     parser.add_argument('--model-path', help='模型文件路径')
