@@ -104,7 +104,6 @@ class RCSWaveletApp:
                 "loss_weights": {
                     "mse": 1.0,
                     "symmetry": 0.1,
-                    "frequency_consistency": 0.05,
                     "multiscale": 0.2
                 }
             },
@@ -152,41 +151,60 @@ class RCSWaveletApp:
         print("启动GUI界面...")
 
         try:
-            # 尝试修复tkinter环境
+            # 彻底修复tkinter环境冲突
             import os
+            import sys
 
-            # 清理可能冲突的环境变量
-            env_vars_to_clear = ['TCL_LIBRARY', 'TK_LIBRARY', 'TCLLIBPATH']
+            # 1. 完全清理冲突的环境变量
+            env_vars_to_clear = [
+                'TCL_LIBRARY', 'TK_LIBRARY', 'TCLLIBPATH',
+                'TCLLIBPATH', 'TIX_LIBRARY'
+            ]
             for var in env_vars_to_clear:
                 if var in os.environ:
+                    print(f"清理环境变量: {var}")
                     del os.environ[var]
 
-            # 设置正确的Tcl/Tk路径 (基于当前环境)
-            anaconda_base = r"G:\anaconda\envs\RCS_OP1"
-            possible_tcl_paths = [
-                os.path.join(anaconda_base, "tcl", "tcl8.6"),
-                os.path.join(anaconda_base, "lib", "tcl8.6"),
-                os.path.join(anaconda_base, "Library", "lib", "tcl8.6")
-            ]
-            possible_tk_paths = [
-                os.path.join(anaconda_base, "tcl", "tk8.6"),
-                os.path.join(anaconda_base, "lib", "tk8.6"),
-                os.path.join(anaconda_base, "Library", "lib", "tk8.6")
+            # 2. 强制使用当前Python环境的Tcl/Tk
+            python_dir = os.path.dirname(sys.executable)
+
+            # 设置正确的Tcl/Tk路径
+            tcl_lib_paths = [
+                os.path.join(python_dir, "tcl", "tcl8.6"),
+                os.path.join(python_dir, "lib", "tcl8.6"),
+                os.path.join(python_dir, "Library", "lib", "tcl8.6"),
+                os.path.join(os.path.dirname(python_dir), "Library", "lib", "tcl8.6")
             ]
 
-            for tcl_path in possible_tcl_paths:
+            tk_lib_paths = [
+                os.path.join(python_dir, "tcl", "tk8.6"),
+                os.path.join(python_dir, "lib", "tk8.6"),
+                os.path.join(python_dir, "Library", "lib", "tk8.6"),
+                os.path.join(os.path.dirname(python_dir), "Library", "lib", "tk8.6")
+            ]
+
+            # 设置TCL_LIBRARY
+            for tcl_path in tcl_lib_paths:
                 if os.path.exists(tcl_path):
                     os.environ['TCL_LIBRARY'] = tcl_path
+                    print(f"设置TCL_LIBRARY: {tcl_path}")
                     break
 
-            for tk_path in possible_tk_paths:
+            # 设置TK_LIBRARY
+            for tk_path in tk_lib_paths:
                 if os.path.exists(tk_path):
                     os.environ['TK_LIBRARY'] = tk_path
+                    print(f"设置TK_LIBRARY: {tk_path}")
                     break
 
+            # 3. 导入tkinter
             import tkinter as tk
+            print("tkinter导入成功")
+
+            # 4. 创建GUI
             root = tk.Tk()
             app = RCSWaveletGUI(root)
+            print("GUI创建成功，启动主循环...")
             root.mainloop()
         except ImportError:
             print("错误: tkinter未安装，无法启动GUI")
@@ -254,8 +272,80 @@ class RCSWaveletApp:
                 print(f"训练结果已保存到: {results_file}")
 
             else:
-                print("简单训练模式暂未实现")
-                return False
+                print("使用简单训练模式...")
+                from torch.utils.data import random_split, DataLoader as TorchDataLoader
+                import torch.optim as optim
+
+                # 分割数据集
+                train_size = int(len(dataset) * 0.8)
+                val_size = len(dataset) - train_size
+                train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+                print(f"数据分割: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+                # 创建数据加载器
+                train_loader = TorchDataLoader(train_dataset,
+                                             batch_size=training_config['batch_size'],
+                                             shuffle=True)
+                val_loader = TorchDataLoader(val_dataset,
+                                           batch_size=training_config['batch_size'],
+                                           shuffle=False)
+
+                # 创建模型和训练器
+                from training import ProgressiveTrainer
+                model = create_model(**self.config['model'])
+                trainer = ProgressiveTrainer(model, self.device)
+
+                # 创建优化器和调度器
+                optimizer = optim.Adam(model.parameters(),
+                                     lr=training_config['learning_rate'],
+                                     weight_decay=training_config['weight_decay'])
+
+                scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                    optimizer, mode='min', factor=0.5, patience=10
+                )
+
+                # 创建损失函数
+                loss_fn = create_loss_function(loss_weights=training_config.get('loss_weights'))
+
+                # 训练循环
+                best_val_loss = float('inf')
+                patience_counter = 0
+
+                for epoch in range(training_config['epochs']):
+                    # 训练
+                    train_losses = trainer.train_epoch(train_loader, optimizer, loss_fn,
+                                                     epoch, training_config['epochs'])
+
+                    # 验证
+                    val_losses = trainer.validate_epoch(val_loader, loss_fn)
+
+                    # 学习率调度
+                    scheduler.step(val_losses['total'])
+
+                    # 记录进度
+                    if epoch % 10 == 0:
+                        print(f"Epoch {epoch+1}/{training_config['epochs']}: "
+                              f"Train Loss: {train_losses['total']:.4f}, "
+                              f"Val Loss: {val_losses['total']:.4f}")
+
+                    # 早停检查
+                    if val_losses['total'] < best_val_loss:
+                        best_val_loss = val_losses['total']
+                        patience_counter = 0
+
+                        # 保存最佳模型
+                        os.makedirs('checkpoints', exist_ok=True)
+                        torch.save(model.state_dict(), 'checkpoints/best_model_simple.pth')
+                    else:
+                        patience_counter += 1
+
+                    if patience_counter >= training_config['early_stopping_patience']:
+                        print(f"早停于epoch {epoch+1}")
+                        break
+
+                print(f"简单训练完成！最佳验证损失: {best_val_loss:.4f}")
+                print("模型已保存到: checkpoints/best_model_simple.pth")
 
         except Exception as e:
             print(f"训练失败: {e}")

@@ -517,7 +517,6 @@ class TriDimensionalRCSLoss(nn.Module):
         self.loss_weights = loss_weights or {
             'mse': 1.0,
             'symmetry': 0.1,
-            'frequency_consistency': 0.05,
             'multiscale': 0.2
         }
 
@@ -550,28 +549,6 @@ class TriDimensionalRCSLoss(nn.Module):
 
         return symmetry_loss / max(count, 1)
 
-    def _frequency_consistency_loss(self, pred_rcs: torch.Tensor) -> torch.Tensor:
-        """
-        计算频率一致性损失
-
-        假设两频率间存在物理关系
-
-        参数:
-            pred_rcs: 预测RCS [B, 91, 91, 2]
-
-        返回:
-            频率一致性损失
-        """
-        freq1_rcs = pred_rcs[:, :, :, 0]  # 1.5GHz
-        freq2_rcs = pred_rcs[:, :, :, 1]  # 3GHz
-
-        # 计算频率比例 (简化的物理关系)
-        freq_ratio = 3.0 / 1.5  # 频率比
-
-        # 期望的频率关系 (简化模型)
-        expected_freq2 = freq1_rcs * torch.log(torch.tensor(freq_ratio))
-
-        return self.l1_loss(freq2_rcs, expected_freq2)
 
     def _multiscale_loss(self, pred_rcs: torch.Tensor, target_rcs: torch.Tensor) -> torch.Tensor:
         """
@@ -629,8 +606,6 @@ class TriDimensionalRCSLoss(nn.Module):
         # 对称性损失
         losses['symmetry'] = self._symmetry_loss(pred_rcs)
 
-        # 频率一致性损失
-        losses['frequency_consistency'] = self._frequency_consistency_loss(pred_rcs)
 
         # 多尺度损失
         losses['multiscale'] = self._multiscale_loss(pred_rcs, target_rcs)
