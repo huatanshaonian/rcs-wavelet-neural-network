@@ -112,7 +112,7 @@ class RCSWaveletGUI:
         # 配置变量
         self.data_config = create_data_config()
         self.training_config = create_training_config()
-        self.model_params = {'input_dim': 9, 'hidden_dims': [128, 256]}
+        self.model_params = {'input_dim': 9, 'hidden_dims': [128, 256], 'wavelet_config': None}
 
         # 设置日志系统
         self.setup_logging()
@@ -303,6 +303,43 @@ class RCSWaveletGUI:
         ttk.Button(button_frame, text="数据预览", command=self.preview_data).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="数据统计", command=self.show_data_stats).pack(side=tk.LEFT, padx=5)
 
+        # 数据预处理配置组
+        preprocessing_group = ttk.LabelFrame(main_frame, text="数据预处理")
+        preprocessing_group.pack(fill=tk.X, pady=(10, 10))
+
+        preprocessing_frame = ttk.Frame(preprocessing_group)
+        preprocessing_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 对数预处理选项
+        self.use_log_preprocessing = tk.BooleanVar(value=False)
+        ttk.Checkbutton(preprocessing_frame, text="启用对数预处理",
+                       variable=self.use_log_preprocessing,
+                       command=self.on_preprocessing_change).pack(side=tk.LEFT)
+
+        # 预处理参数
+        params_frame = ttk.Frame(preprocessing_frame)
+        params_frame.pack(side=tk.LEFT, padx=20)
+
+        ttk.Label(params_frame, text="ε值:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.log_epsilon_var = tk.StringVar(value="1e-10")
+        self.log_epsilon_entry = ttk.Entry(params_frame, textvariable=self.log_epsilon_var, width=10)
+        self.log_epsilon_entry.grid(row=0, column=1, padx=5, pady=2)
+        self.log_epsilon_entry.configure(state=tk.DISABLED)
+
+        self.normalize_after_log = tk.BooleanVar(value=True)
+        self.normalize_checkbox = ttk.Checkbutton(params_frame, text="对数后标准化",
+                                                variable=self.normalize_after_log)
+        self.normalize_checkbox.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=2)
+        self.normalize_checkbox.configure(state=tk.DISABLED)
+
+        # 预处理说明
+        info_frame = ttk.Frame(preprocessing_group)
+        info_frame.pack(fill=tk.X, padx=5, pady=2)
+
+        info_text = "对数预处理将RCS数据转换为log10域，有助于处理大动态范围数据。建议在训练前启用以改善收敛性能。"
+        ttk.Label(info_frame, text=info_text, font=self.font_small,
+                 foreground="gray").pack(side=tk.LEFT)
+
         # 缓存管理组
         cache_group = ttk.LabelFrame(main_frame, text="数据缓存管理")
         cache_group.pack(fill=tk.X, pady=(10, 0))
@@ -370,6 +407,61 @@ class RCSWaveletGUI:
         ttk.Label(right_config, text="早停耐心:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.patience_var = tk.StringVar(value=str(self.training_config['early_stopping_patience']))
         ttk.Entry(right_config, textvariable=self.patience_var, width=10).grid(row=1, column=1, padx=5, pady=2)
+
+        # 小波配置区域
+        wavelet_group = ttk.LabelFrame(config_group, text="小波配置")
+        wavelet_group.pack(fill=tk.X, padx=5, pady=5)
+
+        # 小波配置网格
+        wavelet_frame = ttk.Frame(wavelet_group)
+        wavelet_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 小波类型选项
+        self.available_wavelets = {
+            'Daubechies': ['db2', 'db4', 'db8', 'db10'],
+            'Biorthogonal': ['bior1.1', 'bior2.2', 'bior2.4', 'bior2.6'],
+            'Coiflets': ['coif2', 'coif4', 'coif6'],
+            'Others': ['haar', 'dmey', 'sym4', 'sym8']
+        }
+
+        # 当前小波配置 (默认值)
+        self.current_wavelets = ['db4', 'db4', 'bior2.2', 'bior2.2']
+
+        # 为4个尺度创建小波选择器
+        ttk.Label(wavelet_frame, text="小波配置 (4个尺度):").grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=2)
+
+        self.wavelet_vars = []
+        self.wavelet_combos = []
+
+        # 所有可用小波的扁平列表
+        all_wavelets = []
+        for wavelets in self.available_wavelets.values():
+            all_wavelets.extend(wavelets)
+
+        for i in range(4):
+            row = 1 + i // 2
+            col = (i % 2) * 2
+
+            ttk.Label(wavelet_frame, text=f"尺度{i+1}:").grid(row=row, column=col, sticky=tk.W, pady=2, padx=(0, 5))
+
+            wavelet_var = tk.StringVar(value=self.current_wavelets[i])
+            self.wavelet_vars.append(wavelet_var)
+
+            combo = ttk.Combobox(wavelet_frame, textvariable=wavelet_var, values=all_wavelets,
+                               width=12, state="readonly")
+            combo.grid(row=row, column=col+1, pady=2, padx=(0, 15))
+            self.wavelet_combos.append(combo)
+
+        # 预设配置按钮
+        preset_frame = ttk.Frame(wavelet_group)
+        preset_frame.pack(fill=tk.X, padx=5, pady=2)
+
+        ttk.Label(preset_frame, text="预设配置:").pack(side=tk.LEFT)
+        ttk.Button(preset_frame, text="默认混合", command=self.set_default_wavelets).pack(side=tk.LEFT, padx=5)
+        ttk.Button(preset_frame, text="全DB4", command=self.set_db4_wavelets).pack(side=tk.LEFT, padx=2)
+        ttk.Button(preset_frame, text="全双正交", command=self.set_bior_wavelets).pack(side=tk.LEFT, padx=2)
+        ttk.Button(preset_frame, text="递增复杂度", command=self.set_progressive_wavelets).pack(side=tk.LEFT, padx=2)
+        ttk.Button(preset_frame, text="边缘检测", command=self.set_edge_wavelets).pack(side=tk.LEFT, padx=2)
 
         # 训练选项
         options_frame = ttk.Frame(config_group)
@@ -635,10 +727,37 @@ class RCSWaveletGUI:
 
         preview_text += "=== RCS数据预览 ===\n"
         preview_text += f"数据形状: {self.rcs_data.shape}\n"
-        preview_text += f"第一个样本的统计信息:\n"
+
+        # 原始数据统计
         first_sample = self.rcs_data[0]
-        preview_text += f"1.5GHz - 范围: [{np.min(first_sample[:,:,0]):.4f}, {np.max(first_sample[:,:,0]):.4f}]\n"
-        preview_text += f"3GHz - 范围: [{np.min(first_sample[:,:,1]):.4f}, {np.max(first_sample[:,:,1]):.4f}]\n"
+        preview_text += f"原始线性数据 - 第一个样本:\n"
+        preview_text += f"  1.5GHz - 范围: [{np.min(first_sample[:,:,0]):.6e}, {np.max(first_sample[:,:,0]):.6e}]\n"
+        preview_text += f"  3GHz - 范围: [{np.min(first_sample[:,:,1]):.6e}, {np.max(first_sample[:,:,1]):.6e}]\n"
+
+        # 如果启用了对数预处理，显示对数化后的数据
+        if hasattr(self, 'use_log_preprocessing') and self.use_log_preprocessing.get():
+            epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
+
+            # 计算对数化数据 (转换为分贝值: 10 * log10)
+            rcs_db_sample = 10 * np.log10(np.maximum(first_sample, epsilon))
+            preview_text += f"\n对数化数据 (dB) - 第一个样本:\n"
+            preview_text += f"  1.5GHz - 范围: [{np.min(rcs_db_sample[:,:,0]):.1f}, {np.max(rcs_db_sample[:,:,0]):.1f}] dB\n"
+            preview_text += f"  3GHz - 范围: [{np.min(rcs_db_sample[:,:,1]):.1f}, {np.max(rcs_db_sample[:,:,1]):.1f}] dB\n"
+
+            # 如果启用了标准化，显示标准化后的数据
+            if self.normalize_after_log.get():
+                # 计算全局统计用于标准化
+                all_rcs_db = 10 * np.log10(np.maximum(self.rcs_data, epsilon))
+                global_mean = np.mean(all_rcs_db)
+                global_std = np.std(all_rcs_db)
+
+                normalized_sample = (rcs_db_sample - global_mean) / global_std
+                preview_text += f"\n标准化后数据 (μ=0, σ=1) - 第一个样本:\n"
+                preview_text += f"  1.5GHz - 范围: [{np.min(normalized_sample[:,:,0]):.3f}, {np.max(normalized_sample[:,:,0]):.3f}]\n"
+                preview_text += f"  3GHz - 范围: [{np.min(normalized_sample[:,:,1]):.3f}, {np.max(normalized_sample[:,:,1]):.3f}]\n"
+                preview_text += f"  全局统计: 均值={global_mean:.1f} dB, 标准差={global_std:.1f} dB\n"
+        else:
+            preview_text += f"\n提示: 启用对数预处理以查看预处理后的数据范围\n"
 
         self.data_info_text.delete(1.0, tk.END)
         self.data_info_text.insert(tk.END, preview_text)
@@ -659,12 +778,56 @@ class RCSWaveletGUI:
             stats_text += f"标准差={np.std(param_col):.4f}, "
             stats_text += f"范围=[{np.min(param_col):.4f}, {np.max(param_col):.4f}]\n"
 
-        stats_text += "\nRCS数据统计:\n"
+        stats_text += "\n原始RCS数据统计 (线性值):\n"
         for freq_idx, freq_name in enumerate(['1.5GHz', '3GHz']):
             freq_data = self.rcs_data[:, :, :, freq_idx]
-            stats_text += f"{freq_name}: 均值={np.mean(freq_data):.6f}, "
-            stats_text += f"标准差={np.std(freq_data):.6f}, "
-            stats_text += f"范围=[{np.min(freq_data):.6f}, {np.max(freq_data):.6f}]\n"
+            stats_text += f"{freq_name}: 均值={np.mean(freq_data):.6e}, "
+            stats_text += f"标准差={np.std(freq_data):.6e}, "
+            stats_text += f"范围=[{np.min(freq_data):.6e}, {np.max(freq_data):.6e}]\n"
+
+        # 如果启用了对数预处理，显示对数化后的统计
+        if hasattr(self, 'use_log_preprocessing') and self.use_log_preprocessing.get():
+            epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
+
+            stats_text += f"\n对数化RCS数据统计 (dB, ε={epsilon}):\n"
+            # 转换为分贝值: 10 * log10
+            rcs_db_data = 10 * np.log10(np.maximum(self.rcs_data, epsilon))
+
+            for freq_idx, freq_name in enumerate(['1.5GHz', '3GHz']):
+                freq_db_data = rcs_db_data[:, :, :, freq_idx]
+                stats_text += f"{freq_name}: 均值={np.mean(freq_db_data):.1f} dB, "
+                stats_text += f"标准差={np.std(freq_db_data):.1f} dB, "
+                stats_text += f"范围=[{np.min(freq_db_data):.1f}, {np.max(freq_db_data):.1f}] dB\n"
+
+            # 全局对数统计
+            global_db_mean = np.mean(rcs_db_data)
+            global_db_std = np.std(rcs_db_data)
+            stats_text += f"全局dB统计: 均值={global_db_mean:.1f} dB, 标准差={global_db_std:.1f} dB\n"
+
+            # 如果启用了标准化，显示标准化后的统计
+            if self.normalize_after_log.get():
+                normalized_data = (rcs_db_data - global_db_mean) / global_db_std
+                stats_text += f"\n标准化后数据统计 (μ=0, σ=1):\n"
+
+                for freq_idx, freq_name in enumerate(['1.5GHz', '3GHz']):
+                    freq_norm_data = normalized_data[:, :, :, freq_idx]
+                    stats_text += f"{freq_name}: 均值={np.mean(freq_norm_data):.3f}, "
+                    stats_text += f"标准差={np.std(freq_norm_data):.3f}, "
+                    stats_text += f"范围=[{np.min(freq_norm_data):.3f}, {np.max(freq_norm_data):.3f}]\n"
+
+                # 数据动态范围比较
+                original_range = np.max(self.rcs_data) - np.min(self.rcs_data)
+                db_range = np.max(rcs_db_data) - np.min(rcs_db_data)
+                norm_range = np.max(normalized_data) - np.min(normalized_data)
+
+                stats_text += f"\n数据动态范围对比:\n"
+                stats_text += f"原始数据 (线性): {original_range:.6e}\n"
+                stats_text += f"对数化后 (dB): {db_range:.1f} dB\n"
+                stats_text += f"标准化后 (无量纲): {norm_range:.3f}\n"
+                stats_text += f"动态范围压缩比: {original_range/norm_range:.2e}\n"
+
+        else:
+            stats_text += f"\n提示: 启用对数预处理以查看预处理后的详细统计信息\n"
 
         self.data_info_text.delete(1.0, tk.END)
         self.data_info_text.insert(tk.END, stats_text)
@@ -793,6 +956,14 @@ class RCSWaveletGUI:
             self.training_config['epochs'] = int(self.epochs_var.get())
             self.training_config['weight_decay'] = float(self.weight_decay_var.get())
             self.training_config['early_stopping_patience'] = int(self.patience_var.get())
+
+            # 添加小波配置
+            self.training_config['wavelet_config'] = self.get_current_wavelet_config()
+            self.log_message(f"使用小波配置: {self.training_config['wavelet_config']}")
+
+            # 更新数据配置以包含预处理选项
+            self.update_data_config()
+
         except ValueError as e:
             messagebox.showerror("错误", f"配置参数格式错误: {str(e)}")
             return
@@ -815,6 +986,10 @@ class RCSWaveletGUI:
         """训练模型（在后台线程中运行）"""
         try:
             self.log_message("开始训练...")
+
+            # 更新模型参数以包含小波配置
+            self.model_params['wavelet_config'] = self.training_config.get('wavelet_config')
+            self.log_message(f"使用小波配置: {self.model_params['wavelet_config']}")
 
             # 创建数据集
             dataset = RCSDataset(self.param_data, self.rcs_data, augment=True)
@@ -907,7 +1082,10 @@ class RCSWaveletGUI:
 
                 # 加载最佳模型
                 best_fold = results['best_fold']
-                self.current_model = create_model(**self.model_params)
+                # 添加对数输出配置
+                model_params_with_log = self.model_params.copy()
+                model_params_with_log['use_log_output'] = self.use_log_preprocessing.get()
+                self.current_model = create_model(**model_params_with_log)
                 self.current_model.load_state_dict(
                     torch.load(f'checkpoints/best_model_fold_{best_fold}.pth')
                 )
@@ -947,7 +1125,11 @@ class RCSWaveletGUI:
                 # 创建模型和训练器
                 from training import ProgressiveTrainer
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-                model = create_model(**{'input_dim': 9, 'hidden_dims': [128, 256]})
+                # 创建模型时使用当前的小波配置和预处理配置
+                model_params = {'input_dim': 9, 'hidden_dims': [128, 256],
+                              'wavelet_config': self.training_config.get('wavelet_config'),
+                              'use_log_output': self.use_log_preprocessing.get()}
+                model = create_model(**model_params)
                 trainer = ProgressiveTrainer(model, device)
 
                 # 创建优化器和调度器
@@ -956,8 +1138,13 @@ class RCSWaveletGUI:
                                      lr=self.training_config['learning_rate'],
                                      weight_decay=self.training_config['weight_decay'])
 
-                scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                    optimizer, mode='min', factor=0.5, patience=10
+                # 使用余弦退火调度器，支持周期性重启
+                scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                    optimizer,
+                    T_0=50,              # 第一个周期50个epoch
+                    T_mult=1,            # 周期长度保持不变
+                    eta_min=1e-6,        # 最小学习率
+                    last_epoch=-1
                 )
 
                 # 创建损失函数
@@ -1052,7 +1239,8 @@ class RCSWaveletGUI:
                         self.training_history['gpu_memory'].append(0)
 
                     # 学习率调度
-                    scheduler.step(val_losses['total'])
+                    # CosineAnnealingWarmRestarts每个epoch都要step
+                    scheduler.step()
 
                     # 记录进度
                     if epoch % 5 == 0:  # 每5个epoch记录一次
@@ -1166,6 +1354,77 @@ class RCSWaveletGUI:
             except Exception as e:
                 messagebox.showerror("错误", f"模型保存失败: {str(e)}")
 
+    # 小波预设配置方法
+    def set_default_wavelets(self):
+        """设置默认混合小波配置"""
+        wavelets = ['db4', 'db4', 'bior2.2', 'bior2.2']
+        for i, var in enumerate(self.wavelet_vars):
+            var.set(wavelets[i])
+        self.log_message("已设置默认混合小波配置: ['db4', 'db4', 'bior2.2', 'bior2.2']")
+
+    def set_db4_wavelets(self):
+        """设置全DB4小波配置"""
+        wavelets = ['db4', 'db4', 'db4', 'db4']
+        for i, var in enumerate(self.wavelet_vars):
+            var.set(wavelets[i])
+        self.log_message("已设置全DB4小波配置: ['db4', 'db4', 'db4', 'db4']")
+
+    def set_bior_wavelets(self):
+        """设置全双正交小波配置"""
+        wavelets = ['bior2.2', 'bior2.2', 'bior2.4', 'bior2.6']
+        for i, var in enumerate(self.wavelet_vars):
+            var.set(wavelets[i])
+        self.log_message("已设置全双正交小波配置: ['bior2.2', 'bior2.2', 'bior2.4', 'bior2.6']")
+
+    def set_progressive_wavelets(self):
+        """设置递增复杂度小波配置"""
+        wavelets = ['db2', 'db4', 'db8', 'db10']
+        for i, var in enumerate(self.wavelet_vars):
+            var.set(wavelets[i])
+        self.log_message("已设置递增复杂度小波配置: ['db2', 'db4', 'db8', 'db10']")
+
+    def set_edge_wavelets(self):
+        """设置边缘检测优化小波配置"""
+        wavelets = ['haar', 'db2', 'db4', 'bior2.2']
+        for i, var in enumerate(self.wavelet_vars):
+            var.set(wavelets[i])
+        self.log_message("已设置边缘检测优化小波配置: ['haar', 'db2', 'db4', 'bior2.2']")
+
+    def get_current_wavelet_config(self):
+        """获取当前小波配置"""
+        return [var.get() for var in self.wavelet_vars]
+
+    def on_preprocessing_change(self):
+        """预处理选项变化时的回调函数"""
+        enabled = self.use_log_preprocessing.get()
+
+        # 控制预处理参数的启用状态
+        state = tk.NORMAL if enabled else tk.DISABLED
+        self.log_epsilon_entry.configure(state=state)
+        self.normalize_checkbox.configure(state=state)
+
+        # 更新数据配置
+        self.update_data_config()
+
+        if enabled:
+            self.log_message("已启用对数预处理 - 推荐用于大动态范围RCS数据")
+        else:
+            self.log_message("已禁用对数预处理 - 使用原始线性RCS数据")
+
+    def update_data_config(self):
+        """更新数据配置以包含预处理选项"""
+        use_log = self.use_log_preprocessing.get()
+        epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
+        normalize = self.normalize_after_log.get()
+
+        self.data_config = create_data_config(use_log_preprocessing=use_log)
+        self.data_config['preprocessing'].update({
+            'log_epsilon': epsilon,
+            'normalize_after_log': normalize
+        })
+
+        self.log_message(f"数据配置已更新: 对数预处理={use_log}, ε={epsilon}, 标准化={normalize}")
+
     def load_model(self):
         """加载模型"""
         filename = filedialog.askopenfilename(
@@ -1175,10 +1434,15 @@ class RCSWaveletGUI:
 
         if filename:
             try:
+                # 更新模型参数以包含当前的小波配置和预处理配置
+                self.model_params['wavelet_config'] = self.get_current_wavelet_config()
+                self.model_params['use_log_output'] = self.use_log_preprocessing.get()
                 self.current_model = create_model(**self.model_params)
                 self.current_model.load_state_dict(torch.load(filename, map_location='cpu'))
                 self.model_trained = True
                 self.log_message(f"模型已从 {filename} 加载")
+                self.log_message(f"注意: 使用当前界面的小波配置 {self.model_params['wavelet_config']}")
+                self.log_message("如果与保存时的小波配置不同，可能导致加载错误")
                 messagebox.showinfo("成功", "模型加载成功")
             except Exception as e:
                 messagebox.showerror("错误", f"模型加载失败: {str(e)}")
@@ -1199,9 +1463,29 @@ class RCSWaveletGUI:
             # 创建测试数据集
             test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
 
+            # 准备预处理统计信息
+            use_log = self.use_log_preprocessing.get()
+            preprocessing_stats = None
+
+            if use_log:
+                # 计算当前数据的统计信息 (假设self.rcs_data已经是标准化后的dB值)
+                # 如果数据是通过RCSDataLoader加载的,应该已经标准化了
+                # 这里我们需要原始dB值的mean和std
+                # 简化处理: 使用整个数据集计算
+                rcs_flat = self.rcs_data.flatten()
+                preprocessing_stats = {
+                    'mean': np.mean(rcs_flat),
+                    'std': np.std(rcs_flat)
+                }
+
             # 创建评估器
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            evaluator = RCSEvaluator(self.current_model, device)
+            evaluator = RCSEvaluator(
+                self.current_model,
+                device,
+                use_log_output=use_log,
+                preprocessing_stats=preprocessing_stats
+            )
 
             # 执行评估
             self.evaluation_results = evaluator.evaluate_dataset(test_dataset)
@@ -1360,18 +1644,24 @@ class RCSWaveletGUI:
         ax1 = self.pred_fig.add_subplot(1, 2, 1)
         ax2 = self.pred_fig.add_subplot(1, 2, 2)
 
+        # 定义角度范围 (基于实际数据)
+        phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
+        theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
+
         # 绘制1.5GHz结果
-        im1 = ax1.imshow(prediction[:, :, 0], cmap='jet', aspect='auto')
+        im1 = ax1.imshow(prediction[:, :, 0], cmap='jet', aspect='equal',
+                        extent=[phi_range[0], phi_range[1], theta_range[1], theta_range[0]])
         ax1.set_title('1.5GHz RCS预测')
-        ax1.set_xlabel('θ (俯仰角)')
-        ax1.set_ylabel('φ (偏航角)')
+        ax1.set_xlabel('φ (方位角, 度)')
+        ax1.set_ylabel('θ (俯仰角, 度)')
         self.pred_fig.colorbar(im1, ax=ax1)
 
         # 绘制3GHz结果
-        im2 = ax2.imshow(prediction[:, :, 1], cmap='jet', aspect='auto')
+        im2 = ax2.imshow(prediction[:, :, 1], cmap='jet', aspect='equal',
+                        extent=[phi_range[0], phi_range[1], theta_range[1], theta_range[0]])
         ax2.set_title('3GHz RCS预测')
-        ax2.set_xlabel('θ (俯仰角)')
-        ax2.set_ylabel('φ (偏航角)')
+        ax2.set_xlabel('φ (方位角, 度)')
+        ax2.set_ylabel('θ (俯仰角, 度)')
         self.pred_fig.colorbar(im2, ax=ax2)
 
         self.pred_fig.tight_layout()
@@ -1425,10 +1715,17 @@ class RCSWaveletGUI:
             data = rv.get_rcs_matrix(model_id, freq, self.data_config['rcs_data_dir'])
 
             ax = self.vis_fig.add_subplot(1, 1, 1)
-            im = ax.imshow(data['rcs_db'], cmap='jet', aspect='auto')
+
+            # 获取实际的角度范围
+            phi_values = data['phi_values']
+            theta_values = data['theta_values']
+
+            im = ax.imshow(data['rcs_db'], cmap='jet', aspect='equal',
+                          extent=[phi_values.min(), phi_values.max(),
+                                 theta_values.max(), theta_values.min()])
             ax.set_title(f'模型 {model_id} - {freq} RCS分布')
-            ax.set_xlabel('θ (俯仰角)')
-            ax.set_ylabel('φ (偏航角)')
+            ax.set_xlabel('φ (方位角, 度)')
+            ax.set_ylabel('θ (俯仰角, 度)')
             self.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
 
             self.vis_fig.tight_layout()
@@ -1598,34 +1895,39 @@ class RCSWaveletGUI:
             # 创建2x2子图布局
             fig = self.vis_fig
 
+            # 定义角度范围 (基于实际数据)
+            phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
+            theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
+            extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
+
             # 1.5GHz频率对比
             ax1 = fig.add_subplot(2, 2, 1)
-            im1 = ax1.imshow(original_rcs_1_5g, cmap='jet', aspect='auto')
+            im1 = ax1.imshow(original_rcs_1_5g, cmap='jet', aspect='equal', extent=extent)
             ax1.set_title(f'原始RCS - 1.5GHz (模型{model_id})')
-            ax1.set_xlabel('θ角度索引')
-            ax1.set_ylabel('φ角度索引')
+            ax1.set_xlabel('φ (方位角, 度)')
+            ax1.set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im1, ax=ax1, shrink=0.8)
 
             ax2 = fig.add_subplot(2, 2, 2)
-            im2 = ax2.imshow(predicted_rcs_1_5g, cmap='jet', aspect='auto')
+            im2 = ax2.imshow(predicted_rcs_1_5g, cmap='jet', aspect='equal', extent=extent)
             ax2.set_title(f'神经网络预测RCS - 1.5GHz')
-            ax2.set_xlabel('θ角度索引')
-            ax2.set_ylabel('φ角度索引')
+            ax2.set_xlabel('φ (方位角, 度)')
+            ax2.set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im2, ax=ax2, shrink=0.8)
 
             # 3GHz频率对比
             ax3 = fig.add_subplot(2, 2, 3)
-            im3 = ax3.imshow(original_rcs_3g, cmap='jet', aspect='auto')
+            im3 = ax3.imshow(original_rcs_3g, cmap='jet', aspect='equal', extent=extent)
             ax3.set_title(f'原始RCS - 3GHz (模型{model_id})')
-            ax3.set_xlabel('θ角度索引')
-            ax3.set_ylabel('φ角度索引')
+            ax3.set_xlabel('φ (方位角, 度)')
+            ax3.set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im3, ax=ax3, shrink=0.8)
 
             ax4 = fig.add_subplot(2, 2, 4)
-            im4 = ax4.imshow(predicted_rcs_3g, cmap='jet', aspect='auto')
+            im4 = ax4.imshow(predicted_rcs_3g, cmap='jet', aspect='equal', extent=extent)
             ax4.set_title(f'神经网络预测RCS - 3GHz')
-            ax4.set_xlabel('θ角度索引')
-            ax4.set_ylabel('φ角度索引')
+            ax4.set_xlabel('φ (方位角, 度)')
+            ax4.set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im4, ax=ax4, shrink=0.8)
 
             # 计算并显示误差统计
@@ -1683,12 +1985,12 @@ class RCSWaveletGUI:
 
             # 创建子图
             ax1 = self.vis_fig.add_subplot(2, 2, 1)
-            im1 = ax1.imshow(diff_1_5g, cmap='RdBu_r', aspect='auto')
+            im1 = ax1.imshow(diff_1_5g, cmap='RdBu_r', aspect='equal')
             ax1.set_title(f'差值图 - 1.5GHz (原始-预测)')
             plt.colorbar(im1, ax=ax1, shrink=0.8)
 
             ax2 = self.vis_fig.add_subplot(2, 2, 2)
-            im2 = ax2.imshow(diff_3g, cmap='RdBu_r', aspect='auto')
+            im2 = ax2.imshow(diff_3g, cmap='RdBu_r', aspect='equal')
             ax2.set_title(f'差值图 - 3GHz (原始-预测)')
             plt.colorbar(im2, ax=ax2, shrink=0.8)
 
@@ -1819,70 +2121,269 @@ class RCSWaveletGUI:
             messagebox.showerror("错误", f"相关性分析失败: {str(e)}")
 
     def _plot_training_history(self):
-        """绘制训练历史图（使用对数坐标）"""
-        if not hasattr(self, 'training_history') or not self.training_history or not self.training_history['epochs']:
+        """绘制训练历史图（对交叉验证，分别保存每折到results文件夹，GUI显示最佳折）"""
+        if not hasattr(self, 'training_history') or not self.training_history:
             messagebox.showwarning("警告", "没有训练历史数据，请先进行训练")
             return
 
         try:
             import numpy as np
             from matplotlib import pyplot as plt
+            import os
+            from datetime import datetime
 
-            self.vis_fig.clear()
-            print("绘制训练历史图...")
+            # 确保results目录存在
+            results_dir = "results"
+            if not os.path.exists(results_dir):
+                os.makedirs(results_dir)
 
-            epochs = self.training_history['epochs']
-            train_loss = self.training_history['train_loss']
-            val_loss = self.training_history['val_loss']
+            print("绘制并保存训练历史图...")
 
-            # 主损失曲线（对数坐标）
-            ax1 = self.vis_fig.add_subplot(2, 2, 1)
-            ax1.semilogy(epochs, train_loss, 'b-', label='训练损失', linewidth=2)
-            ax1.semilogy(epochs, val_loss, 'r-', label='验证损失', linewidth=2)
-            ax1.set_xlabel('Epoch')
-            ax1.set_ylabel('Loss (对数坐标)')
-            ax1.set_title('训练和验证损失')
-            ax1.legend()
-            ax1.grid(True, alpha=0.3)
+            # 检查是否有交叉验证的fold_details
+            if 'fold_details' in self.training_history and self.training_history['fold_details']:
+                # 交叉验证模式：分别保存每折的图
+                fold_details = self.training_history['fold_details']
+                fold_scores = self.training_history.get('fold_scores', [])
 
-            # 分量损失
-            ax2 = self.vis_fig.add_subplot(2, 2, 2)
-            if self.training_history['train_mse']:
-                ax2.semilogy(epochs, self.training_history['train_mse'], 'g-', label='MSE', alpha=0.8)
-            if self.training_history['train_symmetry']:
-                ax2.semilogy(epochs, self.training_history['train_symmetry'], 'm-', label='对称性', alpha=0.8)
-            if self.training_history['train_multiscale']:
-                ax2.semilogy(epochs, self.training_history['train_multiscale'], 'c-', label='多尺度', alpha=0.8)
-            ax2.set_xlabel('Epoch')
-            ax2.set_ylabel('损失分量 (对数坐标)')
-            ax2.set_title('损失组件分析')
-            ax2.legend()
-            ax2.grid(True, alpha=0.3)
+                # 找到最佳折用于GUI显示
+                best_fold_idx = np.argmin(fold_scores) if fold_scores else 0
 
-            # GPU显存监控
-            ax3 = self.vis_fig.add_subplot(2, 2, 3)
-            if self.training_history['gpu_memory'] and any(x > 0 for x in self.training_history['gpu_memory']):
-                ax3.plot(epochs, self.training_history['gpu_memory'], 'orange', linewidth=2)
-                ax3.set_xlabel('Epoch')
-                ax3.set_ylabel('GPU显存 (GB)')
-                ax3.set_title(f'GPU显存 - 批次{self.training_history["batch_sizes"][0] if self.training_history["batch_sizes"] else "N/A"}')
-                ax3.grid(True, alpha=0.3)
+                # 为每折创建单独的图表
+                for fold_idx, fold_data in enumerate(fold_details):
+                    self._save_fold_plot(fold_data, fold_idx, results_dir)
+
+                # 在GUI显示最佳折
+                best_fold_data = fold_details[best_fold_idx]
+                self._display_fold_in_gui(best_fold_data, best_fold_idx)
+
+                self.log_message(f"已保存{len(fold_details)}折训练图表到{results_dir}目录")
+                self.log_message(f"GUI显示最佳折 {best_fold_idx + 1} 的训练历史")
+
             else:
-                ax3.text(0.5, 0.5, 'GPU显存监控不可用', ha='center', va='center', transform=ax3.transAxes)
-                ax3.set_title('GPU显存监控')
+                # 单次训练模式：直接显示
+                self._display_simple_training_history()
 
-            # 统计摘要
-            ax4 = self.vis_fig.add_subplot(2, 2, 4)
-            ax4.axis('off')
+        except Exception as e:
+            error_msg = f"绘制训练历史失败: {str(e)}"
+            self.log_message(error_msg)
+            messagebox.showerror("错误", error_msg)
 
-            total_epochs = len(epochs)
-            batch_size = self.training_history['batch_sizes'][0] if self.training_history['batch_sizes'] else 'N/A'
-            final_train = train_loss[-1] if train_loss else 0
-            final_val = val_loss[-1] if val_loss else 0
-            min_val = min(val_loss) if val_loss else 0
-            gpu_peak = max(self.training_history['gpu_memory']) if self.training_history['gpu_memory'] else 0
+    def _save_fold_plot(self, fold_data, fold_idx, results_dir):
+        """保存单个折的训练历史图表"""
+        import matplotlib.pyplot as plt
+        from datetime import datetime
 
-            stats = f"""训练摘要:
+        # 创建独立的图表
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        fig.suptitle(f'交叉验证第{fold_idx + 1}折 - 训练历史', fontsize=14)
+
+        epochs = fold_data.get('epochs', [])
+        train_losses = fold_data.get('train_losses', [])
+        val_losses = fold_data.get('val_losses', [])
+
+        if not epochs or not train_losses:
+            return
+
+        # 主损失曲线
+        axes[0, 0].semilogy(epochs, train_losses, 'b-', label='训练损失', linewidth=2)
+        if val_losses:
+            axes[0, 0].semilogy(epochs, val_losses, 'r-', label='验证损失', linewidth=2)
+        axes[0, 0].set_xlabel('Epoch')
+        axes[0, 0].set_ylabel('Loss (对数坐标)')
+        axes[0, 0].set_title('训练和验证损失')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True, alpha=0.3)
+
+        # 分量损失
+        axes[0, 1].set_title('损失组件分析')
+        if fold_data.get('train_mse'):
+            axes[0, 1].semilogy(epochs, fold_data['train_mse'], 'g-', label='MSE', alpha=0.8)
+        if fold_data.get('train_symmetry'):
+            axes[0, 1].semilogy(epochs, fold_data['train_symmetry'], 'm-', label='对称性', alpha=0.8)
+        if fold_data.get('train_multiscale'):
+            axes[0, 1].semilogy(epochs, fold_data['train_multiscale'], 'c-', label='多尺度', alpha=0.8)
+        axes[0, 1].set_xlabel('Epoch')
+        axes[0, 1].set_ylabel('损失分量 (对数坐标)')
+        axes[0, 1].legend()
+        axes[0, 1].grid(True, alpha=0.3)
+
+        # 学习率曲线
+        axes[1, 0].set_title('学习率变化')
+        if fold_data.get('learning_rates'):
+            axes[1, 0].plot(epochs, fold_data['learning_rates'], 'purple', linewidth=2)
+            axes[1, 0].set_xlabel('Epoch')
+            axes[1, 0].set_ylabel('Learning Rate')
+            axes[1, 0].grid(True, alpha=0.3)
+        else:
+            axes[1, 0].text(0.5, 0.5, '学习率数据不可用', ha='center', va='center', transform=axes[1, 0].transAxes)
+
+        # 统计摘要
+        axes[1, 1].axis('off')
+        total_epochs = len(epochs)
+        final_train = train_losses[-1] if train_losses else 0
+        final_val = val_losses[-1] if val_losses else 0
+        min_val = min(val_losses) if val_losses else 0
+
+        stats = f"""第{fold_idx + 1}折统计:
+
+总轮数: {total_epochs}
+最终训练损失: {final_train:.6f}
+最终验证损失: {final_val:.6f}
+最佳验证损失: {min_val:.6f}
+
+训练完成时间:
+{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+
+        axes[1, 1].text(0.1, 0.9, stats, transform=axes[1, 1].transAxes, fontsize=10,
+                        verticalalignment='top', fontfamily='monospace')
+
+        plt.tight_layout()
+
+        # 保存图表
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"fold_{fold_idx + 1}_training_history_{timestamp}.png"
+        filepath = os.path.join(results_dir, filename)
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        print(f"已保存第{fold_idx + 1}折训练历史到: {filepath}")
+
+    def _display_fold_in_gui(self, fold_data, fold_idx):
+        """在GUI中显示指定折的训练历史"""
+        self.vis_fig.clear()
+
+        epochs = fold_data.get('epochs', [])
+        train_losses = fold_data.get('train_losses', [])
+        val_losses = fold_data.get('val_losses', [])
+
+        if not epochs or not train_losses:
+            self.vis_fig.text(0.5, 0.5, f'第{fold_idx + 1}折数据不完整', ha='center', va='center')
+            self.vis_canvas.draw()
+            return
+
+        # 主损失曲线
+        ax1 = self.vis_fig.add_subplot(2, 2, 1)
+        ax1.semilogy(epochs, train_losses, 'b-', label='训练损失', linewidth=2)
+        if val_losses:
+            ax1.semilogy(epochs, val_losses, 'r-', label='验证损失', linewidth=2)
+        ax1.set_xlabel('Epoch')
+        ax1.set_ylabel('Loss (对数坐标)')
+        ax1.set_title(f'第{fold_idx + 1}折 - 训练和验证损失')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # 分量损失
+        ax2 = self.vis_fig.add_subplot(2, 2, 2)
+        if fold_data.get('train_mse'):
+            ax2.semilogy(epochs, fold_data['train_mse'], 'g-', label='MSE', alpha=0.8)
+        if fold_data.get('train_symmetry'):
+            ax2.semilogy(epochs, fold_data['train_symmetry'], 'm-', label='对称性', alpha=0.8)
+        if fold_data.get('train_multiscale'):
+            ax2.semilogy(epochs, fold_data['train_multiscale'], 'c-', label='多尺度', alpha=0.8)
+        ax2.set_xlabel('Epoch')
+        ax2.set_ylabel('损失分量 (对数坐标)')
+        ax2.set_title('损失组件分析')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        # 学习率
+        ax3 = self.vis_fig.add_subplot(2, 2, 3)
+        if fold_data.get('learning_rates'):
+            ax3.plot(epochs, fold_data['learning_rates'], 'purple', linewidth=2)
+            ax3.set_xlabel('Epoch')
+            ax3.set_ylabel('Learning Rate')
+            ax3.set_title('学习率变化')
+            ax3.grid(True, alpha=0.3)
+        else:
+            ax3.text(0.5, 0.5, '学习率数据不可用', ha='center', va='center', transform=ax3.transAxes)
+            ax3.set_title('学习率监控')
+
+        # 统计摘要
+        ax4 = self.vis_fig.add_subplot(2, 2, 4)
+        ax4.axis('off')
+
+        total_epochs = len(epochs)
+        final_train = train_losses[-1] if train_losses else 0
+        final_val = val_losses[-1] if val_losses else 0
+        min_val = min(val_losses) if val_losses else 0
+
+        stats = f"""第{fold_idx + 1}折摘要:
+
+总轮数: {total_epochs}
+最终训练损失: {final_train:.6f}
+最终验证损失: {final_val:.6f}
+最佳验证损失: {min_val:.6f}
+
+注: 其他折已保存到results/"""
+
+        ax4.text(0.1, 0.9, stats, transform=ax4.transAxes, fontsize=10,
+                    verticalalignment='top', fontfamily='monospace')
+
+        self.vis_fig.tight_layout()
+        self.vis_canvas.draw()
+
+    def _display_simple_training_history(self):
+        """显示简单训练模式的历史（非交叉验证）"""
+        self.vis_fig.clear()
+
+        epochs = self.training_history.get('epochs', [])
+        train_loss = self.training_history.get('train_loss', [])
+        val_loss = self.training_history.get('val_loss', [])
+
+        if not epochs or not train_loss:
+            self.vis_fig.text(0.5, 0.5, '训练历史数据不完整', ha='center', va='center')
+            self.vis_canvas.draw()
+            return
+
+        # 主损失曲线
+        ax1 = self.vis_fig.add_subplot(2, 2, 1)
+        ax1.semilogy(epochs, train_loss, 'b-', label='训练损失', linewidth=2)
+        if val_loss:
+            ax1.semilogy(epochs, val_loss, 'r-', label='验证损失', linewidth=2)
+        ax1.set_xlabel('Epoch')
+        ax1.set_ylabel('Loss (对数坐标)')
+        ax1.set_title('训练和验证损失')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # 分量损失
+        ax2 = self.vis_fig.add_subplot(2, 2, 2)
+        if self.training_history.get('train_mse'):
+            ax2.semilogy(epochs, self.training_history['train_mse'], 'g-', label='MSE', alpha=0.8)
+        if self.training_history.get('train_symmetry'):
+            ax2.semilogy(epochs, self.training_history['train_symmetry'], 'm-', label='对称性', alpha=0.8)
+        if self.training_history.get('train_multiscale'):
+            ax2.semilogy(epochs, self.training_history['train_multiscale'], 'c-', label='多尺度', alpha=0.8)
+        ax2.set_xlabel('Epoch')
+        ax2.set_ylabel('损失分量 (对数坐标)')
+        ax2.set_title('损失组件分析')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        # GPU显存监控
+        ax3 = self.vis_fig.add_subplot(2, 2, 3)
+        if self.training_history.get('gpu_memory') and any(x > 0 for x in self.training_history['gpu_memory']):
+            ax3.plot(epochs, self.training_history['gpu_memory'], 'orange', linewidth=2)
+            ax3.set_xlabel('Epoch')
+            ax3.set_ylabel('GPU显存 (GB)')
+            ax3.set_title('GPU显存监控')
+            ax3.grid(True, alpha=0.3)
+        else:
+            ax3.text(0.5, 0.5, 'GPU显存监控不可用', ha='center', va='center', transform=ax3.transAxes)
+            ax3.set_title('GPU显存监控')
+
+        # 统计摘要
+        ax4 = self.vis_fig.add_subplot(2, 2, 4)
+        ax4.axis('off')
+
+        total_epochs = len(epochs)
+        batch_size = self.training_history.get('batch_sizes', [None])[0] or 'N/A'
+        final_train = train_loss[-1] if train_loss else 0
+        final_val = val_loss[-1] if val_loss else 0
+        min_val = min(val_loss) if val_loss else 0
+        gpu_peak = max(self.training_history.get('gpu_memory', [0])) if self.training_history.get('gpu_memory') else 0
+
+        stats = f"""训练摘要:
 
 总轮数: {total_epochs}
 批次大小: {batch_size}
@@ -1892,21 +2393,13 @@ class RCSWaveletGUI:
   验证: {final_val:.6f}
 
 最佳验证: {min_val:.6f}
-GPU峰值: {gpu_peak:.2f}GB
+GPU峰值: {gpu_peak:.2f}GB"""
 
-批次大小影响:
-显存占用正常"""
-
-            ax4.text(0.1, 0.9, stats, transform=ax4.transAxes, fontsize=10,
+        ax4.text(0.1, 0.9, stats, transform=ax4.transAxes, fontsize=10,
                     verticalalignment='top', fontfamily='monospace')
 
-            plt.tight_layout()
-            self.vis_canvas.draw()
-            print("训练历史图完成")
-
-        except Exception as e:
-            print(f"训练历史图失败: {str(e)}")
-            messagebox.showerror("错误", f"训练历史图失败: {str(e)}")
+        self.vis_fig.tight_layout()
+        self.vis_canvas.draw()
 
     def _plot_global_statistics_comparison(self):
         """改进的全局统计对比分析 - 保存到results文件夹"""

@@ -141,14 +141,19 @@ class MultiScaleWaveletExtractor(nn.Module):
     实现多分辨率特征提取，捕获不同尺度的散射特性
     """
 
-    def __init__(self, input_dim: int = 256):
+    def __init__(self, input_dim: int = 256, wavelet_config: List[str] = None):
         """
         初始化多尺度特征提取器
 
         参数:
             input_dim: 输入特征维度
+            wavelet_config: 小波配置列表，包含4个小波类型 [scale1, scale2, scale3, scale4]
         """
         super(MultiScaleWaveletExtractor, self).__init__()
+
+        # 默认小波配置
+        if wavelet_config is None:
+            wavelet_config = ['db4', 'db4', 'bior2.2', 'bior2.2']
 
         # 将1D特征映射到2D特征图
         self.feature_to_2d = nn.Sequential(
@@ -157,11 +162,11 @@ class MultiScaleWaveletExtractor(nn.Module):
             nn.Dropout(0.2)
         )
 
-        # 4个不同尺度的小波层
-        self.wavelet_scale1 = Wavelet2DConv(4, 64, wavelet='db4', scale=1)   # 细节尺度
-        self.wavelet_scale2 = Wavelet2DConv(64, 64, wavelet='db4', scale=2)  # 中等尺度
-        self.wavelet_scale3 = Wavelet2DConv(64, 64, wavelet='bior2.2', scale=3)  # 粗糙尺度
-        self.wavelet_scale4 = Wavelet2DConv(64, 64, wavelet='bior2.2', scale=4)  # 最粗尺度
+        # 4个不同尺度的小波层，使用配置的小波类型
+        self.wavelet_scale1 = Wavelet2DConv(4, 64, wavelet=wavelet_config[0], scale=1)   # 细节尺度
+        self.wavelet_scale2 = Wavelet2DConv(64, 64, wavelet=wavelet_config[1], scale=2)  # 中等尺度
+        self.wavelet_scale3 = Wavelet2DConv(64, 64, wavelet=wavelet_config[2], scale=3)  # 粗糙尺度
+        self.wavelet_scale4 = Wavelet2DConv(64, 64, wavelet=wavelet_config[3], scale=4)  # 最粗尺度
 
         # 特征融合层
         self.feature_fusion = nn.Sequential(
@@ -302,12 +307,13 @@ class ProgressiveDecoder(nn.Module):
     23×23 → 46×46 → 91×91
     """
 
-    def __init__(self, input_channels: int = 64):
+    def __init__(self, input_channels: int = 64, use_log_output: bool = False):
         """
         初始化渐进式解码器
 
         参数:
             input_channels: 输入通道数
+            use_log_output: 是否输出对数域数据（无激活函数）
         """
         super(ProgressiveDecoder, self).__init__()
 
@@ -333,6 +339,13 @@ class ProgressiveDecoder(nn.Module):
 
         # 最终输出层
         self.final_conv = nn.Conv2d(8, 1, 1)
+        # 根据输出类型选择激活函数
+        if use_log_output:
+            # 对数域输出，不需要激活函数
+            self.output_activation = nn.Identity()
+        else:
+            # 线性域输出，使用Softplus确保正值
+            self.output_activation = nn.Softplus()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -354,6 +367,9 @@ class ProgressiveDecoder(nn.Module):
         # 最终输出
         output = self.final_conv(x)  # [B, 1, 91, 91]
 
+        # 应用激活函数确保输出为正值
+        output = self.output_activation(output)
+
         return output
 
 
@@ -374,7 +390,9 @@ class TriDimensionalRCSNet(nn.Module):
 
     def __init__(self, input_dim: int = 9,
                  hidden_dims: List[int] = [128, 256],
-                 dropout_rate: float = 0.2):
+                 dropout_rate: float = 0.2,
+                 wavelet_config: List[str] = None,
+                 use_log_output: bool = False):
         """
         初始化三维RCS网络
 
@@ -382,10 +400,13 @@ class TriDimensionalRCSNet(nn.Module):
             input_dim: 输入参数维度 (9个飞行器参数)
             hidden_dims: 隐藏层维度列表
             dropout_rate: Dropout比率
+            wavelet_config: 小波配置列表，包含4个小波类型
+            use_log_output: 是否输出对数域数据（无激活函数）
         """
         super(TriDimensionalRCSNet, self).__init__()
 
         self.input_dim = input_dim
+        self.wavelet_config = wavelet_config or ['db4', 'db4', 'bior2.2', 'bior2.2']
 
         # 深层参数编码器
         encoder_layers = []
@@ -403,17 +424,20 @@ class TriDimensionalRCSNet(nn.Module):
         self.parameter_encoder = nn.Sequential(*encoder_layers)
 
         # 多尺度小波特征提取器
-        self.wavelet_extractor = MultiScaleWaveletExtractor(prev_dim)
+        self.wavelet_extractor = MultiScaleWaveletExtractor(prev_dim, self.wavelet_config)
 
         # 频率交互模块
         self.frequency_interaction = FrequencyInteractionModule(64)
 
         # 双频分支解码器
-        self.freq1_decoder = ProgressiveDecoder(64)  # 1.5GHz解码器
-        self.freq2_decoder = ProgressiveDecoder(64)  # 3GHz解码器
+        self.freq1_decoder = ProgressiveDecoder(64, use_log_output)  # 1.5GHz解码器
+        self.freq2_decoder = ProgressiveDecoder(64, use_log_output)  # 3GHz解码器
 
         # 物理约束层 (φ=0°平面对称性)
         self.symmetry_constraint = self._build_symmetry_constraint()
+
+        # 输出配置
+        self.use_log_output = use_log_output
 
     def _build_symmetry_constraint(self):
         """构建对称性约束层"""
@@ -424,26 +448,33 @@ class TriDimensionalRCSNet(nn.Module):
         应用φ=0°平面对称性约束: σ(φ,θ,f) = σ(-φ,θ,f)
 
         参数:
-            rcs_tensor: RCS张量 [B, 91, 91, 2]
+            rcs_tensor: RCS张量 [B, theta, phi, freq] = [B, 91, 91, 2]
+                       theta维度: 索引0-90对应45-135°
+                       phi维度: 索引0-90对应-45到45°, 索引45是phi=0°
 
         返回:
             对称约束后的RCS张量
         """
-        # 获取中心索引 (φ=0°对应索引45)
+        # 克隆张量以避免就地修改导致的CUDA错误
+        rcs_symmetric = rcs_tensor.clone()
+
+        # 数据维度: [batch, theta, phi, freq]
+        # phi=0°对应第2维的索引45 (phi从-45到45°)
         center_phi = 45
 
-        # 应用对称性约束
+        # 应用phi对称性约束: 对每个theta, phi(-a) = phi(a)
         for i in range(1, center_phi + 1):
-            left_idx = center_phi - i   # φ < 0°
-            right_idx = center_phi + i  # φ > 0°
+            left_idx = center_phi - i   # phi < 0°
+            right_idx = center_phi + i  # phi > 0°
 
-            if right_idx < 91:
-                # 取两侧的平均值实现对称
-                avg_values = (rcs_tensor[:, left_idx, :, :] + rcs_tensor[:, right_idx, :, :]) / 2
-                rcs_tensor[:, left_idx, :, :] = avg_values
-                rcs_tensor[:, right_idx, :, :] = avg_values
+            # 边界检查
+            if left_idx >= 0 and right_idx < 91:
+                # 取两侧的平均值实现对称 (注意维度: [:, :, phi, :])
+                avg_values = (rcs_symmetric[:, :, left_idx, :] + rcs_symmetric[:, :, right_idx, :]) / 2
+                rcs_symmetric[:, :, left_idx, :] = avg_values
+                rcs_symmetric[:, :, right_idx, :] = avg_values
 
-        return rcs_tensor
+        return rcs_symmetric
 
     def forward(self, parameters: torch.Tensor) -> torch.Tensor:
         """
@@ -528,11 +559,12 @@ class TriDimensionalRCSLoss(nn.Module):
         计算φ=0°平面对称性损失
 
         参数:
-            pred_rcs: 预测RCS [B, 91, 91, 2]
+            pred_rcs: 预测RCS [B, theta, phi, freq] = [B, 91, 91, 2]
 
         返回:
             对称性损失
         """
+        # phi=0°在第2维的索引45
         center_phi = 45
         symmetry_loss = 0.0
         count = 0
@@ -542,8 +574,9 @@ class TriDimensionalRCSLoss(nn.Module):
             right_idx = center_phi + i
 
             if right_idx < 91:
-                left_values = pred_rcs[:, left_idx, :, :]
-                right_values = pred_rcs[:, right_idx, :, :]
+                # 注意维度: [:, :, phi, :]
+                left_values = pred_rcs[:, :, left_idx, :]
+                right_values = pred_rcs[:, :, right_idx, :]
                 symmetry_loss += self.mse_loss(left_values, right_values)
                 count += 1
 
@@ -623,18 +656,20 @@ class TriDimensionalRCSLoss(nn.Module):
 
 
 # 辅助函数
-def create_model(input_dim: int = 9, **kwargs) -> TriDimensionalRCSNet:
+def create_model(input_dim: int = 9, wavelet_config: List[str] = None, use_log_output: bool = False, **kwargs) -> TriDimensionalRCSNet:
     """
     创建RCS预测模型
 
     参数:
         input_dim: 输入维度
+        wavelet_config: 小波配置列表，包含4个小波类型
+        use_log_output: 是否输出对数域数据
         **kwargs: 其他模型参数
 
     返回:
         模型实例
     """
-    return TriDimensionalRCSNet(input_dim=input_dim, **kwargs)
+    return TriDimensionalRCSNet(input_dim=input_dim, wavelet_config=wavelet_config, use_log_output=use_log_output, **kwargs)
 
 
 def create_loss_function(**kwargs) -> TriDimensionalRCSLoss:

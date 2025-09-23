@@ -52,18 +52,25 @@ class RCSEvaluator:
     提供全面的模型性能评估功能
     """
 
-    def __init__(self, model: TriDimensionalRCSNet, device: str = 'cuda'):
+    def __init__(self, model: TriDimensionalRCSNet, device: str = 'cuda',
+                 use_log_output: bool = False, preprocessing_stats: Dict = None):
         """
         初始化评估器
 
         参数:
             model: 训练好的RCS预测模型
             device: 计算设备
+            use_log_output: 模型是否输出对数域数据
+            preprocessing_stats: 预处理统计信息 (mean, std用于反标准化)
         """
         self.model = model
         self.device = device
         self.model.to(device)
         self.model.eval()
+
+        # 对数域相关配置
+        self.use_log_output = use_log_output
+        self.preprocessing_stats = preprocessing_stats or {}
 
         # 评估结果存储
         self.evaluation_results = {}
@@ -142,7 +149,25 @@ class RCSEvaluator:
     def _calculate_regression_metrics(self, predictions: np.ndarray, targets: np.ndarray) -> Dict:
         """
         计算基础回归评估指标
+
+        如果use_log_output=True, 会先转回线性域再计算指标
         """
+        # 如果模型输出是对数域(已标准化的dB值), 需要转回线性域
+        if self.use_log_output and self.preprocessing_stats:
+            # 反标准化: x = x_std * std + mean (恢复到dB域)
+            mean = self.preprocessing_stats.get('mean', 0)
+            std = self.preprocessing_stats.get('std', 1)
+
+            pred_db = predictions * std + mean
+            target_db = targets * std + mean
+
+            # dB转线性值: rcs = 10^(dB/10)
+            pred_linear = np.power(10, pred_db / 10)
+            target_linear = np.power(10, target_db / 10)
+
+            predictions = pred_linear
+            targets = target_linear
+
         # 展平数据以计算总体指标
         pred_flat = predictions.reshape(-1)
         target_flat = targets.reshape(-1)
@@ -366,27 +391,32 @@ class RCSEvaluator:
 
         freq_names = ['1.5GHz', '3GHz']
 
+        # 定义角度范围 (基于实际数据)
+        phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
+        theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
+        extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
+
         for freq_idx, freq_name in enumerate(freq_names):
             # 真实值
-            im1 = axes[freq_idx, 0].imshow(target[:, :, freq_idx], cmap='jet', aspect='auto')
+            im1 = axes[freq_idx, 0].imshow(target[:, :, freq_idx], cmap='jet', aspect='equal', extent=extent)
             axes[freq_idx, 0].set_title(f'真实RCS - {freq_name}')
-            axes[freq_idx, 0].set_xlabel('θ (俯仰角)')
-            axes[freq_idx, 0].set_ylabel('φ (偏航角)')
+            axes[freq_idx, 0].set_xlabel('φ (方位角, 度)')
+            axes[freq_idx, 0].set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im1, ax=axes[freq_idx, 0])
 
             # 预测值
-            im2 = axes[freq_idx, 1].imshow(prediction[:, :, freq_idx], cmap='jet', aspect='auto')
+            im2 = axes[freq_idx, 1].imshow(prediction[:, :, freq_idx], cmap='jet', aspect='equal', extent=extent)
             axes[freq_idx, 1].set_title(f'预测RCS - {freq_name}')
-            axes[freq_idx, 1].set_xlabel('θ (俯仰角)')
-            axes[freq_idx, 1].set_ylabel('φ (偏航角)')
+            axes[freq_idx, 1].set_xlabel('φ (方位角, 度)')
+            axes[freq_idx, 1].set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im2, ax=axes[freq_idx, 1])
 
             # 误差图
             error = np.abs(prediction[:, :, freq_idx] - target[:, :, freq_idx])
-            im3 = axes[freq_idx, 2].imshow(error, cmap='Reds', aspect='auto')
+            im3 = axes[freq_idx, 2].imshow(error, cmap='Reds', aspect='equal', extent=extent)
             axes[freq_idx, 2].set_title(f'绝对误差 - {freq_name}')
-            axes[freq_idx, 2].set_xlabel('θ (俯仰角)')
-            axes[freq_idx, 2].set_ylabel('φ (偏航角)')
+            axes[freq_idx, 2].set_xlabel('φ (方位角, 度)')
+            axes[freq_idx, 2].set_ylabel('θ (俯仰角, 度)')
             plt.colorbar(im3, ax=axes[freq_idx, 2])
 
             # 散点图对比
