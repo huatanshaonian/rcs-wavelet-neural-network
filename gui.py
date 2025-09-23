@@ -2057,7 +2057,7 @@ class RCSWaveletGUI:
   RMSE: {np.sqrt(np.mean(diff_3g_db**2)):.6f} dB
   MAE: {np.mean(np.abs(diff_3g_db)):.6f} dB"""
 
-            ax4.text(0.1, 0.9, stats_text, transform=ax4.transAxes, fontsize=10, verticalalignment='top', fontfamily='monospace')
+            ax4.text(0.1, 0.9, stats_text, transform=ax4.transAxes, fontsize=10, verticalalignment='top')
 
             plt.tight_layout()
             self.vis_canvas.draw()
