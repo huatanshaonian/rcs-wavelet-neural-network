@@ -402,9 +402,15 @@ class RCSWaveletGUI:
                       command=lambda v=lr_val: self.lr_var.set(str(v)),
                       width=5).pack(side=tk.LEFT, padx=1)
 
-        ttk.Label(left_config, text="训练轮数:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(left_config, text="最低学习率:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.min_lr_var = tk.StringVar(value=str(self.training_config.get('min_lr', 2e-5)))
+        min_lr_entry = ttk.Entry(left_config, textvariable=self.min_lr_var, width=10)
+        min_lr_entry.grid(row=2, column=1, padx=5, pady=2)
+        ttk.Label(left_config, text="(eta_min, 推荐: 1e-5~5e-5)", font=("Arial", 8), foreground="gray").grid(row=2, column=2, sticky=tk.W, pady=2)
+
+        ttk.Label(left_config, text="训练轮数:").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.epochs_var = tk.StringVar(value=str(self.training_config['epochs']))
-        ttk.Entry(left_config, textvariable=self.epochs_var, width=10).grid(row=2, column=1, padx=5, pady=2)
+        ttk.Entry(left_config, textvariable=self.epochs_var, width=10).grid(row=3, column=1, padx=5, pady=2)
 
         # 右侧配置
         right_config = ttk.Frame(config_frame)
@@ -963,6 +969,7 @@ class RCSWaveletGUI:
         try:
             self.training_config['batch_size'] = int(self.batch_size_var.get())
             self.training_config['learning_rate'] = float(self.lr_var.get())
+            self.training_config['min_lr'] = float(self.min_lr_var.get())
             self.training_config['epochs'] = int(self.epochs_var.get())
             self.training_config['weight_decay'] = float(self.weight_decay_var.get())
             self.training_config['early_stopping_patience'] = int(self.patience_var.get())
@@ -1153,7 +1160,7 @@ class RCSWaveletGUI:
                     optimizer,
                     T_0=50,              # 第一个周期50个epoch
                     T_mult=1,            # 周期长度保持不变
-                    eta_min=1e-6,        # 最小学习率
+                    eta_min=self.training_config.get('min_lr', 2e-5),  # 最小学习率(从配置读取)
                     last_epoch=-1
                 )
 

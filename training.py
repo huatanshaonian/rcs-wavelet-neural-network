@@ -469,7 +469,7 @@ class CrossValidationTrainer:
             optimizer,
             T_0=50,              # 第一个周期的epoch数
             T_mult=1,            # 每次重启后周期长度的倍数（1表示保持不变）
-            eta_min=1e-6,        # 最小学习率
+            eta_min=config.get('min_lr', 2e-5),  # 最小学习率(从配置读取)
             last_epoch=-1
         )
 
@@ -691,6 +691,7 @@ def create_training_config(early_stopping_patience: int = 50) -> Dict:
     return {
         'batch_size': 8,  # 适合小数据集的批次大小
         'learning_rate': 3e-3,  # 初始学习率 (推荐范围: 1e-3 到 5e-3)
+        'min_lr': 2e-5,  # 最低学习率/eta_min (推荐范围: 1e-5 到 5e-5)
         'weight_decay': 1e-4,
         'epochs': 200,
         'early_stopping_patience': early_stopping_patience,  # 可调节的早停参数
