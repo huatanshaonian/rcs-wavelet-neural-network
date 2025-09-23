@@ -388,9 +388,19 @@ class RCSWaveletGUI:
         self.batch_size_var = tk.StringVar(value=str(self.training_config['batch_size']))
         ttk.Entry(left_config, textvariable=self.batch_size_var, width=10).grid(row=0, column=1, padx=5, pady=2)
 
-        ttk.Label(left_config, text="学习率:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(left_config, text="初始学习率:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.lr_var = tk.StringVar(value=str(self.training_config['learning_rate']))
-        ttk.Entry(left_config, textvariable=self.lr_var, width=10).grid(row=1, column=1, padx=5, pady=2)
+        lr_entry = ttk.Entry(left_config, textvariable=self.lr_var, width=10)
+        lr_entry.grid(row=1, column=1, padx=5, pady=2)
+
+        # 学习率快捷按钮
+        lr_preset_frame = ttk.Frame(left_config)
+        lr_preset_frame.grid(row=1, column=2, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(lr_preset_frame, text="快捷:", font=("Arial", 8)).pack(side=tk.LEFT)
+        for lr_val in [0.001, 0.003, 0.005]:
+            ttk.Button(lr_preset_frame, text=f"{lr_val}",
+                      command=lambda v=lr_val: self.lr_var.set(str(v)),
+                      width=5).pack(side=tk.LEFT, padx=1)
 
         ttk.Label(left_config, text="训练轮数:").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.epochs_var = tk.StringVar(value=str(self.training_config['epochs']))

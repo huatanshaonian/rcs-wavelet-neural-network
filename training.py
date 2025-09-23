@@ -56,17 +56,25 @@ class RCSDataset(Dataset):
             transform: 数据变换函数
             augment: 是否启用数据增强
         """
-        self.parameters = torch.tensor(parameters, dtype=torch.float32)
-        self.rcs_data = torch.tensor(rcs_data, dtype=torch.float32)
+        # 检查并清理异常值
+        if np.any(np.isnan(rcs_data)) or np.any(np.isinf(rcs_data)):
+            print(f"警告: RCS数据包含NaN或Inf值，进行清理...")
+            rcs_data = np.nan_to_num(rcs_data, nan=0.0, posinf=1e10, neginf=-1e10)
+
+        if np.any(np.isnan(parameters)) or np.any(np.isinf(parameters)):
+            print(f"警告: 参数数据包含NaN或Inf值，进行清理...")
+            parameters = np.nan_to_num(parameters, nan=0.0, posinf=1e10, neginf=-1e10)
+
         self.transform = transform
         self.augment = augment
 
-        # 数据标准化
+        # 数据标准化（只对参数进行）
         self.param_scaler = StandardScaler()
-        self.parameters = torch.tensor(
-            self.param_scaler.fit_transform(parameters),
-            dtype=torch.float32
-        )
+        normalized_params = self.param_scaler.fit_transform(parameters)
+
+        # 转换为tensor（只转换一次）
+        self.parameters = torch.tensor(normalized_params, dtype=torch.float32)
+        self.rcs_data = torch.tensor(rcs_data, dtype=torch.float32)
 
     def __len__(self):
         return len(self.parameters)
@@ -220,6 +228,15 @@ class ProgressiveTrainer:
         num_batches = 0
 
         for batch_idx, (params, targets) in enumerate(train_loader):
+            # 数据验证和清理
+            if torch.isnan(params).any() or torch.isinf(params).any():
+                print(f"警告: 批次{batch_idx}参数包含NaN/Inf，跳过")
+                continue
+
+            if torch.isnan(targets).any() or torch.isinf(targets).any():
+                print(f"警告: 批次{batch_idx}目标包含NaN/Inf，跳过")
+                continue
+
             params, targets = params.to(self.device), targets.to(self.device)
 
             optimizer.zero_grad()
@@ -327,6 +344,7 @@ class CrossValidationTrainer:
 
         kfold = KFold(n_splits=self.n_folds, shuffle=True, random_state=42)
         fold_scores = []
+        fold_details = []  # 收集每折的详细历史
 
         # 获取数据
         all_params = dataset.parameters.numpy()
@@ -364,17 +382,25 @@ class CrossValidationTrainer:
             model = create_model(**self.model_params)
             trainer = ProgressiveTrainer(model, self.device)
 
-            # 训练
-            best_val_loss = self._train_fold(trainer, train_loader, val_loader,
-                                           training_config, fold)
+            # 训练，获取最佳损失和详细历史
+            best_val_loss, fold_history = self._train_fold(trainer, train_loader, val_loader,
+                                                          training_config, fold)
 
             fold_scores.append(best_val_loss)
+            fold_details.append(fold_history)
+
+            print(f"第 {fold+1} 折完成，最佳验证损失: {best_val_loss:.6f}")
 
         # 计算交叉验证统计
         self.cv_results['fold_scores'] = fold_scores
+        self.cv_results['fold_details'] = fold_details  # 添加详细历史
         self.cv_results['mean_score'] = np.mean(fold_scores)
         self.cv_results['std_score'] = np.std(fold_scores)
         self.cv_results['best_fold'] = np.argmin(fold_scores)
+
+        print(f"\n交叉验证完成:")
+        print(f"  平均验证损失: {self.cv_results['mean_score']:.6f} ± {self.cv_results['std_score']:.6f}")
+        print(f"  最佳折: {self.cv_results['best_fold'] + 1} (损失: {fold_scores[self.cv_results['best_fold']]:.6f})")
 
         return self.cv_results
 
@@ -383,17 +409,13 @@ class CrossValidationTrainer:
         """
         获取安全的批次大小，避免CUDA内存错误和除零错误
         """
-        # 确保批次大小不超过数据集大小 - 这是关键修复
+        # 确保批次大小不超过数据集大小
         max_possible = min(requested_batch_size, dataset_size)
 
         # 额外检查：确保批次大小至少为1，且不超过数据集大小
         if max_possible <= 0:
             print(f"警告: 数据集大小为 {dataset_size}，使用最小批次大小 1")
             return 1
-
-        # 获取GPU内存限制
-        max_batch_size = memory_config.get('max_batch_size', 48)
-        fallback_batch_size = memory_config.get('fallback_batch_size', 16)
 
         # 对于小数据集，使用更保守的策略
         if dataset_size <= 10:
@@ -402,24 +424,12 @@ class CrossValidationTrainer:
             print(f"小数据集检测 (大小={dataset_size})，使用保守批次大小: {safe_batch_size}")
             return safe_batch_size
 
-        # 检查GPU内存状态
-        if torch.cuda.is_available():
-            # 获取可用内存
-            total_memory = torch.cuda.get_device_properties(0).total_memory
-            allocated_memory = torch.cuda.memory_allocated()
-            free_memory = total_memory - allocated_memory
-
-            # 如果可用内存少于总内存的30%，使用保守的批次大小
-            if free_memory < total_memory * 0.3:
-                conservative_batch = min(fallback_batch_size, max_possible)
-                print(f"GPU内存不足，使用保底批次大小: {conservative_batch}")
-                return conservative_batch
-
-        # 限制最大批次大小
-        safe_batch_size = min(max_possible, max_batch_size)
+        # 移除硬编码的批次大小限制，让用户自由设置
+        # 只要不超过数据集大小即可
+        safe_batch_size = max_possible
 
         if safe_batch_size != requested_batch_size:
-            print(f"批次大小调整: {requested_batch_size} -> {safe_batch_size}")
+            print(f"批次大小调整: {requested_batch_size} -> {safe_batch_size} (受数据集大小限制)")
 
         return safe_batch_size
 
@@ -441,17 +451,36 @@ class CrossValidationTrainer:
             print("CUDA优化设置已应用")
 
     def _train_fold(self, trainer: ProgressiveTrainer, train_loader: TorchDataLoader,
-                   val_loader: TorchDataLoader, config: Dict, fold: int) -> float:
+                   val_loader: TorchDataLoader, config: Dict, fold: int) -> Tuple[float, Dict]:
         """
-        训练单个fold
+        训练单个fold，返回最佳损失和详细历史
+
+        返回:
+            Tuple[float, Dict]: (最佳验证损失, 训练历史详情)
         """
         # 优化器和学习率调度器
         optimizer = optim.Adam(trainer.model.parameters(),
                              lr=config['learning_rate'],
                              weight_decay=config['weight_decay'])
 
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=10, verbose=True
+        # 使用余弦退火调度器，支持周期性重启以逃离局部最优
+        # CosineAnnealingWarmRestarts: 学习率周期性从高到低，然后重启
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0=50,              # 第一个周期的epoch数
+            T_mult=1,            # 每次重启后周期长度的倍数（1表示保持不变）
+            eta_min=1e-6,        # 最小学习率
+            last_epoch=-1
+        )
+
+        # 备用：ReduceLROnPlateau作为辅助（可选）
+        plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=0.7,          # 更温和的衰减
+            patience=30,         # 更大的耐心值
+            min_lr=1e-7,
+            verbose=False
         )
 
         # 损失函数
@@ -461,6 +490,21 @@ class CrossValidationTrainer:
         best_val_loss = float('inf')
         patience_counter = 0
 
+        # 详细历史记录
+        fold_history = {
+            'train_losses': [],
+            'val_losses': [],
+            'train_mse': [],
+            'train_symmetry': [],
+            'train_multiscale': [],
+            'val_mse': [],
+            'val_symmetry': [],
+            'val_multiscale': [],
+            'epochs': [],
+            'learning_rates': [],
+            'fold': fold
+        }
+
         for epoch in range(config['epochs']):
             # 训练
             train_losses = trainer.train_epoch(train_loader, optimizer, loss_fn,
@@ -469,8 +513,23 @@ class CrossValidationTrainer:
             # 验证
             val_losses = trainer.validate_epoch(val_loader, loss_fn)
 
-            # 学习率调度
-            scheduler.step(val_losses['total'])
+            # 记录详细历史
+            fold_history['epochs'].append(epoch + 1)
+            fold_history['train_losses'].append(train_losses['total'])
+            fold_history['val_losses'].append(val_losses['total'])
+            fold_history['train_mse'].append(train_losses.get('mse', 0))
+            fold_history['train_symmetry'].append(train_losses.get('symmetry', 0))
+            fold_history['train_multiscale'].append(train_losses.get('multiscale', 0))
+            fold_history['val_mse'].append(val_losses.get('mse', 0))
+            fold_history['val_symmetry'].append(val_losses.get('symmetry', 0))
+            fold_history['val_multiscale'].append(val_losses.get('multiscale', 0))
+            fold_history['learning_rates'].append(optimizer.param_groups[0]['lr'])
+
+            # 学习率调度 - CosineAnnealingWarmRestarts每个epoch都要step
+            scheduler.step()
+
+            # 可选：如果验证损失长期不改善，使用plateau_scheduler进一步降低学习率
+            # plateau_scheduler.step(val_losses['total'])
 
             # 早停检查
             if val_losses['total'] < best_val_loss:
@@ -484,16 +543,17 @@ class CrossValidationTrainer:
                 patience_counter += 1
 
             if patience_counter >= config['early_stopping_patience']:
-                print(f"早停于epoch {epoch}")
+                print(f"早停于epoch {epoch+1}")
                 break
 
             # 打印进度
             if epoch % 10 == 0:
-                print(f"Fold {fold+1}, Epoch {epoch}: "
+                print(f"Fold {fold+1}, Epoch {epoch+1}: "
                       f"Train Loss: {train_losses['total']:.4f}, "
-                      f"Val Loss: {val_losses['total']:.4f}")
+                      f"Val Loss: {val_losses['total']:.4f}, "
+                      f"LR: {optimizer.param_groups[0]['lr']:.6f}")
 
-        return best_val_loss
+        return best_val_loss, fold_history
 
 
 class RCSDataLoader:
@@ -511,6 +571,10 @@ class RCSDataLoader:
             data_config: 数据配置
         """
         self.data_config = data_config
+        self.preprocessing_config = data_config.get('preprocessing', {})
+        self.use_log_preprocessing = self.preprocessing_config.get('use_log', False)
+        self.log_epsilon = self.preprocessing_config.get('log_epsilon', 1e-10)
+        self.normalize_after_log = self.preprocessing_config.get('normalize_after_log', True)
 
     def load_data(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -536,13 +600,16 @@ class RCSDataLoader:
 
     def _load_rcs_data(self) -> np.ndarray:
         """
-        加载双频RCS数据
+        加载双频RCS数据，支持对数预处理
         """
         data_dir = self.data_config['rcs_data_dir']
         model_ids = self.data_config['model_ids']
         frequencies = self.data_config['frequencies']  # ['1.5G', '3G']
 
         rcs_list = []
+        all_rcs_values = []  # 用于计算全局统计
+
+        print(f"加载RCS数据，对数预处理: {'开启' if self.use_log_preprocessing else '关闭'}")
 
         for model_id in model_ids:
             model_rcs_list = []
@@ -550,33 +617,83 @@ class RCSDataLoader:
             for freq in frequencies:
                 try:
                     # 使用现有的数据读取函数
-                    data = rdr.get_adaptive_rcs_matrix(model_id, freq, data_dir)
+                    data = rdr.get_adaptive_rcs_matrix(model_id, freq, data_dir, verbose=False)
                     rcs_linear = data['rcs_linear']  # [91, 91]
-                    model_rcs_list.append(rcs_linear)
+
+                    # 应用对数预处理 (转换为分贝值)
+                    if self.use_log_preprocessing:
+                        # 确保没有负值或零值，转换为dB: 10 * log10
+                        rcs_processed = np.maximum(rcs_linear, self.log_epsilon)
+                        rcs_processed = 10 * np.log10(rcs_processed)
+                    else:
+                        rcs_processed = rcs_linear
+
+                    model_rcs_list.append(rcs_processed)
+                    all_rcs_values.append(rcs_processed.flatten())
 
                 except Exception as e:
                     print(f"警告: 无法加载模型 {model_id} 频率 {freq}: {e}")
                     # 创建零填充数据
-                    model_rcs_list.append(np.zeros((91, 91)))
+                    if self.use_log_preprocessing:
+                        # dB域的零值应该是很小的负值 (10 * log10)
+                        fill_value = 10 * np.log10(self.log_epsilon)
+                    else:
+                        fill_value = 0.0
+                    model_rcs_list.append(np.full((91, 91), fill_value))
 
             # 组合双频数据 [91, 91, 2]
             if len(model_rcs_list) == 2:
                 model_rcs = np.stack(model_rcs_list, axis=2)
                 rcs_list.append(model_rcs)
 
-        return np.array(rcs_list)  # [N, 91, 91, 2]
+        rcs_data = np.array(rcs_list)  # [N, 91, 91, 2]
+
+        # 对数预处理后的归一化
+        if self.use_log_preprocessing and self.normalize_after_log:
+            all_values = np.concatenate(all_rcs_values)
+            global_mean = np.mean(all_values)
+            global_std = np.std(all_values)
+
+            print(f"对数预处理统计:")
+            print(f"  原始RCS范围: {np.min(all_values):.1f} - {np.max(all_values):.1f} dB")
+            print(f"  全局均值: {global_mean:.1f} dB, 标准差: {global_std:.1f} dB")
+
+            # 标准化
+            rcs_data = (rcs_data - global_mean) / global_std
+
+            print(f"  标准化后范围: {np.min(rcs_data):.3f} - {np.max(rcs_data):.3f}")
+
+            # 保存统计信息用于后续逆变换
+            self.preprocessing_stats = {
+                'mean': global_mean,
+                'std': global_std,
+                'min_original': np.min(all_values),
+                'max_original': np.max(all_values)
+            }
+        else:
+            # 线性数据的统计信息
+            if len(all_rcs_values) > 0:
+                all_values = np.concatenate(all_rcs_values)
+                print(f"线性RCS数据统计:")
+                print(f"  范围: {np.min(all_values):.6e} - {np.max(all_values):.6e}")
+                print(f"  均值: {np.mean(all_values):.6e}, 标准差: {np.std(all_values):.6e}")
+
+        return rcs_data
 
 
-def create_training_config() -> Dict:
+def create_training_config(early_stopping_patience: int = 50) -> Dict:
     """
     创建默认训练配置 - 优化CUDA内存使用
+
+    Args:
+        early_stopping_patience: 早停耐心值，连续多少轮验证损失不改善就停止训练
     """
     return {
         'batch_size': 8,  # 适合小数据集的批次大小
-        'learning_rate': 1e-3,
+        'learning_rate': 3e-3,  # 初始学习率 (推荐范围: 1e-3 到 5e-3)
         'weight_decay': 1e-4,
         'epochs': 200,
-        'early_stopping_patience': 20,
+        'early_stopping_patience': early_stopping_patience,  # 可调节的早停参数
         'loss_weights': {
             'mse': 1.0,
             'symmetry': 0.1,
@@ -584,8 +701,6 @@ def create_training_config() -> Dict:
         },
         # 新增：CUDA内存优化配置
         'memory_optimization': {
-            'max_batch_size': 48,           # RTX 3080最大安全批次大小
-            'fallback_batch_size': 16,     # 出错时的保底批次大小
             'gradient_accumulation': True, # 启用梯度累积
             'mixed_precision': True,       # 启用混合精度训练
             'pin_memory': True,           # 启用内存固定
@@ -594,15 +709,23 @@ def create_training_config() -> Dict:
     }
 
 
-def create_data_config() -> Dict:
+def create_data_config(use_log_preprocessing: bool = False) -> Dict:
     """
     创建默认数据配置
+
+    参数:
+        use_log_preprocessing: 是否启用对数预处理
     """
     return {
         'params_file': r"..\parameter\parameters_sorted.csv",
         'rcs_data_dir': r"..\parameter\csv_output",
         'model_ids': [f"{i:03d}" for i in range(1, 101)],  # 001-100
-        'frequencies': ['1.5G', '3G']
+        'frequencies': ['1.5G', '3G'],
+        'preprocessing': {
+            'use_log': use_log_preprocessing,
+            'log_epsilon': 1e-10,  # 防止log(0)的最小值
+            'normalize_after_log': True  # 对数变换后是否标准化
+        }
     }
 
 
