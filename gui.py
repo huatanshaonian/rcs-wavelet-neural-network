@@ -1888,7 +1888,7 @@ class RCSWaveletGUI:
             data_1_5g = rv.get_rcs_matrix(model_id, "1.5G", self.data_config['rcs_data_dir'])
             data_3g = rv.get_rcs_matrix(model_id, "3G", self.data_config['rcs_data_dir'])
 
-            # 提取线性值数据用于对比
+            # 提取线性值数据
             original_rcs_1_5g = data_1_5g['rcs_linear']
             original_rcs_3g = data_3g['rcs_linear']
 
@@ -1909,6 +1909,13 @@ class RCSWaveletGUI:
             predicted_rcs_1_5g = predicted_rcs[:, :, 0]  # 1.5GHz
             predicted_rcs_3g = predicted_rcs[:, :, 1]    # 3GHz
 
+            # 转换为分贝 (dB = 10 * log10(RCS))
+            epsilon = 1e-10
+            original_rcs_1_5g_db = 10 * np.log10(np.maximum(original_rcs_1_5g, epsilon))
+            original_rcs_3g_db = 10 * np.log10(np.maximum(original_rcs_3g, epsilon))
+            predicted_rcs_1_5g_db = 10 * np.log10(np.maximum(predicted_rcs_1_5g, epsilon))
+            predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs_3g, epsilon))
+
             # 创建2x2子图布局
             fig = self.vis_fig
 
@@ -1917,42 +1924,48 @@ class RCSWaveletGUI:
             theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
             extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
 
-            # 1.5GHz频率对比
+            # 1.5GHz频率对比 (dB显示)
             ax1 = fig.add_subplot(2, 2, 1)
-            im1 = ax1.imshow(original_rcs_1_5g, cmap='jet', aspect='equal', extent=extent)
+            im1 = ax1.imshow(original_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent)
             ax1.set_title(f'原始RCS - 1.5GHz (模型{model_id})')
             ax1.set_xlabel('φ (方位角, 度)')
             ax1.set_ylabel('θ (俯仰角, 度)')
-            plt.colorbar(im1, ax=ax1, shrink=0.8)
+            cbar1 = plt.colorbar(im1, ax=ax1, shrink=0.8)
+            cbar1.set_label('RCS (dB)')
 
             ax2 = fig.add_subplot(2, 2, 2)
-            im2 = ax2.imshow(predicted_rcs_1_5g, cmap='jet', aspect='equal', extent=extent)
+            im2 = ax2.imshow(predicted_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent)
             ax2.set_title(f'神经网络预测RCS - 1.5GHz')
             ax2.set_xlabel('φ (方位角, 度)')
             ax2.set_ylabel('θ (俯仰角, 度)')
-            plt.colorbar(im2, ax=ax2, shrink=0.8)
+            cbar2 = plt.colorbar(im2, ax=ax2, shrink=0.8)
+            cbar2.set_label('RCS (dB)')
 
-            # 3GHz频率对比
+            # 3GHz频率对比 (dB显示)
             ax3 = fig.add_subplot(2, 2, 3)
-            im3 = ax3.imshow(original_rcs_3g, cmap='jet', aspect='equal', extent=extent)
+            im3 = ax3.imshow(original_rcs_3g_db, cmap='jet', aspect='equal', extent=extent)
             ax3.set_title(f'原始RCS - 3GHz (模型{model_id})')
             ax3.set_xlabel('φ (方位角, 度)')
             ax3.set_ylabel('θ (俯仰角, 度)')
-            plt.colorbar(im3, ax=ax3, shrink=0.8)
+            cbar3 = plt.colorbar(im3, ax=ax3, shrink=0.8)
+            cbar3.set_label('RCS (dB)')
 
             ax4 = fig.add_subplot(2, 2, 4)
-            im4 = ax4.imshow(predicted_rcs_3g, cmap='jet', aspect='equal', extent=extent)
+            im4 = ax4.imshow(predicted_rcs_3g_db, cmap='jet', aspect='equal', extent=extent)
             ax4.set_title(f'神经网络预测RCS - 3GHz')
             ax4.set_xlabel('φ (方位角, 度)')
             ax4.set_ylabel('θ (俯仰角, 度)')
-            plt.colorbar(im4, ax=ax4, shrink=0.8)
+            cbar4 = plt.colorbar(im4, ax=ax4, shrink=0.8)
+            cbar4.set_label('RCS (dB)')
 
-            # 计算并显示误差统计
-            mse_1_5g = np.mean((original_rcs_1_5g - predicted_rcs_1_5g) ** 2)
-            mse_3g = np.mean((original_rcs_3g - predicted_rcs_3g) ** 2)
+            # 计算并显示误差统计 (dB域)
+            mse_db_1_5g = np.mean((original_rcs_1_5g_db - predicted_rcs_1_5g_db) ** 2)
+            mse_db_3g = np.mean((original_rcs_3g_db - predicted_rcs_3g_db) ** 2)
+            rmse_db_1_5g = np.sqrt(mse_db_1_5g)
+            rmse_db_3g = np.sqrt(mse_db_3g)
 
             # 在图上添加误差信息
-            fig.suptitle(f'RCS对比分析 - 模型{model_id}\n1.5GHz MSE: {mse_1_5g:.4f}, 3GHz MSE: {mse_3g:.4f}',
+            fig.suptitle(f'RCS对比分析 (dB) - 模型{model_id}\n1.5GHz RMSE: {rmse_db_1_5g:.2f} dB, 3GHz RMSE: {rmse_db_3g:.2f} dB',
                         fontsize=12, y=0.95)
 
             plt.tight_layout()
@@ -1996,26 +2009,35 @@ class RCSWaveletGUI:
                 params_tensor = torch.FloatTensor(model_params).unsqueeze(0).to(device)
                 predicted_rcs = self.current_model(params_tensor).cpu().numpy().squeeze()
 
-            # 计算差值
-            diff_1_5g = original_rcs_1_5g - predicted_rcs[:, :, 0]
-            diff_3g = original_rcs_3g - predicted_rcs[:, :, 1]
+            # 转换为分贝
+            epsilon = 1e-10
+            original_rcs_1_5g_db = 10 * np.log10(np.maximum(original_rcs_1_5g, epsilon))
+            original_rcs_3g_db = 10 * np.log10(np.maximum(original_rcs_3g, epsilon))
+            predicted_rcs_1_5g_db = 10 * np.log10(np.maximum(predicted_rcs[:, :, 0], epsilon))
+            predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs[:, :, 1], epsilon))
+
+            # 计算分贝差值
+            diff_1_5g_db = original_rcs_1_5g_db - predicted_rcs_1_5g_db
+            diff_3g_db = original_rcs_3g_db - predicted_rcs_3g_db
 
             # 创建子图
             ax1 = self.vis_fig.add_subplot(2, 2, 1)
-            im1 = ax1.imshow(diff_1_5g, cmap='RdBu_r', aspect='equal')
+            im1 = ax1.imshow(diff_1_5g_db, cmap='RdBu_r', aspect='equal')
             ax1.set_title(f'差值图 - 1.5GHz (原始-预测)')
-            plt.colorbar(im1, ax=ax1, shrink=0.8)
+            cbar1 = plt.colorbar(im1, ax=ax1, shrink=0.8)
+            cbar1.set_label('差值 (dB)')
 
             ax2 = self.vis_fig.add_subplot(2, 2, 2)
-            im2 = ax2.imshow(diff_3g, cmap='RdBu_r', aspect='equal')
+            im2 = ax2.imshow(diff_3g_db, cmap='RdBu_r', aspect='equal')
             ax2.set_title(f'差值图 - 3GHz (原始-预测)')
-            plt.colorbar(im2, ax=ax2, shrink=0.8)
+            cbar2 = plt.colorbar(im2, ax=ax2, shrink=0.8)
+            cbar2.set_label('差值 (dB)')
 
             # 误差统计
             ax3 = self.vis_fig.add_subplot(2, 2, 3)
-            ax3.hist(np.abs(diff_1_5g).flatten(), bins=30, alpha=0.7, label='1.5GHz', density=True)
-            ax3.hist(np.abs(diff_3g).flatten(), bins=30, alpha=0.7, label='3GHz', density=True)
-            ax3.set_xlabel('绝对误差')
+            ax3.hist(np.abs(diff_1_5g_db).flatten(), bins=30, alpha=0.7, label='1.5GHz', density=True)
+            ax3.hist(np.abs(diff_3g_db).flatten(), bins=30, alpha=0.7, label='3GHz', density=True)
+            ax3.set_xlabel('绝对误差 (dB)')
             ax3.set_ylabel('频率密度')
             ax3.set_title('误差分布')
             ax3.legend()
@@ -2023,17 +2045,17 @@ class RCSWaveletGUI:
             # 统计信息
             ax4 = self.vis_fig.add_subplot(2, 2, 4)
             ax4.axis('off')
-            stats_text = f"""误差统计 - 模型{model_id}:
+            stats_text = f"""误差统计 (dB) - 模型{model_id}:
 
 1.5GHz:
-  MSE: {np.mean(diff_1_5g**2):.6f}
-  RMSE: {np.sqrt(np.mean(diff_1_5g**2)):.6f}
-  MAE: {np.mean(np.abs(diff_1_5g)):.6f}
+  MSE: {np.mean(diff_1_5g_db**2):.6f} dB²
+  RMSE: {np.sqrt(np.mean(diff_1_5g_db**2)):.6f} dB
+  MAE: {np.mean(np.abs(diff_1_5g_db)):.6f} dB
 
 3GHz:
-  MSE: {np.mean(diff_3g**2):.6f}
-  RMSE: {np.sqrt(np.mean(diff_3g**2)):.6f}
-  MAE: {np.mean(np.abs(diff_3g)):.6f}"""
+  MSE: {np.mean(diff_3g_db**2):.6f} dB²
+  RMSE: {np.sqrt(np.mean(diff_3g_db**2)):.6f} dB
+  MAE: {np.mean(np.abs(diff_3g_db)):.6f} dB"""
 
             ax4.text(0.1, 0.9, stats_text, transform=ax4.transAxes, fontsize=10, verticalalignment='top', fontfamily='monospace')
 
