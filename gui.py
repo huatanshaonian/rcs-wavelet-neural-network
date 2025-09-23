@@ -1972,8 +1972,8 @@ class RCSWaveletGUI:
             self.vis_canvas.draw()
 
             print(f"对比图生成完成")
-            print(f"1.5GHz预测误差(MSE): {mse_1_5g:.6f}")
-            print(f"3GHz预测误差(MSE): {mse_3g:.6f}")
+            print(f"1.5GHz预测误差(MSE): {mse_db_1_5g:.6f} dB²")
+            print(f"3GHz预测误差(MSE): {mse_db_3g:.6f} dB²")
 
         except Exception as e:
             print(f"对比图生成失败: {str(e)}")
