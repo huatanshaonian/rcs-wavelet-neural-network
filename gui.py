@@ -2148,7 +2148,7 @@ class RCSWaveletGUI:
 
 质量评估: {'优秀' if min(r1, r2) > 0.9 else '良好' if min(r1, r2) > 0.8 else '一般'}"""
 
-            ax4.text(0.1, 0.9, summary, transform=ax4.transAxes, fontsize=10, verticalalignment='top', fontfamily='monospace')
+            ax4.text(0.1, 0.9, summary, transform=ax4.transAxes, fontsize=10, verticalalignment='top')
 
             plt.tight_layout()
             self.vis_canvas.draw()
