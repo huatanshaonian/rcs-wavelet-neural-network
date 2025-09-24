@@ -1523,20 +1523,22 @@ class RCSWaveletGUI:
             # 创建测试数据集
             test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
 
-            # 准备预处理统计信息
+            # 准备预处理统计信息（使用训练时保存的stats）
             use_log = self.use_log_preprocessing.get()
-            preprocessing_stats = None
 
-            if use_log:
-                # 计算当前数据的统计信息 (假设self.rcs_data已经是标准化后的dB值)
-                # 如果数据是通过RCSDataLoader加载的,应该已经标准化了
-                # 这里我们需要原始dB值的mean和std
-                # 简化处理: 使用整个数据集计算
-                rcs_flat = self.rcs_data.flatten()
-                preprocessing_stats = {
-                    'mean': np.mean(rcs_flat),
-                    'std': np.std(rcs_flat)
-                }
+            # 优先使用checkpoint中保存的preprocessing_stats
+            if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+                preprocessing_stats = self.preprocessing_stats
+                self.log_message(f"使用checkpoint的preprocessing_stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+            elif use_log:
+                # 如果没有保存的stats，需要重新加载原始数据计算
+                self.log_message("警告: 无checkpoint stats，重新计算...")
+                temp_loader = RCSDataLoader(self.data_config)
+                _, _ = temp_loader.load_data()
+                preprocessing_stats = temp_loader.preprocessing_stats
+                self.log_message(f"重新计算的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+            else:
+                preprocessing_stats = None
 
             # 创建评估器
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
