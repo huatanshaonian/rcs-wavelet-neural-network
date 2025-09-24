@@ -228,38 +228,51 @@ class ProgressiveTrainer:
         num_batches = 0
 
         for batch_idx, (params, targets) in enumerate(train_loader):
-            # 数据验证和清理
-            if torch.isnan(params).any() or torch.isinf(params).any():
-                print(f"警告: 批次{batch_idx}参数包含NaN/Inf，跳过")
-                continue
+            try:
+                # 数据验证和清理
+                if torch.isnan(params).any() or torch.isinf(params).any():
+                    print(f"警告: 批次{batch_idx}参数包含NaN/Inf，跳过")
+                    continue
 
-            if torch.isnan(targets).any() or torch.isinf(targets).any():
-                print(f"警告: 批次{batch_idx}目标包含NaN/Inf，跳过")
-                continue
+                if torch.isnan(targets).any() or torch.isinf(targets).any():
+                    print(f"警告: 批次{batch_idx}目标包含NaN/Inf，跳过")
+                    continue
 
-            params, targets = params.to(self.device), targets.to(self.device)
+                params, targets = params.to(self.device), targets.to(self.device)
 
-            optimizer.zero_grad()
+                optimizer.zero_grad()
 
-            # 前向传播
-            predictions = self.model(params)
+                # 前向传播
+                predictions = self.model(params)
 
-            # 计算损失
-            losses = loss_fn(predictions, targets)
+                # 计算损失
+                losses = loss_fn(predictions, targets)
 
-            # 反向传播
-            losses['total'].backward()
+                # 反向传播
+                losses['total'].backward()
 
-            # 梯度裁剪 (防止梯度爆炸)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                # 梯度裁剪 (防止梯度爆炸)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
-            optimizer.step()
+                optimizer.step()
 
-            # 累积损失
-            for key in epoch_losses:
-                if key in losses:
-                    epoch_losses[key] += losses[key].item()
-            num_batches += 1
+                # 累积损失
+                for key in epoch_losses:
+                    if key in losses:
+                        epoch_losses[key] += losses[key].item()
+                num_batches += 1
+
+            except RuntimeError as e:
+                if "CUDA" in str(e) or "out of memory" in str(e):
+                    print(f"\n错误: GPU内存不足或CUDA错误 (批次 {batch_idx})")
+                    print(f"错误信息: {str(e)}")
+                    if torch.cuda.is_available():
+                        print(f"当前GPU显存使用: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+                        print(f"峰值GPU显存使用: {torch.cuda.max_memory_allocated()/1e9:.2f} GB")
+                        torch.cuda.empty_cache()
+                    raise RuntimeError(f"CUDA错误: 批次大小({params.shape[0]})可能过大，请减小批次大小") from e
+                else:
+                    raise
 
         # 平均损失
         if num_batches > 0:
@@ -378,6 +391,10 @@ class CrossValidationTrainer:
                                   pin_memory=memory_config.get('pin_memory', True),
                                   drop_last=False)  # 保留小批次以确保验证集不为空
 
+            # 清理上一fold的显存
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             # 创建模型
             model = create_model(**self.model_params)
             trainer = ProgressiveTrainer(model, self.device)
@@ -424,6 +441,14 @@ class CrossValidationTrainer:
             print(f"小数据集检测 (大小={dataset_size})，使用保守批次大小: {safe_batch_size}")
             return safe_batch_size
 
+        # 大批次大小警告和自动限制
+        if requested_batch_size > 32:
+            print(f"⚠️ 警告: 批次大小{requested_batch_size}较大，可能导致CUDA内存错误")
+            # 自动限制最大批次为32，更安全
+            safe_batch_size = min(32, dataset_size)
+            print(f"  自动限制批次大小为: {safe_batch_size}")
+            return safe_batch_size
+
         # 移除硬编码的批次大小限制，让用户自由设置
         # 只要不超过数据集大小即可
         safe_batch_size = max_possible
@@ -444,9 +469,12 @@ class CrossValidationTrainer:
             # 清理GPU内存
             torch.cuda.empty_cache()
 
+            # 重置GPU峰值内存统计
+            torch.cuda.reset_peak_memory_stats()
+
             # 限制GPU内存使用
             if hasattr(torch.cuda, 'set_per_process_memory_fraction'):
-                torch.cuda.set_per_process_memory_fraction(0.9)
+                torch.cuda.set_per_process_memory_fraction(0.85)  # 降低到85%更安全
 
             print("CUDA优化设置已应用")
 
@@ -506,6 +534,10 @@ class CrossValidationTrainer:
         }
 
         for epoch in range(config['epochs']):
+            # 定期清理CUDA缓存
+            if epoch % 10 == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             # 训练
             train_losses = trainer.train_epoch(train_loader, optimizer, loss_fn,
                                              epoch, config['epochs'])
