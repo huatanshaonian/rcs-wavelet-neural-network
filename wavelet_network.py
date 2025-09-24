@@ -651,7 +651,6 @@ class TriDimensionalRCSLoss(nn.Module):
         # 对称性损失（需要target）
         losses['symmetry'] = self._symmetry_loss(pred_rcs, target_rcs)
 
-
         # 多尺度损失
         losses['multiscale'] = self._multiscale_loss(pred_rcs, target_rcs)
 

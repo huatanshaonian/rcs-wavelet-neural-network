@@ -564,8 +564,15 @@ class CrossValidationTrainer:
                 best_val_loss = val_losses['total']
                 patience_counter = 0
 
-                # 保存最佳模型
-                torch.save(trainer.model.state_dict(),
+                # 保存最佳模型（包含preprocessing_stats和配置）
+                checkpoint = {
+                    'model_state_dict': trainer.model.state_dict(),
+                    'preprocessing_stats': config.get('preprocessing_stats'),
+                    'use_log_output': config.get('use_log_output', False),
+                    'epoch': epoch,
+                    'val_loss': best_val_loss
+                }
+                torch.save(checkpoint,
                           f'checkpoints/best_model_fold_{fold}.pth')
             else:
                 patience_counter += 1

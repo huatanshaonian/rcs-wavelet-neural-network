@@ -1008,6 +1008,19 @@ class RCSWaveletGUI:
             self.model_params['wavelet_config'] = self.training_config.get('wavelet_config')
             self.log_message(f"使用小波配置: {self.model_params['wavelet_config']}")
 
+            # 获取preprocessing_stats（如果使用对数预处理）
+            if self.use_log_preprocessing.get():
+                # 重新用RCSDataLoader加载以获取正确的preprocessing_stats
+                data_loader = RCSDataLoader(self.data_config)
+                _, _ = data_loader.load_data()  # 加载数据以计算stats
+                preprocessing_stats = data_loader.preprocessing_stats
+                self.training_config['preprocessing_stats'] = preprocessing_stats
+                self.training_config['use_log_output'] = True
+                self.log_message(f"预处理统计: mean={preprocessing_stats['mean']:.2f} dB, std={preprocessing_stats['std']:.2f} dB")
+            else:
+                self.training_config['preprocessing_stats'] = None
+                self.training_config['use_log_output'] = False
+
             # 创建数据集
             dataset = RCSDataset(self.param_data, self.rcs_data, augment=True)
 
@@ -1099,13 +1112,26 @@ class RCSWaveletGUI:
 
                 # 加载最佳模型
                 best_fold = results['best_fold']
-                # 添加对数输出配置
-                model_params_with_log = self.model_params.copy()
-                model_params_with_log['use_log_output'] = self.use_log_preprocessing.get()
-                self.current_model = create_model(**model_params_with_log)
-                self.current_model.load_state_dict(
-                    torch.load(f'checkpoints/best_model_fold_{best_fold}.pth')
-                )
+                checkpoint_path = f'checkpoints/best_model_fold_{best_fold}.pth'
+                checkpoint = torch.load(checkpoint_path, map_location='cpu')
+
+                # 兼容旧格式和新格式checkpoint
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    # 新格式：包含preprocessing_stats
+                    model_params_with_log = self.model_params.copy()
+                    model_params_with_log['use_log_output'] = checkpoint.get('use_log_output', self.use_log_preprocessing.get())
+                    self.current_model = create_model(**model_params_with_log)
+                    self.current_model.load_state_dict(checkpoint['model_state_dict'])
+                    self.preprocessing_stats = checkpoint.get('preprocessing_stats')
+                    self.log_message(f"加载checkpoint (新格式): epoch={checkpoint.get('epoch')}, val_loss={checkpoint.get('val_loss', 0):.6f}")
+                else:
+                    # 旧格式：只有state_dict
+                    model_params_with_log = self.model_params.copy()
+                    model_params_with_log['use_log_output'] = self.use_log_preprocessing.get()
+                    self.current_model = create_model(**model_params_with_log)
+                    self.current_model.load_state_dict(checkpoint)
+                    self.preprocessing_stats = None
+                    self.log_message("加载checkpoint (旧格式，无preprocessing_stats)")
 
             else:
                 # 简单训练
@@ -1451,13 +1477,30 @@ class RCSWaveletGUI:
 
         if filename:
             try:
-                # 更新模型参数以包含当前的小波配置和预处理配置
-                self.model_params['wavelet_config'] = self.get_current_wavelet_config()
-                self.model_params['use_log_output'] = self.use_log_preprocessing.get()
-                self.current_model = create_model(**self.model_params)
-                self.current_model.load_state_dict(torch.load(filename, map_location='cpu'))
+                checkpoint = torch.load(filename, map_location='cpu')
+
+                # 兼容旧格式和新格式checkpoint
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    # 新格式：包含preprocessing_stats
+                    self.model_params['wavelet_config'] = self.get_current_wavelet_config()
+                    self.model_params['use_log_output'] = checkpoint.get('use_log_output', self.use_log_preprocessing.get())
+                    self.current_model = create_model(**self.model_params)
+                    self.current_model.load_state_dict(checkpoint['model_state_dict'])
+                    self.preprocessing_stats = checkpoint.get('preprocessing_stats')
+                    self.log_message(f"模型已从 {filename} 加载 (新格式)")
+                    if self.preprocessing_stats:
+                        self.log_message(f"  预处理统计: mean={self.preprocessing_stats['mean']:.2f} dB, std={self.preprocessing_stats['std']:.2f} dB")
+                else:
+                    # 旧格式：只有state_dict
+                    self.model_params['wavelet_config'] = self.get_current_wavelet_config()
+                    self.model_params['use_log_output'] = self.use_log_preprocessing.get()
+                    self.current_model = create_model(**self.model_params)
+                    self.current_model.load_state_dict(checkpoint)
+                    self.preprocessing_stats = None
+                    self.log_message(f"模型已从 {filename} 加载 (旧格式)")
+                    self.log_message("  警告: 旧格式checkpoint无preprocessing_stats，预测可能不准确")
+
                 self.model_trained = True
-                self.log_message(f"模型已从 {filename} 加载")
                 self.log_message(f"注意: 使用当前界面的小波配置 {self.model_params['wavelet_config']}")
                 self.log_message("如果与保存时的小波配置不同，可能导致加载错误")
                 messagebox.showinfo("成功", "模型加载成功")
@@ -1909,12 +1952,24 @@ class RCSWaveletGUI:
             predicted_rcs_1_5g = predicted_rcs[:, :, 0]  # 1.5GHz
             predicted_rcs_3g = predicted_rcs[:, :, 1]    # 3GHz
 
-            # 转换为分贝 (dB = 10 * log10(RCS))
+            # 原始RCS转换为分贝 (dB = 10 * log10(RCS))
             epsilon = 1e-10
             original_rcs_1_5g_db = 10 * np.log10(np.maximum(original_rcs_1_5g, epsilon))
             original_rcs_3g_db = 10 * np.log10(np.maximum(original_rcs_3g, epsilon))
-            predicted_rcs_1_5g_db = 10 * np.log10(np.maximum(predicted_rcs_1_5g, epsilon))
-            predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs_3g, epsilon))
+
+            # 预测RCS转换为dB：检查是否为对数域输出
+            if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+                # 新格式：网络输出是标准化的dB值，需要反标准化
+                mean = self.preprocessing_stats['mean']
+                std = self.preprocessing_stats['std']
+                predicted_rcs_1_5g_db = predicted_rcs_1_5g * std + mean
+                predicted_rcs_3g_db = predicted_rcs_3g * std + mean
+                print(f"使用preprocessing_stats反标准化: mean={mean:.2f}, std={std:.2f}")
+            else:
+                # 旧格式或无preprocessing_stats：假设是线性值，转dB
+                predicted_rcs_1_5g_db = 10 * np.log10(np.maximum(predicted_rcs_1_5g, epsilon))
+                predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs_3g, epsilon))
+                print("警告: 无preprocessing_stats，假设网络输出为线性值")
 
             # 创建2x2子图布局
             fig = self.vis_fig
@@ -2009,12 +2064,22 @@ class RCSWaveletGUI:
                 params_tensor = torch.FloatTensor(model_params).unsqueeze(0).to(device)
                 predicted_rcs = self.current_model(params_tensor).cpu().numpy().squeeze()
 
-            # 转换为分贝
+            # 原始RCS转换为分贝
             epsilon = 1e-10
             original_rcs_1_5g_db = 10 * np.log10(np.maximum(original_rcs_1_5g, epsilon))
             original_rcs_3g_db = 10 * np.log10(np.maximum(original_rcs_3g, epsilon))
-            predicted_rcs_1_5g_db = 10 * np.log10(np.maximum(predicted_rcs[:, :, 0], epsilon))
-            predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs[:, :, 1], epsilon))
+
+            # 预测RCS转换为dB：检查是否为对数域输出
+            if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+                # 新格式：网络输出是标准化的dB值，需要反标准化
+                mean = self.preprocessing_stats['mean']
+                std = self.preprocessing_stats['std']
+                predicted_rcs_1_5g_db = predicted_rcs[:, :, 0] * std + mean
+                predicted_rcs_3g_db = predicted_rcs[:, :, 1] * std + mean
+            else:
+                # 旧格式或无preprocessing_stats：假设是线性值，转dB
+                predicted_rcs_1_5g_db = 10 * np.log10(np.maximum(predicted_rcs[:, :, 0], epsilon))
+                predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs[:, :, 1], epsilon))
 
             # 计算分贝差值
             diff_1_5g_db = original_rcs_1_5g_db - predicted_rcs_1_5g_db
