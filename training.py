@@ -441,16 +441,12 @@ class CrossValidationTrainer:
             print(f"小数据集检测 (大小={dataset_size})，使用保守批次大小: {safe_batch_size}")
             return safe_batch_size
 
-        # 大批次大小警告和自动限制
+        # 大批次大小警告（仅警告，不限制）
         if requested_batch_size > 32:
             print(f"⚠️ 警告: 批次大小{requested_batch_size}较大，可能导致CUDA内存错误")
-            # 自动限制最大批次为32，更安全
-            safe_batch_size = min(32, dataset_size)
-            print(f"  自动限制批次大小为: {safe_batch_size}")
-            return safe_batch_size
+            print(f"  如遇到显存问题，请手动降低批次大小")
 
-        # 移除硬编码的批次大小限制，让用户自由设置
-        # 只要不超过数据集大小即可
+        # 用户自由设置批次大小，只要不超过数据集大小即可
         safe_batch_size = max_possible
 
         if safe_batch_size != requested_batch_size:
