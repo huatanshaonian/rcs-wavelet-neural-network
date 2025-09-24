@@ -206,8 +206,8 @@ class ProgressiveTrainer:
         # 渐进式权重调整
         base_weights = {
             'mse': 1.0,
-            'symmetry': 0.3 - 0.2 * progress,  # 对称性约束逐渐减弱
-            'multiscale': 0.5 - 0.3 * progress  # 多尺度损失逐渐减弱
+            'symmetry': 0.05 - 0.03 * progress,  # 显著降低对称性权重，避免主导训练
+            'multiscale': 0.3 - 0.2 * progress  # 多尺度损失逐渐减弱
         }
 
         return base_weights
@@ -697,8 +697,8 @@ def create_training_config(early_stopping_patience: int = 50) -> Dict:
         'early_stopping_patience': early_stopping_patience,  # 可调节的早停参数
         'loss_weights': {
             'mse': 1.0,
-            'symmetry': 0.1,
-            'multiscale': 0.2
+            'symmetry': 0.02,  # 显著降低默认对称性权重
+            'multiscale': 0.1
         },
         # 新增：CUDA内存优化配置
         'memory_optimization': {

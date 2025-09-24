@@ -547,19 +547,23 @@ class TriDimensionalRCSLoss(nn.Module):
 
         self.loss_weights = loss_weights or {
             'mse': 1.0,
-            'symmetry': 0.1,
-            'multiscale': 0.2
+            'symmetry': 0.02,  # 降低对称性权重，避免主导训练
+            'multiscale': 0.1
         }
 
         self.mse_loss = nn.MSELoss()
         self.l1_loss = nn.L1Loss()
 
-    def _symmetry_loss(self, pred_rcs: torch.Tensor) -> torch.Tensor:
+    def _symmetry_loss(self, pred_rcs: torch.Tensor, target_rcs: torch.Tensor) -> torch.Tensor:
         """
         计算φ=0°平面对称性损失
 
+        修改：计算预测和目标的对称性差异，而非仅要求预测自身对称
+        这避免了网络学习"对称但错误"的输出
+
         参数:
             pred_rcs: 预测RCS [B, theta, phi, freq] = [B, 91, 91, 2]
+            target_rcs: 目标RCS [B, theta, phi, freq] = [B, 91, 91, 2]
 
         返回:
             对称性损失
@@ -574,10 +578,18 @@ class TriDimensionalRCSLoss(nn.Module):
             right_idx = center_phi + i
 
             if right_idx < 91:
-                # 注意维度: [:, :, phi, :]
-                left_values = pred_rcs[:, :, left_idx, :]
-                right_values = pred_rcs[:, :, right_idx, :]
-                symmetry_loss += self.mse_loss(left_values, right_values)
+                # 计算预测的对称性误差
+                pred_left = pred_rcs[:, :, left_idx, :]
+                pred_right = pred_rcs[:, :, right_idx, :]
+                pred_sym_diff = pred_left - pred_right
+
+                # 计算目标的对称性误差（理想情况下应该为0）
+                target_left = target_rcs[:, :, left_idx, :]
+                target_right = target_rcs[:, :, right_idx, :]
+                target_sym_diff = target_left - target_right
+
+                # 损失：预测的对称性差异应该匹配目标的对称性差异
+                symmetry_loss += self.mse_loss(pred_sym_diff, target_sym_diff)
                 count += 1
 
         return symmetry_loss / max(count, 1)
@@ -636,8 +648,8 @@ class TriDimensionalRCSLoss(nn.Module):
         # 主要MSE损失
         losses['mse'] = self.mse_loss(pred_rcs, target_rcs)
 
-        # 对称性损失
-        losses['symmetry'] = self._symmetry_loss(pred_rcs)
+        # 对称性损失（需要target）
+        losses['symmetry'] = self._symmetry_loss(pred_rcs, target_rcs)
 
 
         # 多尺度损失
