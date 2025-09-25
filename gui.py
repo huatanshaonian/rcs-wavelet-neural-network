@@ -1027,6 +1027,9 @@ class RCSWaveletGUI:
         # 重置停止标志
         self.stop_training_flag = False
 
+        # 设置全局随机种子以保证训练的可重现性
+        self._set_random_seeds(42)
+
         # 禁用训练按钮，启用停止按钮
         self.train_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
@@ -1211,11 +1214,20 @@ class RCSWaveletGUI:
                 # 简单训练
                 self.log_message("开始简单训练模式...")
 
-                # 分割数据集
+                # 分割数据集（使用固定种子确保可重现）
+                import torch
                 from torch.utils.data import random_split
+
+                # 设置固定种子保证数据划分的可重现性
+                torch.manual_seed(42)
+                np.random.seed(42)
+
                 train_size = int(len(dataset) * 0.8)
                 val_size = len(dataset) - train_size
-                train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+                # 使用固定种子的生成器
+                generator = torch.Generator().manual_seed(42)
+                train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
 
                 self.log_message(f"数据分割: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
 
@@ -1227,9 +1239,14 @@ class RCSWaveletGUI:
 
                 # 创建数据加载器
                 from torch.utils.data import DataLoader as TorchDataLoader
+
+                # 为训练DataLoader设置固定种子确保每次epoch的batch顺序一致
+                train_generator = torch.Generator().manual_seed(42)
+
                 train_loader = TorchDataLoader(train_dataset,
                                              batch_size=batch_size,
                                              shuffle=True,
+                                             generator=train_generator,  # 固定种子
                                              drop_last=True)  # 丢弃最后不足的批次
                 val_loader = TorchDataLoader(val_dataset,
                                            batch_size=min(batch_size, val_size),
@@ -1453,6 +1470,24 @@ class RCSWaveletGUI:
         self.train_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         self.status_var.set("训练完成" if self.model_trained else "训练失败")
+
+    def _set_random_seeds(self, seed=42):
+        """设置全局随机种子以保证训练的可重现性"""
+        import random
+        import torch
+
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            # 确保CUDA操作的确定性（可能会降低性能）
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
+        self.log_message(f"已设置全局随机种子: {seed}")
 
     def stop_training(self):
         """停止训练"""

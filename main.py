@@ -278,17 +278,27 @@ class RCSWaveletApp:
                 from torch.utils.data import random_split, DataLoader as TorchDataLoader
                 import torch.optim as optim
 
-                # 分割数据集
+                # 分割数据集（使用固定种子确保可重现）
+                import torch
+                torch.manual_seed(42)
+
                 train_size = int(len(dataset) * 0.8)
                 val_size = len(dataset) - train_size
-                train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+                # 使用固定种子的生成器
+                generator = torch.Generator().manual_seed(42)
+                train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
 
                 print(f"数据分割: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
 
                 # 创建数据加载器
+                # 为训练DataLoader设置固定种子
+                train_generator = torch.Generator().manual_seed(42)
+
                 train_loader = TorchDataLoader(train_dataset,
                                              batch_size=training_config['batch_size'],
-                                             shuffle=True)
+                                             shuffle=True,
+                                             generator=train_generator)  # 固定种子
                 val_loader = TorchDataLoader(val_dataset,
                                            batch_size=training_config['batch_size'],
                                            shuffle=False)
