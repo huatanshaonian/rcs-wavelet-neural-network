@@ -223,6 +223,20 @@ class ProgressiveTrainer:
         """
         self.model.train()
 
+        # 训练后期BatchNorm稳定性增强
+        if epoch > 200:  # 训练后期
+            # 限制BatchNorm的momentum，减少统计更新的波动
+            for module in self.model.modules():
+                if isinstance(module, torch.nn.BatchNorm2d):
+                    module.momentum = min(0.01, module.momentum)  # 降低momentum
+                    # 检查running stats的数值稳定性
+                    if torch.isnan(module.running_mean).any() or torch.isinf(module.running_mean).any():
+                        print(f"警告: BatchNorm running_mean 异常，重置")
+                        module.running_mean.fill_(0.0)
+                    if torch.isnan(module.running_var).any() or torch.isinf(module.running_var).any():
+                        print(f"警告: BatchNorm running_var 异常，重置")
+                        module.running_var.fill_(1.0)
+
         # 更新损失权重
         progressive_weights = self._create_progressive_loss_weights(epoch, total_epochs)
         loss_fn.loss_weights = progressive_weights
@@ -247,23 +261,80 @@ class ProgressiveTrainer:
                     print(f"警告: 批次{batch_idx}目标包含NaN/Inf，跳过")
                     continue
 
-                params, targets = params.to(self.device), targets.to(self.device)
+                # CUDA稳定性增强：在训练后期定期清理内存
+                if batch_idx % 20 == 0 and epoch > 200:  # 训练后期更频繁清理
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
 
-                optimizer.zero_grad()
+                # 安全地移动数据到GPU
+                try:
+                    params = params.to(self.device, non_blocking=False)  # 禁用非阻塞
+                    targets = targets.to(self.device, non_blocking=False)
+                except RuntimeError as e:
+                    if "memory" in str(e).lower():
+                        torch.cuda.empty_cache()
+                        params = params.to(self.device)
+                        targets = targets.to(self.device)
+                    else:
+                        raise e
 
-                # 前向传播
-                predictions = self.model(params)
+                optimizer.zero_grad(set_to_none=True)  # 更彻底的梯度清理
+
+                # 数值稳定性检查：检查模型参数是否异常
+                if batch_idx % 50 == 0:
+                    for name, param in self.model.named_parameters():
+                        if torch.isnan(param).any() or torch.isinf(param).any():
+                            print(f"警告: 模型参数 {name} 包含NaN/Inf")
+                            # 重置异常参数
+                            with torch.no_grad():
+                                param.data = torch.randn_like(param.data) * 0.01
+
+                # 前向传播与内存保护
+                try:
+                    predictions = self.model(params)
+                except RuntimeError as cuda_error:
+                    if "memory" in str(cuda_error).lower():
+                        torch.cuda.empty_cache()
+                        predictions = self.model(params)
+                    else:
+                        raise cuda_error
 
                 # 计算损失
                 losses = loss_fn(predictions, targets)
 
-                # 反向传播
-                losses['total'].backward()
+                # 梯度数值稳定性检查
+                if torch.isnan(losses['total']) or torch.isinf(losses['total']):
+                    print(f"警告: 批次{batch_idx}损失包含NaN/Inf，跳过")
+                    continue
 
-                # 梯度裁剪 (防止梯度爆炸)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                # 反向传播与异常处理
+                try:
+                    losses['total'].backward()
+                except RuntimeError as backward_error:
+                    if "memory" in str(backward_error).lower():
+                        print(f"反向传播内存错误，清理并重试")
+                        torch.cuda.empty_cache()
+                        optimizer.zero_grad(set_to_none=True)
+                        losses['total'].backward()
+                    else:
+                        raise backward_error
 
-                optimizer.step()
+                # 增强梯度裁剪 (防止梯度爆炸和数值不稳定)
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                if grad_norm > 10.0:  # 梯度异常大
+                    print(f"警告: 批次{batch_idx}梯度范数较大: {grad_norm:.2f}")
+
+                # 优化器步骤与异常处理
+                try:
+                    optimizer.step()
+                except RuntimeError as step_error:
+                    if "memory" in str(step_error).lower() or "illegal" in str(step_error).lower():
+                        print(f"优化器步骤错误，清理内存并跳过")
+                        torch.cuda.empty_cache()
+                        optimizer.zero_grad(set_to_none=True)
+                        continue
+                    else:
+                        raise step_error
 
                 # 累积损失
                 for key in epoch_losses:
