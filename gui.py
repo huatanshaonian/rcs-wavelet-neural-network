@@ -2736,13 +2736,35 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 for i, rcs_data in enumerate(self.rcs_data):
                     model_id = f"{i+1:03d}"
 
-                    # 实际数据 [91, 91, 2]
+                    # 实际数据 [91, 91, 2] - 线性域
                     actual_1_5g = rcs_data[:, :, 0].flatten()
                     actual_3g = rcs_data[:, :, 1].flatten()
 
-                    # 预测数据 [91, 91, 2]
-                    pred_1_5g = predicted_batch[i, :, :, 0].flatten()
-                    pred_3g = predicted_batch[i, :, :, 1].flatten()
+                    # 预测数据域转换 - 关键修复！
+                    pred_raw_1_5g = predicted_batch[i, :, :, 0].flatten()
+                    pred_raw_3g = predicted_batch[i, :, :, 1].flatten()
+
+                    # 检查模型输出类型并进行正确的域转换
+                    if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+                        # 新格式：网络输出是标准化的dB值，需要反标准化到dB，然后转线性
+                        mean = self.preprocessing_stats['mean']
+                        std = self.preprocessing_stats['std']
+                        # 反标准化到dB域
+                        pred_db_1_5g = pred_raw_1_5g * std + mean
+                        pred_db_3g = pred_raw_3g * std + mean
+                        # 从 dB 转换到线性域： RCS = 10^(dB/10)
+                        pred_1_5g = np.power(10, pred_db_1_5g / 10.0)
+                        pred_3g = np.power(10, pred_db_3g / 10.0)
+                        print(f"模型{model_id}: 使用preprocessing_stats进行域转换")
+                    else:
+                        # 旧格式或无stats：假设网络输出已经是线性域
+                        pred_1_5g = pred_raw_1_5g
+                        pred_3g = pred_raw_3g
+                        print(f"模型{model_id}: 假设网络输出为线性域")
+
+                    # 确保线性域数值为正
+                    pred_1_5g = np.maximum(pred_1_5g, 1e-12)  # 避免负值和零值
+                    pred_3g = np.maximum(pred_3g, 1e-12)
 
                     # 计算每个模型的统计指标
                     stats_1_5g = {
