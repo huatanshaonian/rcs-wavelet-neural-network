@@ -2125,6 +2125,15 @@ class RCSWaveletGUI:
                 predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs_3g, epsilon))
                 print("警告: 无preprocessing_stats，假设网络输出为线性值")
 
+            # 计算统一的colorbar范围（对于每个频率）
+            vmin_1_5g = min(original_rcs_1_5g_db.min(), predicted_rcs_1_5g_db.min())
+            vmax_1_5g = max(original_rcs_1_5g_db.max(), predicted_rcs_1_5g_db.max())
+            vmin_3g = min(original_rcs_3g_db.min(), predicted_rcs_3g_db.min())
+            vmax_3g = max(original_rcs_3g_db.max(), predicted_rcs_3g_db.max())
+
+            print(f"1.5GHz dB范围: {vmin_1_5g:.1f} ~ {vmax_1_5g:.1f}")
+            print(f"3GHz dB范围: {vmin_3g:.1f} ~ {vmax_3g:.1f}")
+
             # 创建2x2子图布局
             fig = self.vis_fig
 
@@ -2133,9 +2142,10 @@ class RCSWaveletGUI:
             theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
             extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
 
-            # 1.5GHz频率对比 (dB显示)
+            # 1.5GHz频率对比 (dB显示) - 使用统一的colorbar范围
             ax1 = fig.add_subplot(2, 2, 1)
-            im1 = ax1.imshow(original_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent)
+            im1 = ax1.imshow(original_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent,
+                            vmin=vmin_1_5g, vmax=vmax_1_5g)
             ax1.set_title(f'原始RCS - 1.5GHz (模型{model_id})')
             ax1.set_xlabel('φ (方位角, 度)')
             ax1.set_ylabel('θ (俯仰角, 度)')
@@ -2143,16 +2153,18 @@ class RCSWaveletGUI:
             cbar1.set_label('RCS (dB)')
 
             ax2 = fig.add_subplot(2, 2, 2)
-            im2 = ax2.imshow(predicted_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent)
+            im2 = ax2.imshow(predicted_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent,
+                            vmin=vmin_1_5g, vmax=vmax_1_5g)
             ax2.set_title(f'神经网络预测RCS - 1.5GHz')
             ax2.set_xlabel('φ (方位角, 度)')
             ax2.set_ylabel('θ (俯仰角, 度)')
             cbar2 = plt.colorbar(im2, ax=ax2, shrink=0.8)
             cbar2.set_label('RCS (dB)')
 
-            # 3GHz频率对比 (dB显示)
+            # 3GHz频率对比 (dB显示) - 使用统一的colorbar范围
             ax3 = fig.add_subplot(2, 2, 3)
-            im3 = ax3.imshow(original_rcs_3g_db, cmap='jet', aspect='equal', extent=extent)
+            im3 = ax3.imshow(original_rcs_3g_db, cmap='jet', aspect='equal', extent=extent,
+                            vmin=vmin_3g, vmax=vmax_3g)
             ax3.set_title(f'原始RCS - 3GHz (模型{model_id})')
             ax3.set_xlabel('φ (方位角, 度)')
             ax3.set_ylabel('θ (俯仰角, 度)')
@@ -2160,7 +2172,8 @@ class RCSWaveletGUI:
             cbar3.set_label('RCS (dB)')
 
             ax4 = fig.add_subplot(2, 2, 4)
-            im4 = ax4.imshow(predicted_rcs_3g_db, cmap='jet', aspect='equal', extent=extent)
+            im4 = ax4.imshow(predicted_rcs_3g_db, cmap='jet', aspect='equal', extent=extent,
+                            vmin=vmin_3g, vmax=vmax_3g)
             ax4.set_title(f'神经网络预测RCS - 3GHz')
             ax4.set_xlabel('φ (方位角, 度)')
             ax4.set_ylabel('θ (俯仰角, 度)')
@@ -2239,15 +2252,21 @@ class RCSWaveletGUI:
             diff_1_5g_db = original_rcs_1_5g_db - predicted_rcs_1_5g_db
             diff_3g_db = original_rcs_3g_db - predicted_rcs_3g_db
 
+            # 计算统一的差值范围（使用对称范围）
+            max_diff_1_5g = max(abs(diff_1_5g_db.min()), abs(diff_1_5g_db.max()))
+            max_diff_3g = max(abs(diff_3g_db.min()), abs(diff_3g_db.max()))
+
             # 创建子图
             ax1 = self.vis_fig.add_subplot(2, 2, 1)
-            im1 = ax1.imshow(diff_1_5g_db, cmap='RdBu_r', aspect='equal')
+            im1 = ax1.imshow(diff_1_5g_db, cmap='RdBu_r', aspect='equal',
+                            vmin=-max_diff_1_5g, vmax=max_diff_1_5g)
             ax1.set_title(f'差值图 - 1.5GHz (原始-预测)')
             cbar1 = plt.colorbar(im1, ax=ax1, shrink=0.8)
             cbar1.set_label('差值 (dB)')
 
             ax2 = self.vis_fig.add_subplot(2, 2, 2)
-            im2 = ax2.imshow(diff_3g_db, cmap='RdBu_r', aspect='equal')
+            im2 = ax2.imshow(diff_3g_db, cmap='RdBu_r', aspect='equal',
+                            vmin=-max_diff_3g, vmax=max_diff_3g)
             ax2.set_title(f'差值图 - 3GHz (原始-预测)')
             cbar2 = plt.colorbar(im2, ax=ax2, shrink=0.8)
             cbar2.set_label('差值 (dB)')
