@@ -1049,11 +1049,38 @@ class RCSWaveletGUI:
 
             # 获取preprocessing_stats（如果使用对数预处理）
             if self.use_log_preprocessing.get():
-                # 重新用RCSDataLoader加载以获取正确的预处理数据和stats
-                self.log_message("使用对数预处理，重新加载数据...")
-                data_loader = RCSDataLoader(self.data_config)
-                params_preprocessed, rcs_preprocessed = data_loader.load_data()  # 加载并预处理数据
-                preprocessing_stats = data_loader.preprocessing_stats
+                # 检查是否已经有预处理过的数据
+                if hasattr(self, '_preprocessed_data') and hasattr(self, '_preprocessing_stats'):
+                    self.log_message("使用缓存的预处理数据...")
+                    params_preprocessed = self._preprocessed_data['params']
+                    rcs_preprocessed = self._preprocessed_data['rcs']
+                    preprocessing_stats = self._preprocessing_stats
+                else:
+                    # 首次预处理：应用对数变换和标准化
+                    import numpy as np  # 确保numpy可用
+                    self.log_message("首次预处理数据...")
+                    epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
+
+                    # 转换为dB
+                    rcs_db = 10 * np.log10(np.maximum(self.rcs_data, epsilon))
+
+                    # 计算全局统计
+                    global_mean = np.mean(rcs_db)
+                    global_std = np.std(rcs_db)
+
+                    # 标准化
+                    if self.normalize_after_log.get():
+                        rcs_preprocessed = (rcs_db - global_mean) / global_std
+                    else:
+                        rcs_preprocessed = rcs_db
+
+                    params_preprocessed = self.param_data
+                    preprocessing_stats = {'mean': global_mean, 'std': global_std}
+
+                    # 缓存预处理结果
+                    self._preprocessed_data = {'params': params_preprocessed, 'rcs': rcs_preprocessed}
+                    self._preprocessing_stats = preprocessing_stats
+
                 self.training_config['preprocessing_stats'] = preprocessing_stats
                 self.training_config['use_log_output'] = True
                 self.log_message(f"预处理统计: mean={preprocessing_stats['mean']:.2f} dB, std={preprocessing_stats['std']:.2f} dB")
@@ -1629,21 +1656,38 @@ class RCSWaveletGUI:
                 preprocessing_stats = self.preprocessing_stats
                 self.log_message(f"使用checkpoint的preprocessing_stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
             elif use_log:
-                # 如果没有保存的stats，需要重新加载原始数据计算
-                self.log_message("警告: 无checkpoint stats，重新计算...")
-                temp_loader = RCSDataLoader(self.data_config)
-                _, _ = temp_loader.load_data()
-                preprocessing_stats = temp_loader.preprocessing_stats
-                self.log_message(f"重新计算的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+                # 尝试使用缓存的preprocessing_stats
+                if hasattr(self, '_preprocessing_stats') and self._preprocessing_stats:
+                    preprocessing_stats = self._preprocessing_stats
+                    self.log_message(f"使用缓存的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+                else:
+                    # 如果没有缓存，重新计算预处理统计
+                    import numpy as np  # 确保numpy可用
+                    self.log_message("警告: 无checkpoint stats且无缓存，重新计算...")
+                    epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
+                    rcs_db = 10 * np.log10(np.maximum(self.rcs_data, epsilon))
+                    preprocessing_stats = {
+                        'mean': np.mean(rcs_db),
+                        'std': np.std(rcs_db)
+                    }
+                    # 缓存结果
+                    self._preprocessing_stats = preprocessing_stats
+                    self.log_message(f"重新计算的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
             else:
                 preprocessing_stats = None
 
             # 创建测试数据集：使用预处理后的数据
             if use_log:
-                # 重新加载预处理后的数据用于评估
-                data_loader = RCSDataLoader(self.data_config)
-                params_eval, rcs_eval = data_loader.load_data()
-                test_dataset = RCSDataset(params_eval[-20:], rcs_eval[-20:], augment=False)
+                # 使用缓存的预处理数据用于评估
+                if hasattr(self, '_preprocessed_data'):
+                    params_eval = self._preprocessed_data['params'][-20:]
+                    rcs_eval = self._preprocessed_data['rcs'][-20:]
+                    test_dataset = RCSDataset(params_eval, rcs_eval, augment=False)
+                    self.log_message("使用缓存的预处理数据进行评估")
+                else:
+                    # 如果没有预处理缓存，使用原始数据
+                    self.log_message("警告: 无预处理缓存，使用原始数据")
+                    test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
             else:
                 # 使用原始数据
                 test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
