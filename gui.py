@@ -526,6 +526,23 @@ class RCSWaveletGUI:
         self.save_checkpoints = tk.BooleanVar(value=True)
         ttk.Checkbutton(options_frame, text="保存检查点", variable=self.save_checkpoints).pack(side=tk.LEFT, padx=20)
 
+        # 网络架构选择
+        arch_frame = ttk.Frame(config_group)
+        arch_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Label(arch_frame, text="网络架构:").pack(side=tk.LEFT)
+        self.model_type = tk.StringVar(value="enhanced")
+        arch_combo = ttk.Combobox(arch_frame, textvariable=self.model_type, width=12, state="readonly")
+        arch_combo['values'] = ("original", "enhanced")
+        arch_combo.pack(side=tk.LEFT, padx=10)
+
+        # 损失函数选择
+        ttk.Label(arch_frame, text="损失函数:").pack(side=tk.LEFT, padx=(20,0))
+        self.loss_type = tk.StringVar(value="improved")
+        loss_combo = ttk.Combobox(arch_frame, textvariable=self.loss_type, width=12, state="readonly")
+        loss_combo['values'] = ("original", "improved")
+        loss_combo.pack(side=tk.LEFT, padx=10)
+
         # 训练控制按钮
         control_frame = ttk.Frame(config_group)
         control_frame.pack(fill=tk.X, padx=5, pady=10)
@@ -1200,6 +1217,7 @@ class RCSWaveletGUI:
                     # 新格式：包含preprocessing_stats
                     model_params_with_log = self.model_params.copy()
                     model_params_with_log['use_log_output'] = checkpoint.get('use_log_output', self.use_log_preprocessing.get())
+                    model_params_with_log['model_type'] = getattr(self, 'model_type', tk.StringVar(value='enhanced')).get()
                     self.current_model = create_model(**model_params_with_log)
                     self.current_model.load_state_dict(checkpoint['model_state_dict'])
                     self.preprocessing_stats = checkpoint.get('preprocessing_stats')
@@ -1208,6 +1226,7 @@ class RCSWaveletGUI:
                     # 旧格式：只有state_dict
                     model_params_with_log = self.model_params.copy()
                     model_params_with_log['use_log_output'] = self.use_log_preprocessing.get()
+                    model_params_with_log['model_type'] = getattr(self, 'model_type', tk.StringVar(value='enhanced')).get()
                     self.current_model = create_model(**model_params_with_log)
                     self.current_model.load_state_dict(checkpoint)
                     self.preprocessing_stats = None
@@ -1277,7 +1296,8 @@ class RCSWaveletGUI:
                 # 创建模型时使用当前的小波配置和预处理配置
                 model_params = {'input_dim': 9, 'hidden_dims': [128, 256],
                               'wavelet_config': self.training_config.get('wavelet_config'),
-                              'use_log_output': self.use_log_preprocessing.get()}
+                              'use_log_output': self.use_log_preprocessing.get(),
+                              'model_type': self.model_type.get()}
                 model = create_model(**model_params)
                 trainer = ProgressiveTrainer(model, device)
 
@@ -1327,7 +1347,8 @@ class RCSWaveletGUI:
                     )
 
                 # 创建损失函数
-                loss_fn = create_loss_function(loss_weights=self.training_config.get('loss_weights'))
+                loss_fn = create_loss_function(loss_type=self.loss_type.get(),
+                                              loss_weights=self.training_config.get('loss_weights'))
 
                 # 初始化训练历史记录
                 self.training_history = {

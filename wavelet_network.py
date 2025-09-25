@@ -667,7 +667,8 @@ class TriDimensionalRCSLoss(nn.Module):
 
 
 # 辅助函数
-def create_model(input_dim: int = 9, wavelet_config: List[str] = None, use_log_output: bool = False, **kwargs) -> TriDimensionalRCSNet:
+def create_model(input_dim: int = 9, wavelet_config: List[str] = None, use_log_output: bool = False,
+                 model_type: str = 'original', **kwargs) -> TriDimensionalRCSNet:
     """
     创建RCS预测模型
 
@@ -675,25 +676,51 @@ def create_model(input_dim: int = 9, wavelet_config: List[str] = None, use_log_o
         input_dim: 输入维度
         wavelet_config: 小波配置列表，包含4个小波类型
         use_log_output: 是否输出对数域数据
+        model_type: 模型类型 ('original' 或 'enhanced')
         **kwargs: 其他模型参数
 
     返回:
         模型实例
     """
-    return TriDimensionalRCSNet(input_dim=input_dim, wavelet_config=wavelet_config, use_log_output=use_log_output, **kwargs)
+    if model_type == 'enhanced':
+        # 使用增强版网络架构
+        try:
+            from enhanced_network import EnhancedTriDimensionalRCSNet
+            print("使用增强版RCS网络架构")
+            return EnhancedTriDimensionalRCSNet(input_dim=input_dim, use_log_output=use_log_output)
+        except ImportError:
+            print("警告: enhanced_network模块未找到，回退到原始架构")
+            return TriDimensionalRCSNet(input_dim=input_dim, wavelet_config=wavelet_config,
+                                      use_log_output=use_log_output, **kwargs)
+    else:
+        # 使用原始网络架构
+        return TriDimensionalRCSNet(input_dim=input_dim, wavelet_config=wavelet_config,
+                                  use_log_output=use_log_output, **kwargs)
 
 
-def create_loss_function(**kwargs) -> TriDimensionalRCSLoss:
+def create_loss_function(loss_type: str = 'original', **kwargs):
     """
     创建损失函数
 
     参数:
+        loss_type: 损失函数类型 ('original' 或 'improved')
         **kwargs: 损失函数参数
 
     返回:
         损失函数实例
     """
-    return TriDimensionalRCSLoss(**kwargs)
+    if loss_type == 'improved':
+        # 使用改进的损失函数
+        try:
+            from enhanced_network import ImprovedRCSLoss
+            print("使用改进版损失函数")
+            return ImprovedRCSLoss(**kwargs)
+        except ImportError:
+            print("警告: enhanced_network模块未找到，回退到原始损失函数")
+            return TriDimensionalRCSLoss(**kwargs)
+    else:
+        # 使用原始损失函数
+        return TriDimensionalRCSLoss(**kwargs)
 
 
 if __name__ == "__main__":
