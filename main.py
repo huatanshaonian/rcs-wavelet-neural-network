@@ -233,6 +233,10 @@ class RCSWaveletApp:
 
             print(f"数据加载完成: 参数 {param_data.shape}, RCS {rcs_data.shape}")
 
+            # 获取preprocessing_stats（如果数据加载器有的话）
+            preprocessing_stats = getattr(data_loader, 'preprocessing_stats', None)
+            use_log_output = getattr(data_loader, 'use_log_preprocessing', False)
+
             # 创建数据集
             dataset = RCSDataset(param_data, rcs_data, augment=True)
 
@@ -346,9 +350,23 @@ class RCSWaveletApp:
                         best_val_loss = val_losses['total']
                         patience_counter = 0
 
-                        # 保存最佳模型
+                        # 保存最佳模型（完整的checkpoint格式）
                         os.makedirs('checkpoints', exist_ok=True)
-                        torch.save(model.state_dict(), 'checkpoints/best_model_simple.pth')
+
+                        # 创建完整的checkpoint，包含preprocessing_stats
+                        checkpoint = {
+                            'model_state_dict': model.state_dict(),
+                            'preprocessing_stats': preprocessing_stats,
+                            'use_log_output': use_log_output,
+                            'epoch': epoch,
+                            'val_loss': best_val_loss
+                        }
+                        torch.save(checkpoint, 'checkpoints/best_model_simple.pth')
+
+                        if preprocessing_stats:
+                            print(f"  已保存preprocessing_stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+                        else:
+                            print("  警告: 无preprocessing_stats信息")
                     else:
                         patience_counter += 1
 

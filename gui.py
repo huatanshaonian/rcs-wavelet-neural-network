@@ -1101,6 +1101,9 @@ class RCSWaveletGUI:
                 # 交叉验证训练
                 self.log_message("开始交叉验证训练...")
 
+                # 导入torch
+                import torch
+
                 # 初始化训练历史记录（交叉验证版本）
                 self.training_history = {
                     'train_loss': [],
@@ -1214,11 +1217,23 @@ class RCSWaveletGUI:
                 # 简单训练
                 self.log_message("开始简单训练模式...")
 
+                # 设置preprocessing_stats（从训练配置或_preprocessing_stats中获取）
+                if hasattr(self, '_preprocessing_stats') and self._preprocessing_stats:
+                    self.preprocessing_stats = self._preprocessing_stats
+                    self.log_message(f"使用预处理统计信息: mean={self.preprocessing_stats['mean']:.2f} dB, std={self.preprocessing_stats['std']:.2f} dB")
+                else:
+                    self.preprocessing_stats = self.training_config.get('preprocessing_stats', None)
+                    if self.preprocessing_stats:
+                        self.log_message(f"从配置获取预处理统计信息: mean={self.preprocessing_stats['mean']:.2f} dB, std={self.preprocessing_stats['std']:.2f} dB")
+                    else:
+                        self.log_message("警告: 未找到预处理统计信息")
+
                 # 分割数据集（使用固定种子确保可重现）
                 import torch
                 from torch.utils.data import random_split
 
                 # 设置固定种子保证数据划分的可重现性
+                import numpy as np
                 torch.manual_seed(42)
                 np.random.seed(42)
 
@@ -1437,8 +1452,23 @@ class RCSWaveletGUI:
                         if self.save_checkpoints.get():
                             import os
                             os.makedirs('checkpoints', exist_ok=True)
-                            torch.save(model.state_dict(), 'checkpoints/best_model_simple.pth')
-                            self.log_message(f"保存最佳模型，验证损失: {best_val_loss:.4f}")
+
+                            # 创建完整的checkpoint，包含preprocessing_stats
+                            # 注意：use_log_preprocessing是tkinter变量，需要.get()获取值
+                            use_log_output = self.use_log_preprocessing.get() if hasattr(self, 'use_log_preprocessing') else False
+                            checkpoint = {
+                                'model_state_dict': model.state_dict(),
+                                'preprocessing_stats': getattr(self, 'preprocessing_stats', None),
+                                'use_log_output': use_log_output,
+                                'epoch': epoch,
+                                'val_loss': best_val_loss
+                            }
+                            torch.save(checkpoint, 'checkpoints/best_model_simple.pth')
+
+                            if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+                                self.log_message(f"保存最佳模型，验证损失: {best_val_loss:.4f}，包含preprocessing_stats")
+                            else:
+                                self.log_message(f"保存最佳模型，验证损失: {best_val_loss:.4f}，警告: 无preprocessing_stats")
                     else:
                         patience_counter += 1
 
@@ -1554,9 +1584,24 @@ class RCSWaveletGUI:
 
         if filename:
             try:
-                torch.save(self.current_model.state_dict(), filename)
-                self.log_message(f"模型已保存到: {filename}")
-                messagebox.showinfo("成功", "模型保存成功")
+                # 创建完整的checkpoint，包含preprocessing_stats
+                # 注意：use_log_preprocessing是tkinter变量，需要.get()获取值
+                use_log_output = self.use_log_preprocessing.get() if hasattr(self, 'use_log_preprocessing') else False
+                checkpoint = {
+                    'model_state_dict': self.current_model.state_dict(),
+                    'preprocessing_stats': getattr(self, 'preprocessing_stats', None),
+                    'use_log_output': use_log_output,
+                    'epoch': getattr(self, 'current_epoch', 0),
+                    'val_loss': getattr(self, 'best_val_loss', 0.0)
+                }
+                torch.save(checkpoint, filename)
+
+                if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+                    self.log_message(f"模型已保存到: {filename} (包含preprocessing_stats)")
+                    messagebox.showinfo("成功", "模型保存成功 (包含预处理统计信息)")
+                else:
+                    self.log_message(f"模型已保存到: {filename} (警告: 无preprocessing_stats)")
+                    messagebox.showinfo("成功", "模型保存成功 (但缺少预处理统计信息)")
             except Exception as e:
                 messagebox.showerror("错误", f"模型保存失败: {str(e)}")
 
@@ -2752,8 +2797,15 @@ GPU峰值: {gpu_peak:.2f}GB"""
             model_stats = []
 
             # 检查是否有训练好的模型和缓存数据
-            if (hasattr(self, 'current_model') and self.current_model is not None and
-                hasattr(self, 'param_data') and hasattr(self, 'rcs_data')):
+            has_model = hasattr(self, 'current_model') and self.current_model is not None
+            has_param_data = hasattr(self, 'param_data') and self.param_data is not None
+            has_rcs_data = hasattr(self, 'rcs_data') and self.rcs_data is not None
+
+            print(f"缓存数据检查: 模型={has_model}, 参数数据={has_param_data}, RCS数据={has_rcs_data}")
+            if has_param_data and has_rcs_data:
+                print(f"缓存数据形状: 参数={self.param_data.shape}, RCS={self.rcs_data.shape}")
+
+            if has_model and has_param_data and has_rcs_data:
 
                 print("使用缓存数据进行快速统计计算...")
 
@@ -2839,13 +2891,13 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 print(f"使用缓存数据处理了 {len(self.rcs_data)} 个模型")
 
             else:
-                # 降级方案：使用文件读取（限制数量以提高速度）
-                print("缓存数据不可用，使用文件读取方式（限制前5个模型）...")
+                # 降级方案：使用文件读取
+                print("缓存数据不可用，使用文件读取方式...")
 
                 import rcs_visual as rv
                 rcs_dir = self.data_config['rcs_data_dir']
 
-                # 获取前5个模型以提高速度
+                # 获取所有可用模型
                 available_models = []
                 if os.path.exists(rcs_dir):
                     for file in os.listdir(rcs_dir):
@@ -2854,7 +2906,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                             if model_id.isdigit():
                                 available_models.append(model_id)
 
-                available_models = sorted(available_models)[:5]  # 限制前5个
+                available_models = sorted(available_models)  # 使用所有可用模型
 
                 if not available_models:
                     messagebox.showwarning("警告", "未找到RCS数据文件")
@@ -2923,50 +2975,70 @@ GPU峰值: {gpu_peak:.2f}GB"""
             all_predicted_1_5g = np.array(all_predicted_1_5g)
             all_predicted_3g = np.array(all_predicted_3g)
 
-            # ===== 创建多个可视化图表并保存 =====
+            # ===== 在GUI中显示统计对比图 =====
+            # 清除当前图形
+            self.vis_fig.clear()
 
-            # 1. 分频率真实值vs预测值散点图
-            plt.figure(figsize=(15, 10))
+            # 设置图形尺寸
+            self.vis_fig.set_size_inches(15, 10)
 
-            # 子图1: 1.5GHz 真实值vs预测值散点图
-            plt.subplot(2, 3, 1)
-            sample_size = min(5000, len(all_actual_1_5g))
-            indices = np.random.choice(len(all_actual_1_5g), sample_size, replace=False)
-            x1 = all_actual_1_5g[indices]
-            y1 = all_predicted_1_5g[indices]
+            # 首先创建并保存散点图
+            self._save_scatter_plots(all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir)
 
-            plt.scatter(x1, y1, alpha=0.3, s=1, color='blue', rasterized=True)
-            min_val, max_val = min(x1.min(), y1.min()), max(x1.max(), y1.max())
-            plt.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, linewidth=2, label='理想预测线')
-            r1 = np.corrcoef(x1, y1)[0,1]
-            plt.xlabel('真实值 (RCS线性)')
-            plt.ylabel('预测值 (RCS线性)')
-            plt.title(f'1.5GHz 预测对比\\nR = {r1:.4f}')
-            plt.legend()
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.grid(True, alpha=0.3)
+            # 子图1: 1.5GHz 模型均值对比图 (dBsm单位)
+            ax1 = self.vis_fig.add_subplot(2, 3, 1)
+            stats_1_5_list = [s for s in model_stats if s['freq'] == '1.5GHz']
 
-            # 子图2: 3GHz 真实值vs预测值散点图
-            plt.subplot(2, 3, 2)
-            indices = np.random.choice(len(all_actual_3g), sample_size, replace=False)
-            x2 = all_actual_3g[indices]
-            y2 = all_predicted_3g[indices]
+            # 提取各个模型的均值，转换为dBsm
+            model_ids = [s['model_id'] for s in stats_1_5_list]
+            actual_means_linear = [s['actual_mean'] for s in stats_1_5_list]
+            predicted_means_linear = [s['predicted_mean'] for s in stats_1_5_list]
 
-            plt.scatter(x2, y2, alpha=0.3, s=1, color='red', rasterized=True)
-            min_val, max_val = min(x2.min(), y2.min()), max(x2.max(), y2.max())
-            plt.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, linewidth=2, label='理想预测线')
-            r2 = np.corrcoef(x2, y2)[0,1]
-            plt.xlabel('真实值 (RCS线性)')
-            plt.ylabel('预测值 (RCS线性)')
-            plt.title(f'3GHz 预测对比\\nR = {r2:.4f}')
-            plt.legend()
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.grid(True, alpha=0.3)
+            # 转换为dBsm: RCS_dBsm = 10*log10(RCS_linear)
+            actual_means_dbsm = [10 * np.log10(max(val, 1e-12)) for val in actual_means_linear]
+            predicted_means_dbsm = [10 * np.log10(max(val, 1e-12)) for val in predicted_means_linear]
+
+            ax1.scatter(actual_means_dbsm, predicted_means_dbsm, alpha=0.8, s=50, color='blue')
+            # 添加理想预测线
+            min_val = min(min(actual_means_dbsm), min(predicted_means_dbsm))
+            max_val = max(max(actual_means_dbsm), max(predicted_means_dbsm))
+            ax1.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, linewidth=2, label='理想预测线')
+
+            # 计算均值的相关系数
+            r1 = np.corrcoef(actual_means_dbsm, predicted_means_dbsm)[0,1]
+            ax1.set_xlabel('真实均值 (dBsm)')
+            ax1.set_ylabel('预测均值 (dBsm)')
+            ax1.set_title(f'1.5GHz 模型均值对比\nR = {r1:.4f}, 模型数: {len(model_ids)}')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+
+            # 子图2: 3GHz 模型均值对比图 (dBsm单位)
+            ax2 = self.vis_fig.add_subplot(2, 3, 2)
+            stats_3_list = [s for s in model_stats if s['freq'] == '3GHz']
+
+            # 提取各个模型的均值，转换为dBsm
+            actual_means_linear_3g = [s['actual_mean'] for s in stats_3_list]
+            predicted_means_linear_3g = [s['predicted_mean'] for s in stats_3_list]
+
+            actual_means_dbsm_3g = [10 * np.log10(max(val, 1e-12)) for val in actual_means_linear_3g]
+            predicted_means_dbsm_3g = [10 * np.log10(max(val, 1e-12)) for val in predicted_means_linear_3g]
+
+            ax2.scatter(actual_means_dbsm_3g, predicted_means_dbsm_3g, alpha=0.8, s=50, color='red')
+            # 添加理想预测线
+            min_val_3g = min(min(actual_means_dbsm_3g), min(predicted_means_dbsm_3g))
+            max_val_3g = max(max(actual_means_dbsm_3g), max(predicted_means_dbsm_3g))
+            ax2.plot([min_val_3g, max_val_3g], [min_val_3g, max_val_3g], 'r--', alpha=0.8, linewidth=2, label='理想预测线')
+
+            # 计算均值的相关系数
+            r2 = np.corrcoef(actual_means_dbsm_3g, predicted_means_dbsm_3g)[0,1]
+            ax2.set_xlabel('真实均值 (dBsm)')
+            ax2.set_ylabel('预测均值 (dBsm)')
+            ax2.set_title(f'3GHz 模型均值对比\nR = {r2:.4f}, 模型数: {len(model_ids)}')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
 
             # 子图3: 统计指标对比图（均值、最大值、最小值）
-            plt.subplot(2, 3, 3)
+            ax3 = self.vis_fig.add_subplot(2, 3, 3)
             stats_1_5_list = [s for s in model_stats if s['freq'] == '1.5GHz']
             stats_3_list = [s for s in model_stats if s['freq'] == '3GHz']
 
@@ -2986,45 +3058,50 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             x = np.arange(len(metrics))
             width = 0.2
-            plt.bar(x - 1.5*width, actual_1_5_means, width, label='1.5GHz 真实', color='lightblue', alpha=0.8)
-            plt.bar(x - 0.5*width, predicted_1_5_means, width, label='1.5GHz 预测', color='blue', alpha=0.8)
-            plt.bar(x + 0.5*width, actual_3_means, width, label='3GHz 真实', color='lightcoral', alpha=0.8)
-            plt.bar(x + 1.5*width, predicted_3_means, width, label='3GHz 预测', color='red', alpha=0.8)
-            plt.xlabel('统计指标')
-            plt.ylabel('RCS值 (线性)')
-            plt.title('统计指标对比')
-            plt.xticks(x, metrics)
-            plt.legend()
-            plt.yscale('log')
+            ax3.bar(x - 1.5*width, actual_1_5_means, width, label='1.5GHz 真实', color='lightblue', alpha=0.8)
+            ax3.bar(x - 0.5*width, predicted_1_5_means, width, label='1.5GHz 预测', color='blue', alpha=0.8)
+            ax3.bar(x + 0.5*width, actual_3_means, width, label='3GHz 真实', color='lightcoral', alpha=0.8)
+            ax3.bar(x + 1.5*width, predicted_3_means, width, label='3GHz 预测', color='red', alpha=0.8)
+            ax3.set_xlabel('统计指标')
+            ax3.set_ylabel('RCS值 (线性)')
+            ax3.set_title('统计指标对比')
+            ax3.set_xticks(x)
+            ax3.set_xticklabels(metrics)
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
 
-            # 子图4-6: 性能指标
-            plt.subplot(2, 3, 4)
+            # 子图4: 性能指标 - 相关系数
+            ax4 = self.vis_fig.add_subplot(2, 3, 4)
             models = [s['model_id'] for s in stats_1_5_list]
             corr_1_5 = [s['correlation'] for s in stats_1_5_list]
             corr_3 = [s['correlation'] for s in stats_3_list]
             x = np.arange(len(models))
-            plt.bar(x - 0.2, corr_1_5, 0.4, label='1.5GHz', alpha=0.7)
-            plt.bar(x + 0.2, corr_3, 0.4, label='3GHz', alpha=0.7)
-            plt.xlabel('模型ID')
-            plt.ylabel('相关系数')
-            plt.title('预测相关性对比')
-            plt.xticks(x, models)
-            plt.legend()
+            ax4.bar(x - 0.2, corr_1_5, 0.4, label='1.5GHz', alpha=0.7)
+            ax4.bar(x + 0.2, corr_3, 0.4, label='3GHz', alpha=0.7)
+            ax4.set_xlabel('模型ID')
+            ax4.set_ylabel('相关系数')
+            ax4.set_title('预测相关性对比')
+            ax4.set_xticks(x)
+            ax4.set_xticklabels(models)
+            ax4.legend()
+            ax4.grid(True, alpha=0.3)
 
-            plt.subplot(2, 3, 5)
+            # 子图5: RMSE对比
+            ax5 = self.vis_fig.add_subplot(2, 3, 5)
             rmse_1_5 = [s['rmse'] for s in stats_1_5_list]
             rmse_3 = [s['rmse'] for s in stats_3_list]
-            plt.bar(x - 0.2, rmse_1_5, 0.4, label='1.5GHz', alpha=0.7)
-            plt.bar(x + 0.2, rmse_3, 0.4, label='3GHz', alpha=0.7)
-            plt.xlabel('模型ID')
-            plt.ylabel('RMSE')
-            plt.title('预测误差对比')
-            plt.xticks(x, models)
-            plt.legend()
-            plt.yscale('log')
+            ax5.bar(x - 0.2, rmse_1_5, 0.4, label='1.5GHz', alpha=0.7)
+            ax5.bar(x + 0.2, rmse_3, 0.4, label='3GHz', alpha=0.7)
+            ax5.set_xlabel('模型ID')
+            ax5.set_ylabel('RMSE')
+            ax5.set_title('预测误差对比')
+            ax5.set_xticks(x)
+            ax5.set_xticklabels(models)
+            ax5.legend()
+            ax5.grid(True, alpha=0.3)
 
             # 子图6: 整体性能汇总
-            plt.subplot(2, 3, 6)
+            ax6 = self.vis_fig.add_subplot(2, 3, 6)
             avg_r1 = np.mean(corr_1_5)
             avg_r2 = np.mean(corr_3)
             avg_rmse1 = np.mean(rmse_1_5)
@@ -3046,39 +3123,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
   总模型数: {len(model_stats)//2}
   数据点数: {len(all_actual_1_5g) + len(all_actual_3g)}"""
 
-            plt.text(0.1, 0.1, summary_text, fontsize=10,
-                    verticalalignment='bottom', transform=plt.gca().transAxes)
-            plt.axis('off')
-            plt.title('性能汇总统计')
+            ax6.text(0.1, 0.1, summary_text, fontsize=10,
+                    verticalalignment='bottom', transform=ax6.transAxes)
+            ax6.axis('off')
+            ax6.set_title('性能汇总统计')
 
-            plt.tight_layout()
-            scatter_plot_path = os.path.join(results_dir, 'frequency_comparison_plots.png')
-            plt.savefig(scatter_plot_path, dpi=150, bbox_inches='tight')
-            plt.close()
-
-            # 2. 保存详细统计数据到CSV
-            stats_df = pd.DataFrame(model_stats)
-            stats_csv_path = os.path.join(results_dir, 'detailed_statistics.csv')
-            stats_df.to_csv(stats_csv_path, index=False, encoding='utf-8-sig')
-
-            # 3. 创建简化的GUI显示版本
-            self.vis_fig.clear()
-            ax = self.vis_fig.add_subplot(1, 1, 1)
-            ax.text(0.5, 0.5, f"""统计对比分析完成！
-
-结果已保存到: {results_dir}
-
-包含文件:
-• frequency_comparison_plots.png - 分频率对比图表
-• detailed_statistics.csv - 详细统计数据
-
-处理模型数量: {len(stats_1_5_list)}
-整体相关系数: 1.5GHz={avg_r1:.4f}, 3GHz={avg_r2:.4f}
-
-点击其他可视化选项查看更多图表""",
-                   horizontalalignment='center', verticalalignment='center',
-                   fontsize=12, transform=ax.transAxes)
-            ax.axis('off')
+            self.vis_fig.tight_layout()
             self.vis_canvas.draw()
 
             print(f"改进的全局统计对比分析完成!")
@@ -3092,6 +3142,67 @@ GPU峰值: {gpu_peak:.2f}GB"""
             messagebox.showerror("错误", error_msg)
             import traceback
             traceback.print_exc()
+
+    def _save_scatter_plots(self, all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir):
+        """保存散点图到文件"""
+        try:
+            import numpy as np
+            import matplotlib.pyplot as plt
+            import os
+
+            # 创建散点图
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+            # 1.5GHz 散点图
+            sample_size = min(5000, len(all_actual_1_5g))
+            indices = np.random.choice(len(all_actual_1_5g), sample_size, replace=False)
+
+            # 转换为dBsm单位
+            x1_linear = all_actual_1_5g[indices]
+            y1_linear = all_predicted_1_5g[indices]
+            x1_linear = np.maximum(x1_linear, 1e-12)
+            y1_linear = np.maximum(y1_linear, 1e-12)
+            x1_dbsm = 10 * np.log10(x1_linear)
+            y1_dbsm = 10 * np.log10(y1_linear)
+
+            ax1.scatter(x1_dbsm, y1_dbsm, alpha=0.3, s=1, color='blue', rasterized=True)
+            min_val, max_val = min(x1_dbsm.min(), y1_dbsm.min()), max(x1_dbsm.max(), y1_dbsm.max())
+            ax1.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, linewidth=2, label='理想预测线')
+            r1 = np.corrcoef(x1_dbsm, y1_dbsm)[0,1]
+            ax1.set_xlabel('真实值 (dBsm)')
+            ax1.set_ylabel('预测值 (dBsm)')
+            ax1.set_title(f'1.5GHz 全数据点散点图\nR = {r1:.4f}, 点数: {len(x1_dbsm)}')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+
+            # 3GHz 散点图
+            indices = np.random.choice(len(all_actual_3g), sample_size, replace=False)
+            x2_linear = all_actual_3g[indices]
+            y2_linear = all_predicted_3g[indices]
+            x2_linear = np.maximum(x2_linear, 1e-12)
+            y2_linear = np.maximum(y2_linear, 1e-12)
+            x2_dbsm = 10 * np.log10(x2_linear)
+            y2_dbsm = 10 * np.log10(y2_linear)
+
+            ax2.scatter(x2_dbsm, y2_dbsm, alpha=0.3, s=1, color='red', rasterized=True)
+            min_val, max_val = min(x2_dbsm.min(), y2_dbsm.min()), max(x2_dbsm.max(), y2_dbsm.max())
+            ax2.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, linewidth=2, label='理想预测线')
+            r2 = np.corrcoef(x2_dbsm, y2_dbsm)[0,1]
+            ax2.set_xlabel('真实值 (dBsm)')
+            ax2.set_ylabel('预测值 (dBsm)')
+            ax2.set_title(f'3GHz 全数据点散点图\nR = {r2:.4f}, 点数: {len(x2_dbsm)}')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            scatter_plot_path = os.path.join(results_dir, 'scatter_plots.png')
+            plt.savefig(scatter_plot_path, dpi=150, bbox_inches='tight')
+            plt.close()
+
+            print(f"散点图已保存到: {scatter_plot_path}")
+
+        except Exception as e:
+            print(f"保存散点图失败: {e}")
 
     # ======= 辅助功能 =======
 
