@@ -213,9 +213,13 @@ class ProgressiveTrainer:
         return base_weights
 
     def train_epoch(self, train_loader: TorchDataLoader, optimizer: optim.Optimizer,
-                   loss_fn: TriDimensionalRCSLoss, epoch: int, total_epochs: int) -> Dict[str, float]:
+                   loss_fn: TriDimensionalRCSLoss, epoch: int, total_epochs: int,
+                   stop_callback=None) -> Dict[str, float]:
         """
         训练一个epoch
+
+        参数:
+            stop_callback: 停止检查函数，返回True时停止训练
         """
         self.model.train()
 
@@ -228,6 +232,11 @@ class ProgressiveTrainer:
         num_batches = 0
 
         for batch_idx, (params, targets) in enumerate(train_loader):
+            # 检查停止标志
+            if stop_callback and stop_callback():
+                print(f"训练在epoch {epoch+1}, batch {batch_idx+1}被停止")
+                break
+
             try:
                 # 数据验证和清理
                 if torch.isnan(params).any() or torch.isinf(params).any():
@@ -263,15 +272,39 @@ class ProgressiveTrainer:
                 num_batches += 1
 
             except RuntimeError as e:
-                if "CUDA" in str(e) or "out of memory" in str(e):
-                    print(f"\n错误: GPU内存不足或CUDA错误 (批次 {batch_idx})")
+                if "CUDA" in str(e) or "out of memory" in str(e) or "illegal memory access" in str(e):
+                    print(f"\n严重错误: CUDA错误 (批次 {batch_idx})")
                     print(f"错误信息: {str(e)}")
+                    print(f"参数形状: {params.shape}")
+                    print(f"目标形状: {targets.shape}")
+
                     if torch.cuda.is_available():
                         print(f"当前GPU显存使用: {torch.cuda.memory_allocated()/1e9:.2f} GB")
                         print(f"峰值GPU显存使用: {torch.cuda.max_memory_allocated()/1e9:.2f} GB")
+                        print(f"GPU设备: {torch.cuda.get_device_name()}")
+
+                        # 立即清理内存并同步
                         torch.cuda.empty_cache()
-                    raise RuntimeError(f"CUDA错误: 批次大小({params.shape[0]})可能过大，请减小批次大小") from e
+                        torch.cuda.synchronize()
+
+                        # 检查数据完整性
+                        if torch.isnan(params).any() or torch.isinf(params).any():
+                            print("发现参数中有NaN或Inf值")
+                        if torch.isnan(targets).any() or torch.isinf(targets).any():
+                            print("发现目标中有NaN或Inf值")
+
+                    # 建议降低批次大小
+                    current_batch_size = params.shape[0]
+                    suggested_batch_size = max(1, current_batch_size // 2)
+
+                    raise RuntimeError(
+                        f"CUDA内存访问错误！\n"
+                        f"当前批次大小: {current_batch_size}\n"
+                        f"建议批次大小: {suggested_batch_size}\n"
+                        f"请重启程序并调小批次大小"
+                    ) from e
                 else:
+                    print(f"未知运行时错误: {str(e)}")
                     raise
 
         # 平均损失
@@ -348,9 +381,12 @@ class CrossValidationTrainer:
             'best_fold': 0
         }
 
-    def cross_validate(self, dataset: RCSDataset, training_config: Dict) -> Dict:
+    def cross_validate(self, dataset: RCSDataset, training_config: Dict, stop_callback=None) -> Dict:
         """
         执行交叉验证
+
+        参数:
+            stop_callback: 停止检查函数，返回True时停止训练
         """
         # 应用CUDA优化设置
         self._apply_cuda_optimizations()
@@ -391,9 +427,12 @@ class CrossValidationTrainer:
                                   pin_memory=memory_config.get('pin_memory', True),
                                   drop_last=False)  # 保留小批次以确保验证集不为空
 
-            # 清理上一fold的显存
+            # 清理上一fold的显存和状态
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                torch.cuda.reset_peak_memory_stats()
+                print(f"Fold {fold+1}: GPU内存已清理，当前使用: {torch.cuda.memory_allocated()/1e9:.2f} GB")
 
             # 创建模型
             model = create_model(**self.model_params)
@@ -401,12 +440,21 @@ class CrossValidationTrainer:
 
             # 训练，获取最佳损失和详细历史
             best_val_loss, fold_history = self._train_fold(trainer, train_loader, val_loader,
-                                                          training_config, fold)
+                                                          training_config, fold, stop_callback)
 
             fold_scores.append(best_val_loss)
             fold_details.append(fold_history)
 
             print(f"第 {fold+1} 折完成，最佳验证损失: {best_val_loss:.6f}")
+
+            # fold结束后彻底清理
+            del model, trainer, train_loader, val_loader, train_dataset, val_dataset
+            del train_params, train_rcs, val_params, val_rcs
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                print(f"Fold {fold+1}: 彻底清理完成，GPU内存: {torch.cuda.memory_allocated()/1e9:.2f} GB")
 
         # 计算交叉验证统计
         self.cv_results['fold_scores'] = fold_scores
@@ -424,22 +472,30 @@ class CrossValidationTrainer:
     def _get_safe_batch_size(self, requested_batch_size: int, dataset_size: int,
                            memory_config: Dict) -> int:
         """
-        获取安全的批次大小，避免CUDA内存错误和除零错误
+        获取安全的批次大小，避免CUDA内存错误和BatchNorm错误
         """
         # 确保批次大小不超过数据集大小
         max_possible = min(requested_batch_size, dataset_size)
 
-        # 额外检查：确保批次大小至少为1，且不超过数据集大小
-        if max_possible <= 0:
-            print(f"警告: 数据集大小为 {dataset_size}，使用最小批次大小 1")
-            return 1
+        # BatchNorm要求batch_size >= 2
+        if max_possible <= 1:
+            if dataset_size >= 2:
+                print(f"警告: 批次大小调整为2 (BatchNorm要求)")
+                return 2
+            else:
+                print(f"错误: 数据集大小 {dataset_size} < 2，无法使用BatchNorm")
+                raise ValueError(f"数据集太小 ({dataset_size})，无法训练包含BatchNorm的模型")
 
         # 对于小数据集，使用更保守的策略
         if dataset_size <= 10:
-            # 非常小的数据集，使用最小可能的批次大小
-            safe_batch_size = min(2, dataset_size)
-            print(f"小数据集检测 (大小={dataset_size})，使用保守批次大小: {safe_batch_size}")
-            return safe_batch_size
+            if dataset_size >= 2:
+                # 非常小的数据集，但满足BatchNorm要求
+                safe_batch_size = min(max_possible, dataset_size)
+                print(f"小数据集检测 (大小={dataset_size})，使用保守批次大小: {safe_batch_size}")
+                return safe_batch_size
+            else:
+                # 数据集太小，无法训练
+                raise ValueError(f"数据集大小 {dataset_size} < 2，无法使用BatchNorm层进行训练")
 
         # 大批次大小警告（仅警告，不限制）
         if requested_batch_size > 32:
@@ -459,8 +515,13 @@ class CrossValidationTrainer:
         应用CUDA优化设置
         """
         if torch.cuda.is_available():
-            # 启用cuDNN基准测试模式
-            torch.backends.cudnn.benchmark = True
+            # 设置CUDA调试环境变量
+            import os
+            os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
+            # 禁用cuDNN基准测试模式（更稳定）
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
 
             # 清理GPU内存
             torch.cuda.empty_cache()
@@ -468,16 +529,21 @@ class CrossValidationTrainer:
             # 重置GPU峰值内存统计
             torch.cuda.reset_peak_memory_stats()
 
-            # 限制GPU内存使用
+            # 更保守的GPU内存使用
             if hasattr(torch.cuda, 'set_per_process_memory_fraction'):
-                torch.cuda.set_per_process_memory_fraction(0.85)  # 降低到85%更安全
+                torch.cuda.set_per_process_memory_fraction(0.75)  # 更保守的75%
 
-            print("CUDA优化设置已应用")
+            print("CUDA调试设置已应用（CUDA_LAUNCH_BLOCKING=1）")
+            print(f"GPU设备: {torch.cuda.get_device_name()}")
+            print(f"GPU内存: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
 
     def _train_fold(self, trainer: ProgressiveTrainer, train_loader: TorchDataLoader,
-                   val_loader: TorchDataLoader, config: Dict, fold: int) -> Tuple[float, Dict]:
+                   val_loader: TorchDataLoader, config: Dict, fold: int, stop_callback=None) -> Tuple[float, Dict]:
         """
         训练单个fold，返回最佳损失和详细历史
+
+        参数:
+            stop_callback: 停止检查函数，返回True时停止训练
 
         返回:
             Tuple[float, Dict]: (最佳验证损失, 训练历史详情)
@@ -487,15 +553,45 @@ class CrossValidationTrainer:
                              lr=config['learning_rate'],
                              weight_decay=config['weight_decay'])
 
-        # 使用余弦退火调度器，支持周期性重启以逃离局部最优
-        # CosineAnnealingWarmRestarts: 学习率周期性从高到低，然后重启
-        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer,
-            T_0=50,              # 第一个周期的epoch数
-            T_mult=1,            # 每次重启后周期长度的倍数（1表示保持不变）
-            eta_min=config.get('min_lr', 2e-5),  # 最小学习率(从配置读取)
-            last_epoch=-1
-        )
+        # 根据配置选择学习率调度器
+        scheduler_type = config.get('lr_scheduler', 'cosine_restart')
+
+        if scheduler_type == 'cosine_restart':
+            # 余弦退火 + 周期性重启
+            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=config.get('restart_period', 100),  # 从配置读取重启周期
+                T_mult=1,
+                eta_min=config.get('min_lr', 1e-5),
+                last_epoch=-1
+            )
+        elif scheduler_type == 'cosine_simple':
+            # 简单余弦退火（无重启）
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=config['epochs'],  # 整个训练过程
+                eta_min=config.get('min_lr', 1e-5),
+                last_epoch=-1
+            )
+        elif scheduler_type == 'adaptive':
+            # 自适应调度器
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode='min',
+                factor=0.5,
+                patience=20,
+                min_lr=config.get('min_lr', 1e-5),
+                verbose=True
+            )
+        else:
+            # 默认使用余弦重启
+            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=config.get('restart_period', 100),
+                T_mult=1,
+                eta_min=config.get('min_lr', 1e-5),
+                last_epoch=-1
+            )
 
         # 备用：ReduceLROnPlateau作为辅助（可选）
         plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -526,17 +622,24 @@ class CrossValidationTrainer:
             'val_multiscale': [],
             'epochs': [],
             'learning_rates': [],
+            'gpu_memory': [],      # 添加GPU内存记录
+            'batch_sizes': [],     # 添加批次大小记录
             'fold': fold
         }
 
         for epoch in range(config['epochs']):
+            # 检查停止标志
+            if stop_callback and stop_callback():
+                print(f"交叉验证在fold {fold+1}, epoch {epoch+1}被停止")
+                break
+
             # 定期清理CUDA缓存
             if epoch % 10 == 0 and torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
             # 训练
             train_losses = trainer.train_epoch(train_loader, optimizer, loss_fn,
-                                             epoch, config['epochs'])
+                                             epoch, config['epochs'], stop_callback)
 
             # 验证
             val_losses = trainer.validate_epoch(val_loader, loss_fn)
@@ -553,11 +656,22 @@ class CrossValidationTrainer:
             fold_history['val_multiscale'].append(val_losses.get('multiscale', 0))
             fold_history['learning_rates'].append(optimizer.param_groups[0]['lr'])
 
-            # 学习率调度 - CosineAnnealingWarmRestarts每个epoch都要step
-            scheduler.step()
+            # 记录GPU内存使用
+            if torch.cuda.is_available():
+                gpu_memory = torch.cuda.memory_allocated() / 1024**3  # GB
+                fold_history['gpu_memory'].append(gpu_memory)
+            else:
+                fold_history['gpu_memory'].append(0)
 
-            # 可选：如果验证损失长期不改善，使用plateau_scheduler进一步降低学习率
-            # plateau_scheduler.step(val_losses['total'])
+            # 记录批次大小
+            fold_history['batch_sizes'].append(config.get('batch_size', 8))
+
+            # 学习率调度 - 根据调度器类型选择步进方式
+            scheduler_type = config.get('lr_scheduler', 'cosine_restart')
+            if scheduler_type == 'adaptive':
+                scheduler.step(val_losses['total'])
+            else:
+                scheduler.step()
 
             # 早停检查
             if val_losses['total'] < best_val_loss:
@@ -583,10 +697,12 @@ class CrossValidationTrainer:
 
             # 打印进度
             if epoch % 10 == 0:
+                gpu_mem_str = f", GPU: {fold_history['gpu_memory'][-1]:.2f}GB" if torch.cuda.is_available() else ""
                 print(f"Fold {fold+1}, Epoch {epoch+1}: "
                       f"Train Loss: {train_losses['total']:.4f}, "
                       f"Val Loss: {val_losses['total']:.4f}, "
-                      f"LR: {optimizer.param_groups[0]['lr']:.6f}")
+                      f"LR: {optimizer.param_groups[0]['lr']:.6f}, "
+                      f"Batch: {config.get('batch_size', 8)}{gpu_mem_str}")
 
         return best_val_loss, fold_history
 
@@ -725,8 +841,8 @@ def create_training_config(early_stopping_patience: int = 50) -> Dict:
     """
     return {
         'batch_size': 8,  # 适合小数据集的批次大小
-        'learning_rate': 3e-3,  # 初始学习率 (推荐范围: 1e-3 到 5e-3)
-        'min_lr': 2e-5,  # 最低学习率/eta_min (推荐范围: 1e-5 到 5e-5)
+        'learning_rate': 1e-3,  # 降低初始学习率，减少震荡
+        'min_lr': 1e-5,  # 降低最低学习率
         'weight_decay': 1e-4,
         'epochs': 200,
         'early_stopping_patience': early_stopping_patience,  # 可调节的早停参数

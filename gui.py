@@ -107,6 +107,13 @@ class RCSWaveletGUI:
         self.training_history = {}
         self.evaluation_results = {}
         self.stop_training_flag = False  # 训练停止标志
+
+        # 学习率调度策略信息
+        self.scheduler_descriptions = {
+            'cosine_restart': '余弦退火+重启：周期性重置LR',
+            'cosine_simple': '余弦退火：单调递减到最小值',
+            'adaptive': '自适应：根据验证损失调整'
+        }
         self.training_thread = None
 
         # 配置变量
@@ -408,9 +415,23 @@ class RCSWaveletGUI:
         min_lr_entry.grid(row=2, column=1, padx=5, pady=2)
         ttk.Label(left_config, text="(eta_min, 推荐: 1e-5~5e-5)", font=("Arial", 8), foreground="gray").grid(row=2, column=2, sticky=tk.W, pady=2)
 
-        ttk.Label(left_config, text="训练轮数:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Label(left_config, text="重启周期:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.restart_period_var = tk.StringVar(value=str(self.training_config.get('restart_period', 100)))
+        restart_entry = ttk.Entry(left_config, textvariable=self.restart_period_var, width=10)
+        restart_entry.grid(row=3, column=1, padx=5, pady=2)
+
+        # 重启周期快捷按钮
+        restart_preset_frame = ttk.Frame(left_config)
+        restart_preset_frame.grid(row=3, column=2, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(restart_preset_frame, text="快捷:", font=("Arial", 8)).pack(side=tk.LEFT)
+        for period_val in [50, 100, 150, 200]:
+            ttk.Button(restart_preset_frame, text=f"{period_val}",
+                      command=lambda v=period_val: self.restart_period_var.set(str(v)),
+                      width=4).pack(side=tk.LEFT, padx=1)
+
+        ttk.Label(left_config, text="训练轮数:").grid(row=4, column=0, sticky=tk.W, pady=2)
         self.epochs_var = tk.StringVar(value=str(self.training_config['epochs']))
-        ttk.Entry(left_config, textvariable=self.epochs_var, width=10).grid(row=3, column=1, padx=5, pady=2)
+        ttk.Entry(left_config, textvariable=self.epochs_var, width=10).grid(row=4, column=1, padx=5, pady=2)
 
         # 右侧配置
         right_config = ttk.Frame(config_frame)
@@ -423,6 +444,22 @@ class RCSWaveletGUI:
         ttk.Label(right_config, text="早停耐心:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.patience_var = tk.StringVar(value=str(self.training_config['early_stopping_patience']))
         ttk.Entry(right_config, textvariable=self.patience_var, width=10).grid(row=1, column=1, padx=5, pady=2)
+
+        # 学习率调度策略选择
+        ttk.Label(right_config, text="LR调度策略:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.lr_scheduler_var = tk.StringVar(value=self.training_config.get('lr_scheduler', 'cosine_restart'))
+        scheduler_combo = ttk.Combobox(right_config, textvariable=self.lr_scheduler_var,
+                                     values=['cosine_restart', 'cosine_simple', 'adaptive'],
+                                     state='readonly', width=12)
+        scheduler_combo.grid(row=2, column=1, padx=5, pady=2)
+
+        # 策略说明标签
+        self.scheduler_info_var = tk.StringVar(value=self._get_scheduler_info('cosine_restart'))
+        ttk.Label(right_config, textvariable=self.scheduler_info_var, font=("Arial", 8),
+                 foreground="gray", wraplength=200).grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=2)
+
+        # 绑定策略选择事件
+        scheduler_combo.bind('<<ComboboxSelected>>', self._on_scheduler_changed)
 
         # 小波配置区域
         wavelet_group = ttk.LabelFrame(config_group, text="小波配置")
@@ -973,6 +1010,8 @@ class RCSWaveletGUI:
             self.training_config['epochs'] = int(self.epochs_var.get())
             self.training_config['weight_decay'] = float(self.weight_decay_var.get())
             self.training_config['early_stopping_patience'] = int(self.patience_var.get())
+            self.training_config['restart_period'] = int(self.restart_period_var.get())
+            self.training_config['lr_scheduler'] = self.lr_scheduler_var.get()
 
             # 添加小波配置
             self.training_config['wavelet_config'] = self.get_current_wavelet_config()
@@ -1010,19 +1049,23 @@ class RCSWaveletGUI:
 
             # 获取preprocessing_stats（如果使用对数预处理）
             if self.use_log_preprocessing.get():
-                # 重新用RCSDataLoader加载以获取正确的preprocessing_stats
+                # 重新用RCSDataLoader加载以获取正确的预处理数据和stats
+                self.log_message("使用对数预处理，重新加载数据...")
                 data_loader = RCSDataLoader(self.data_config)
-                _, _ = data_loader.load_data()  # 加载数据以计算stats
+                params_preprocessed, rcs_preprocessed = data_loader.load_data()  # 加载并预处理数据
                 preprocessing_stats = data_loader.preprocessing_stats
                 self.training_config['preprocessing_stats'] = preprocessing_stats
                 self.training_config['use_log_output'] = True
                 self.log_message(f"预处理统计: mean={preprocessing_stats['mean']:.2f} dB, std={preprocessing_stats['std']:.2f} dB")
+
+                # 使用预处理后的数据创建数据集
+                dataset = RCSDataset(params_preprocessed, rcs_preprocessed, augment=True)
             else:
                 self.training_config['preprocessing_stats'] = None
                 self.training_config['use_log_output'] = False
 
-            # 创建数据集
-            dataset = RCSDataset(self.param_data, self.rcs_data, augment=True)
+                # 使用原始数据创建数据集
+                dataset = RCSDataset(self.param_data, self.rcs_data, augment=True)
 
             if self.use_cross_validation.get():
                 # 交叉验证训练
@@ -1050,7 +1093,11 @@ class RCSWaveletGUI:
                     device='cuda' if torch.cuda.is_available() else 'cpu'
                 )
 
-                results = trainer.cross_validate(dataset, self.training_config)
+                results = trainer.cross_validate(
+                    dataset,
+                    self.training_config,
+                    stop_callback=lambda: self.stop_training_flag
+                )
                 self.log_message(f"交叉验证完成，平均得分: {results['mean_score']:.4f}")
 
                 # 记录交叉验证结果到训练历史
@@ -1181,14 +1228,44 @@ class RCSWaveletGUI:
                                      lr=self.training_config['learning_rate'],
                                      weight_decay=self.training_config['weight_decay'])
 
-                # 使用余弦退火调度器，支持周期性重启
-                scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                    optimizer,
-                    T_0=50,              # 第一个周期50个epoch
-                    T_mult=1,            # 周期长度保持不变
-                    eta_min=self.training_config.get('min_lr', 2e-5),  # 最小学习率(从配置读取)
-                    last_epoch=-1
-                )
+                # 根据选择的策略创建调度器
+                scheduler_type = self.training_config.get('lr_scheduler', 'cosine_restart')
+                if scheduler_type == 'cosine_restart':
+                    # 余弦退火 + 周期性重启
+                    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                        optimizer,
+                        T_0=self.training_config.get('restart_period', 100),  # 从配置读取重启周期
+                        T_mult=1,
+                        eta_min=self.training_config.get('min_lr', 1e-5),
+                        last_epoch=-1
+                    )
+                elif scheduler_type == 'cosine_simple':
+                    # 简单余弦退火（无重启）
+                    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                        optimizer,
+                        T_max=self.training_config['epochs'],  # 整个训练过程
+                        eta_min=self.training_config.get('min_lr', 1e-5),
+                        last_epoch=-1
+                    )
+                elif scheduler_type == 'adaptive':
+                    # 自适应调度器
+                    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer,
+                        mode='min',
+                        factor=0.5,
+                        patience=20,
+                        min_lr=self.training_config.get('min_lr', 1e-5),
+                        verbose=True
+                    )
+                else:
+                    # 默认使用余弦重启
+                    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                        optimizer,
+                        T_0=self.training_config.get('restart_period', 100),
+                        T_mult=1,
+                        eta_min=self.training_config.get('min_lr', 1e-5),
+                        last_epoch=-1
+                    )
 
                 # 创建损失函数
                 loss_fn = create_loss_function(loss_weights=self.training_config.get('loss_weights'))
@@ -1205,6 +1282,7 @@ class RCSWaveletGUI:
                     'val_multiscale': [],
                     'gpu_memory': [],
                     'batch_sizes': [],
+                    'learning_rates': [],  # 添加学习率记录
                     'epochs': []
                 }
 
@@ -1244,8 +1322,11 @@ class RCSWaveletGUI:
 
                     # 训练
                     try:
-                        train_losses = trainer.train_epoch(train_loader, optimizer, loss_fn,
-                                                         epoch, self.training_config['epochs'])
+                        train_losses = trainer.train_epoch(
+                            train_loader, optimizer, loss_fn,
+                            epoch, self.training_config['epochs'],
+                            stop_callback=lambda: self.stop_training_flag
+                        )
                     except RuntimeError as e:
                         if "CUDA" in str(e):
                             self.log_message(f"CUDA错误在训练epoch {epoch+1}: {str(e)}")
@@ -1282,8 +1363,17 @@ class RCSWaveletGUI:
                         self.training_history['gpu_memory'].append(0)
 
                     # 学习率调度
-                    # CosineAnnealingWarmRestarts每个epoch都要step
-                    scheduler.step()
+                    scheduler_type = self.training_config.get('lr_scheduler', 'cosine_restart')
+                    if scheduler_type == 'adaptive':
+                        # ReduceLROnPlateau需要传入验证损失
+                        scheduler.step(val_losses['total'])
+                    else:
+                        # 其他调度器直接step
+                        scheduler.step()
+
+                    # 记录当前学习率
+                    current_lr = optimizer.param_groups[0]['lr']
+                    self.training_history['learning_rates'].append(current_lr)
 
                     # 记录进度
                     if epoch % 5 == 0:  # 每5个epoch记录一次
@@ -1291,6 +1381,7 @@ class RCSWaveletGUI:
                         self.log_message(f"Epoch {epoch+1}/{self.training_config['epochs']}: "
                                        f"Train Loss: {train_losses['total']:.4f}, "
                                        f"Val Loss: {val_losses['total']:.4f}, "
+                                       f"LR: {current_lr:.6f}, "
                                        f"Batch: {self.training_config['batch_size']}{gpu_mem_str}")
 
                     # 早停检查
@@ -1362,8 +1453,18 @@ class RCSWaveletGUI:
         """训练停止后的UI更新"""
         self.log_message("训练已停止")
         self.train_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.NORMAL)  # 重新启用停止按钮
         self.status_var.set("训练已停止")
         self.stop_training_flag = False  # 重置停止标志
+
+    def _get_scheduler_info(self, scheduler_type):
+        """获取调度器信息"""
+        return self.scheduler_descriptions.get(scheduler_type, '')
+
+    def _on_scheduler_changed(self, event=None):
+        """调度器选择改变回调"""
+        scheduler_type = self.lr_scheduler_var.get()
+        self.scheduler_info_var.set(self._get_scheduler_info(scheduler_type))
 
     def test_logging(self):
         """测试日志系统"""
@@ -1520,9 +1621,6 @@ class RCSWaveletGUI:
             return
 
         try:
-            # 创建测试数据集
-            test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
-
             # 准备预处理统计信息（使用训练时保存的stats）
             use_log = self.use_log_preprocessing.get()
 
@@ -1539,6 +1637,16 @@ class RCSWaveletGUI:
                 self.log_message(f"重新计算的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
             else:
                 preprocessing_stats = None
+
+            # 创建测试数据集：使用预处理后的数据
+            if use_log:
+                # 重新加载预处理后的数据用于评估
+                data_loader = RCSDataLoader(self.data_config)
+                params_eval, rcs_eval = data_loader.load_data()
+                test_dataset = RCSDataset(params_eval[-20:], rcs_eval[-20:], augment=False)
+            else:
+                # 使用原始数据
+                test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
 
             # 创建评估器
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -2279,6 +2387,10 @@ class RCSWaveletGUI:
         import matplotlib.pyplot as plt
         from datetime import datetime
 
+        # 设置中文字体
+        plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+
         # 创建独立的图表
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         fig.suptitle(f'交叉验证第{fold_idx + 1}折 - 训练历史', fontsize=14)
@@ -2356,6 +2468,11 @@ class RCSWaveletGUI:
 
     def _display_fold_in_gui(self, fold_data, fold_idx):
         """在GUI中显示指定折的训练历史"""
+        # 设置中文字体
+        import matplotlib.pyplot as plt
+        plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+
         self.vis_fig.clear()
 
         epochs = fold_data.get('epochs', [])
@@ -2430,6 +2547,11 @@ class RCSWaveletGUI:
 
     def _display_simple_training_history(self):
         """显示简单训练模式的历史（非交叉验证）"""
+        # 设置中文字体
+        import matplotlib.pyplot as plt
+        plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+
         self.vis_fig.clear()
 
         epochs = self.training_history.get('epochs', [])

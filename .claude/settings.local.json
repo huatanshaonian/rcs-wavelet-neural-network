@@ -23,7 +23,9 @@
       "Bash(taskkill:*)",
       "Bash(tasklist)",
       "Bash(findstr:*)",
-      "Bash(set CUDA_LAUNCH_BLOCKING=1)"
+      "Bash(set CUDA_LAUNCH_BLOCKING=1)",
+      "Bash(find:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []
