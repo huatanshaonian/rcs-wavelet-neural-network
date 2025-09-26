@@ -1063,6 +1063,9 @@ class RCSWaveletGUI:
         # 重置停止标志
         self.stop_training_flag = False
 
+        # CUDA预检查和初始化
+        self._initialize_cuda_safely()
+
         # 设置全局随机种子以保证训练的可重现性
         self._set_random_seeds(42)
 
@@ -1567,10 +1570,47 @@ class RCSWaveletGUI:
             self.model_trained = True
             self.log_message("训练完成！")
 
+        except RuntimeError as e:
+            if "CUDA" in str(e) and "illegal memory access" in str(e):
+                self.log_message(f"CUDA非法内存访问错误: {str(e)}")
+                self.log_message("正在尝试重置CUDA环境并重启训练...")
+
+                # 尝试CUDA恢复
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                    if hasattr(torch.cuda, 'reset_peak_memory_stats'):
+                        torch.cuda.reset_peak_memory_stats()
+
+                    # 强制垃圾回收
+                    import gc
+                    gc.collect()
+
+                    self.log_message("CUDA环境重置完成，建议重新开始训练")
+
+                except Exception as reset_e:
+                    self.log_message(f"CUDA重置失败: {reset_e}")
+                    self.log_message("建议重启程序或使用CPU模式")
+            else:
+                self.log_message(f"训练运行时错误: {str(e)}")
+
         except Exception as e:
             self.log_message(f"训练失败: {str(e)}")
+            import traceback
+            self.log_message("详细错误信息:")
+            self.log_message(traceback.format_exc())
 
         finally:
+            # 清理资源
+            try:
+                import torch
+                import gc
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
+            except:
+                pass
+
             # 重新启用按钮
             self.root.after(0, self._training_finished)
 
@@ -1585,18 +1625,134 @@ class RCSWaveletGUI:
         import random
         import torch
 
+        # 设置CPU随机种子
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
 
+        # CUDA安全设置
         if torch.cuda.is_available():
-            torch.cuda.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)
-            # 确保CUDA操作的确定性（可能会降低性能）
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
+            try:
+                # 清理CUDA缓存和上下文
+                self.log_message("正在重置CUDA上下文...")
+                torch.cuda.empty_cache()
 
-        self.log_message(f"已设置全局随机种子: {seed}")
+                # 尝试重置CUDA设备
+                if torch.cuda.device_count() > 0:
+                    current_device = torch.cuda.current_device()
+                    torch.cuda.set_device(current_device)
+
+                # 安全设置CUDA随机种子
+                torch.cuda.manual_seed(seed)
+                torch.cuda.manual_seed_all(seed)
+
+                # 确保CUDA操作的确定性
+                torch.backends.cudnn.deterministic = True
+                torch.backends.cudnn.benchmark = False
+
+                self.log_message(f"CUDA随机种子设置成功: {seed}")
+
+            except RuntimeError as e:
+                self.log_message(f"CUDA随机种子设置失败: {e}")
+                self.log_message("尝试重置CUDA设备...")
+
+                try:
+                    # 强制重置CUDA设备
+                    torch.cuda.empty_cache()
+                    torch.cuda.reset_peak_memory_stats()
+
+                    # 重新初始化CUDA
+                    if hasattr(torch.cuda, 'init'):
+                        torch.cuda.init()
+
+                    # 再次尝试设置种子
+                    torch.cuda.manual_seed(seed)
+                    torch.cuda.manual_seed_all(seed)
+
+                    self.log_message("CUDA设备重置成功，种子设置完成")
+
+                except Exception as reset_error:
+                    self.log_message(f"CUDA重置失败: {reset_error}")
+                    self.log_message("将使用CPU模式训练")
+                    # 禁用CUDA，强制使用CPU
+                    import os
+                    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+        self.log_message(f"全局随机种子设置完成: {seed}")
+
+    def _initialize_cuda_safely(self):
+        """安全初始化CUDA环境"""
+        import torch
+
+        if not torch.cuda.is_available():
+            self.log_message("CUDA不可用，将使用CPU训练")
+            return
+
+        try:
+            self.log_message("检查CUDA状态...")
+
+            # 检查CUDA设备数量
+            device_count = torch.cuda.device_count()
+            self.log_message(f"检测到 {device_count} 个CUDA设备")
+
+            if device_count == 0:
+                self.log_message("警告: 无可用CUDA设备")
+                return
+
+            # 获取当前设备信息
+            current_device = torch.cuda.current_device()
+            device_name = torch.cuda.get_device_name(current_device)
+            self.log_message(f"当前CUDA设备: {current_device} ({device_name})")
+
+            # 检查显存状态
+            total_memory = torch.cuda.get_device_properties(current_device).total_memory
+            allocated_memory = torch.cuda.memory_allocated(current_device)
+            cached_memory = torch.cuda.memory_reserved(current_device)
+
+            self.log_message(f"显存状态: 总计{total_memory//1024//1024}MB, "
+                           f"已分配{allocated_memory//1024//1024}MB, "
+                           f"缓存{cached_memory//1024//1024}MB")
+
+            # 清理显存
+            if cached_memory > 0:
+                self.log_message("清理CUDA缓存...")
+                torch.cuda.empty_cache()
+
+            # 测试简单CUDA操作
+            test_tensor = torch.tensor([1.0], device='cuda')
+            test_result = test_tensor + 1.0
+            del test_tensor, test_result
+
+            self.log_message("CUDA状态检查完成，环境正常")
+
+        except RuntimeError as e:
+            if "CUDA error" in str(e):
+                self.log_message(f"CUDA错误: {e}")
+                self.log_message("尝试重置CUDA环境...")
+
+                try:
+                    # 强制清理所有CUDA资源
+                    torch.cuda.empty_cache()
+                    if hasattr(torch.cuda, 'reset_peak_memory_stats'):
+                        torch.cuda.reset_peak_memory_stats()
+
+                    # 重新测试CUDA
+                    test_tensor = torch.tensor([1.0], device='cuda')
+                    del test_tensor
+
+                    self.log_message("CUDA环境重置成功")
+
+                except Exception as reset_error:
+                    self.log_message(f"CUDA重置失败: {reset_error}")
+                    self.log_message("强制使用CPU模式")
+                    import os
+                    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+            else:
+                raise
+
+        except Exception as e:
+            self.log_message(f"CUDA初始化出现未知错误: {e}")
+            self.log_message("将尝试继续使用当前设置")
 
     def stop_training(self):
         """停止训练"""

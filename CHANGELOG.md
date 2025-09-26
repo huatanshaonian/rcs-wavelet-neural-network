@@ -235,10 +235,57 @@ trainer.train_epoch(...)  # 自动适配
 
 ---
 
+## v1.5.4 - CUDA非法内存访问错误修复 (2025-XX-XX)
+
+### 🛠️ 稳定性修复
+**Git位置**: `dev` 分支 - 最新提交
+
+#### 问题描述
+- 训练开始时出现严重CUDA非法内存访问错误
+- 错误发生在`torch.cuda.manual_seed_all(seed)`调用时
+- 导致训练无法启动，界面卡死
+
+#### 修复方案
+1. **CUDA预检查机制** (`gui.py::_initialize_cuda_safely`)
+   - 训练前检查CUDA设备状态和显存使用情况
+   - 自动清理CUDA缓存，重置峰值内存统计
+   - 测试基础CUDA操作确保环境正常
+   ```python
+   # 检查显存状态
+   total_memory = torch.cuda.get_device_properties(current_device).total_memory
+   allocated_memory = torch.cuda.memory_allocated(current_device)
+   cached_memory = torch.cuda.memory_reserved(current_device)
+   ```
+
+2. **安全随机种子设置** (`gui.py::_set_random_seeds`)
+   - 分离CPU和CUDA种子设置，独立错误处理
+   - 多层CUDA错误恢复: 缓存清理→设备重置→CPU回退
+   - 智能降级: CUDA失败时自动切换到CPU模式
+   ```python
+   except RuntimeError as e:
+       self.log_message(f"CUDA随机种子设置失败: {e}")
+       # 尝试重置CUDA设备
+       torch.cuda.empty_cache()
+       torch.cuda.reset_peak_memory_stats()
+   ```
+
+3. **增强训练错误处理** (`gui.py::_train_model`)
+   - 专门处理CUDA非法内存访问错误
+   - 训练完成后强制资源清理和垃圾回收
+   - 提供具体恢复建议和详细错误信息
+
+#### 验证测试
+- ✅ CUDA状态检查: 设备信息、显存状态、基础操作测试
+- ✅ 随机种子设置: CPU和CUDA种子独立设置成功
+- ✅ 错误恢复: 模拟CUDA错误，成功触发重置机制
+- ✅ 资源清理: 训练结束后内存和缓存正确释放
+
+---
+
 ## v1.5.3 - GUI网络选择功能增强 (2025-XX-XX)
 
 ### 🎛️ 界面交互优化
-**Git位置**: `master` 分支 - 最新提交
+**Git位置**: `dev` 分支 - commit `dfa4391`
 
 #### 主要功能
 1. **插件化网络选择** (`gui.py::_update_network_options`, `_on_network_selection_changed`)
