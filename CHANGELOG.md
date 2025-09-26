@@ -235,6 +235,49 @@ trainer.train_epoch(...)  # 自动适配
 
 ---
 
+## v1.5.3 - GUI网络选择功能增强 (2025-XX-XX)
+
+### 🎛️ 界面交互优化
+**Git位置**: `master` 分支 - 最新提交
+
+#### 主要功能
+1. **插件化网络选择** (`gui.py::_update_network_options`, `_on_network_selection_changed`)
+   - 支持6种网络架构选择: `original`, `enhanced`, `wavelet_rcs`, `simple_fc`, `resnet_rcs`, `flexible_output`
+   - 动态加载: 自动识别可用网络类型，支持插件化架构扩展
+   - 智能回退: 现代接口失败时自动回退到传统选项
+   ```python
+   available_networks = get_available_networks()
+   network_names = list(available_networks.keys())
+   self.arch_combo['values'] = network_names
+   ```
+
+2. **实时网络信息显示** (`gui.py::network_info_label`)
+   - 网络描述: 显示每个网络的功能特点
+   - 参数统计: 实时显示选择网络的参数量 (例: `参数: 8,848,194`)
+   - 自动更新: 选择改变时立即更新信息显示
+   ```python
+   info_text = f"{info.get('description', '无描述')} | 参数: {info.get('parameters', {}).get('total', 0):,}"
+   ```
+
+3. **向后兼容性保证** (`gui.py::MODERN_INTERFACE_AVAILABLE`)
+   - 传统支持: 仍支持原有的`original`/`enhanced`选择
+   - 渐进增强: 在插件化架构可用时提供扩展功能
+   - 错误处理: 导入失败时不影响GUI正常运行
+
+#### 技术实现细节
+- **导入管理**: `from modern_wavelet_network import get_available_networks, get_network_info`
+- **事件绑定**: `<<ComboboxSelected>>` 事件处理网络切换
+- **界面组件**: 扩展Combobox宽度至15个字符，添加信息标签
+- **初始化流程**: 启动时自动加载网络选项并显示默认信息
+
+#### 用户体验提升
+- **直观选择**: 下拉菜单显示所有可用网络类型
+- **信息透明**: 每个网络的参数量和描述一目了然
+- **无缝切换**: 选择不同网络类型无需重启GUI
+- **智能默认**: 自动选择合适的默认网络类型
+
+---
+
 ## v1.5.2 - 统计图表优化 (2025-XX-XX)
 
 ### 📊 可视化改进

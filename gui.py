@@ -67,6 +67,13 @@ try:
                          create_training_config, create_data_config, RCSDataset)
     from evaluation import RCSEvaluator, evaluate_model_with_visualizations
     from data_cache import create_cache_manager
+
+    # 导入现代化的网络接口
+    try:
+        from modern_wavelet_network import get_available_networks, get_network_info, get_available_losses
+        MODERN_INTERFACE_AVAILABLE = True
+    except ImportError:
+        MODERN_INTERFACE_AVAILABLE = False
 except ImportError as e:
     print(f"导入错误: {e}")
     print("请确保所有模块文件都在当前目录下")
@@ -532,9 +539,21 @@ class RCSWaveletGUI:
 
         ttk.Label(arch_frame, text="网络架构:").pack(side=tk.LEFT)
         self.model_type = tk.StringVar(value="enhanced")
-        arch_combo = ttk.Combobox(arch_frame, textvariable=self.model_type, width=12, state="readonly")
-        arch_combo['values'] = ("original", "enhanced")
-        arch_combo.pack(side=tk.LEFT, padx=10)
+        self.arch_combo = ttk.Combobox(arch_frame, textvariable=self.model_type, width=15, state="readonly")
+
+        # 初始化网络选项
+        self._update_network_options()
+        self.arch_combo.pack(side=tk.LEFT, padx=10)
+
+        # 绑定选择变化事件
+        self.arch_combo.bind("<<ComboboxSelected>>", self._on_network_selection_changed)
+
+        # 网络信息显示
+        self.network_info_label = ttk.Label(arch_frame, text="", font=("Arial", 8))
+        self.network_info_label.pack(side=tk.LEFT, padx=10)
+
+        # 初始化网络信息显示
+        self._on_network_selection_changed()
 
         # 损失函数选择
         ttk.Label(arch_frame, text="损失函数:").pack(side=tk.LEFT, padx=(20,0))
@@ -1617,6 +1636,54 @@ class RCSWaveletGUI:
         """调度器选择改变回调"""
         scheduler_type = self.lr_scheduler_var.get()
         self.scheduler_info_var.set(self._get_scheduler_info(scheduler_type))
+
+    def _update_network_options(self):
+        """更新网络架构选项列表"""
+        if MODERN_INTERFACE_AVAILABLE:
+            try:
+                # 获取所有可用网络
+                available_networks = get_available_networks()
+                network_names = list(available_networks.keys())
+                self.arch_combo['values'] = network_names
+
+                # 如果当前选择的网络不在列表中，选择第一个
+                current = self.model_type.get()
+                if current not in network_names and network_names:
+                    self.model_type.set(network_names[0])
+
+            except Exception as e:
+                # 如果现代接口失败，回退到传统选项
+                print(f"现代网络接口更新失败: {e}")
+                self.arch_combo['values'] = ['original', 'enhanced']
+                if self.model_type.get() not in ['original', 'enhanced']:
+                    self.model_type.set('enhanced')
+        else:
+            # 使用传统网络选项
+            self.arch_combo['values'] = ['original', 'enhanced']
+            if self.model_type.get() not in ['original', 'enhanced']:
+                self.model_type.set('enhanced')
+
+    def _on_network_selection_changed(self, event=None):
+        """网络架构选择改变回调"""
+        selected_network = self.model_type.get()
+
+        if MODERN_INTERFACE_AVAILABLE:
+            try:
+                # 获取网络详细信息
+                info = get_network_info(selected_network)
+                info_text = f"{info.get('description', '无描述')} | 参数: {info.get('parameters', {}).get('total', 0):,}"
+                self.network_info_label.config(text=info_text)
+            except Exception as e:
+                print(f"获取网络信息失败: {e}")
+                self.network_info_label.config(text="信息获取失败")
+        else:
+            # 传统网络信息
+            if selected_network == 'original':
+                self.network_info_label.config(text="传统小波RCS网络 | 参数: ~1.7M")
+            elif selected_network == 'enhanced':
+                self.network_info_label.config(text="增强版小波RCS网络 | 参数: ~60M")
+            else:
+                self.network_info_label.config(text="")
 
     def test_logging(self):
         """测试日志系统"""
