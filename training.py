@@ -237,12 +237,28 @@ class ProgressiveTrainer:
                         print(f"警告: BatchNorm running_var 异常，重置")
                         module.running_var.fill_(1.0)
 
-        # 更新损失权重
+        # 更新损失权重 - 根据损失函数类型适配
         progressive_weights = self._create_progressive_loss_weights(epoch, total_epochs)
-        loss_fn.loss_weights = progressive_weights
 
-        epoch_losses = {'total': 0, 'mse': 0, 'symmetry': 0,
-                       'multiscale': 0}
+        # 检查损失函数类型并适配权重键
+        if hasattr(loss_fn, 'loss_weights') and hasattr(loss_fn, '__class__'):
+            loss_class_name = loss_fn.__class__.__name__
+            if 'ImprovedRCSLoss' in loss_class_name:
+                # 增强版损失函数 - 映射到对应的键
+                enhanced_weights = {
+                    'main': progressive_weights.get('mse', 1.0),
+                    'aux': progressive_weights.get('multiscale', 0.3),
+                    'freq_consistency': 0.1,
+                    'continuity': 0.05,
+                    'symmetry': progressive_weights.get('symmetry', 0.05)
+                }
+                loss_fn.loss_weights = enhanced_weights
+            else:
+                # 原始损失函数
+                loss_fn.loss_weights = progressive_weights
+
+        # 初始化损失字典 - 只包含total，其他键将动态添加
+        epoch_losses = {'total': 0}
         num_batches = 0
 
         for batch_idx, (params, targets) in enumerate(train_loader):
@@ -336,10 +352,11 @@ class ProgressiveTrainer:
                     else:
                         raise step_error
 
-                # 累积损失
-                for key in epoch_losses:
-                    if key in losses:
-                        epoch_losses[key] += losses[key].item()
+                # 累积损失 - 动态适应不同损失函数的键
+                for key, value in losses.items():
+                    if key not in epoch_losses:
+                        epoch_losses[key] = 0
+                    epoch_losses[key] += value.item()
                 num_batches += 1
 
             except RuntimeError as e:
@@ -396,8 +413,8 @@ class ProgressiveTrainer:
         """
         self.model.eval()
 
-        epoch_losses = {'total': 0, 'mse': 0, 'symmetry': 0,
-                       'multiscale': 0}
+        # 初始化损失字典 - 只包含total，其他键将动态添加
+        epoch_losses = {'total': 0}
         num_batches = 0
 
         with torch.no_grad():
@@ -407,9 +424,11 @@ class ProgressiveTrainer:
                 predictions = self.model(params)
                 losses = loss_fn(predictions, targets)
 
-                for key in epoch_losses:
-                    if key in losses:
-                        epoch_losses[key] += losses[key].item()
+                # 累积损失 - 动态适应不同损失函数的键
+                for key, value in losses.items():
+                    if key not in epoch_losses:
+                        epoch_losses[key] = 0
+                    epoch_losses[key] += value.item()
                 num_batches += 1
 
         # 平均损失
@@ -719,12 +738,13 @@ class CrossValidationTrainer:
             fold_history['epochs'].append(epoch + 1)
             fold_history['train_losses'].append(train_losses['total'])
             fold_history['val_losses'].append(val_losses['total'])
-            fold_history['train_mse'].append(train_losses.get('mse', 0))
+            # 兼容不同损失函数的键映射
+            fold_history['train_mse'].append(train_losses.get('mse', train_losses.get('main', 0)))
             fold_history['train_symmetry'].append(train_losses.get('symmetry', 0))
-            fold_history['train_multiscale'].append(train_losses.get('multiscale', 0))
-            fold_history['val_mse'].append(val_losses.get('mse', 0))
+            fold_history['train_multiscale'].append(train_losses.get('multiscale', train_losses.get('aux', 0)))
+            fold_history['val_mse'].append(val_losses.get('mse', val_losses.get('main', 0)))
             fold_history['val_symmetry'].append(val_losses.get('symmetry', 0))
-            fold_history['val_multiscale'].append(val_losses.get('multiscale', 0))
+            fold_history['val_multiscale'].append(val_losses.get('multiscale', val_losses.get('aux', 0)))
             fold_history['learning_rates'].append(optimizer.param_groups[0]['lr'])
 
             # 记录GPU内存使用

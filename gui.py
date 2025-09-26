@@ -1212,25 +1212,63 @@ class RCSWaveletGUI:
                 checkpoint_path = f'checkpoints/best_model_fold_{best_fold}.pth'
                 checkpoint = torch.load(checkpoint_path, map_location='cpu')
 
-                # 兼容旧格式和新格式checkpoint
-                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-                    # 新格式：包含preprocessing_stats
-                    model_params_with_log = self.model_params.copy()
-                    model_params_with_log['use_log_output'] = checkpoint.get('use_log_output', self.use_log_preprocessing.get())
-                    model_params_with_log['model_type'] = getattr(self, 'model_type', tk.StringVar(value='enhanced')).get()
-                    self.current_model = create_model(**model_params_with_log)
-                    self.current_model.load_state_dict(checkpoint['model_state_dict'])
-                    self.preprocessing_stats = checkpoint.get('preprocessing_stats')
-                    self.log_message(f"加载checkpoint (新格式): epoch={checkpoint.get('epoch')}, val_loss={checkpoint.get('val_loss', 0):.6f}")
+                # 兼容旧格式和新格式checkpoint，并自动检测架构类型
+                def try_load_with_architecture(checkpoint_data, model_type):
+                    """尝试用指定架构加载模型"""
+                    try:
+                        model_params_with_log = self.model_params.copy()
+                        if isinstance(checkpoint_data, dict) and 'model_state_dict' in checkpoint_data:
+                            model_params_with_log['use_log_output'] = checkpoint_data.get('use_log_output', self.use_log_preprocessing.get())
+                            state_dict = checkpoint_data['model_state_dict']
+                        else:
+                            model_params_with_log['use_log_output'] = self.use_log_preprocessing.get()
+                            state_dict = checkpoint_data
+
+                        model_params_with_log['model_type'] = model_type
+                        test_model = create_model(**model_params_with_log)
+                        test_model.load_state_dict(state_dict)
+                        return test_model, True
+                    except Exception as e:
+                        self.log_message(f"  尝试{model_type}架构失败: {str(e)[:100]}...")
+                        return None, False
+
+                # 获取用户选择的架构类型
+                preferred_type = getattr(self, 'model_type', tk.StringVar(value='enhanced')).get()
+
+                # 首先尝试用户选择的架构
+                model, success = try_load_with_architecture(checkpoint, preferred_type)
+
+                if success:
+                    self.current_model = model
+                    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                        self.preprocessing_stats = checkpoint.get('preprocessing_stats')
+                        self.log_message(f"加载checkpoint (新格式, {preferred_type}架构): epoch={checkpoint.get('epoch')}, val_loss={checkpoint.get('val_loss', 0):.6f}")
+                    else:
+                        self.preprocessing_stats = None
+                        self.log_message(f"加载checkpoint (旧格式, {preferred_type}架构，无preprocessing_stats)")
                 else:
-                    # 旧格式：只有state_dict
-                    model_params_with_log = self.model_params.copy()
-                    model_params_with_log['use_log_output'] = self.use_log_preprocessing.get()
-                    model_params_with_log['model_type'] = getattr(self, 'model_type', tk.StringVar(value='enhanced')).get()
-                    self.current_model = create_model(**model_params_with_log)
-                    self.current_model.load_state_dict(checkpoint)
-                    self.preprocessing_stats = None
-                    self.log_message("加载checkpoint (旧格式，无preprocessing_stats)")
+                    # 如果失败，尝试另一种架构
+                    fallback_type = 'original' if preferred_type == 'enhanced' else 'enhanced'
+                    self.log_message(f"尝试回退到{fallback_type}架构...")
+
+                    model, success = try_load_with_architecture(checkpoint, fallback_type)
+
+                    if success:
+                        self.current_model = model
+                        # 更新GUI选择以反映实际使用的架构
+                        self.model_type.set(fallback_type)
+                        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                            self.preprocessing_stats = checkpoint.get('preprocessing_stats')
+                            self.log_message(f"成功加载checkpoint ({fallback_type}架构): epoch={checkpoint.get('epoch')}, val_loss={checkpoint.get('val_loss', 0):.6f}")
+                        else:
+                            self.preprocessing_stats = None
+                            self.log_message(f"成功加载checkpoint ({fallback_type}架构，无preprocessing_stats)")
+
+                        messagebox.showinfo("架构自动调整",
+                                          f"模型文件与{preferred_type}架构不兼容\n"
+                                          f"已自动切换到{fallback_type}架构加载")
+                    else:
+                        raise Exception(f"模型文件与{preferred_type}和{fallback_type}架构都不兼容，无法加载")
 
             else:
                 # 简单训练
@@ -1427,12 +1465,13 @@ class RCSWaveletGUI:
                     self.training_history['epochs'].append(epoch + 1)
                     self.training_history['train_loss'].append(train_losses['total'])
                     self.training_history['val_loss'].append(val_losses['total'])
-                    self.training_history['train_mse'].append(train_losses.get('mse', 0))
+                    # 兼容不同损失函数的键映射
+                    self.training_history['train_mse'].append(train_losses.get('mse', train_losses.get('main', 0)))
                     self.training_history['train_symmetry'].append(train_losses.get('symmetry', 0))
-                    self.training_history['train_multiscale'].append(train_losses.get('multiscale', 0))
-                    self.training_history['val_mse'].append(val_losses.get('mse', 0))
+                    self.training_history['train_multiscale'].append(train_losses.get('multiscale', train_losses.get('aux', 0)))
+                    self.training_history['val_mse'].append(val_losses.get('mse', val_losses.get('main', 0)))
                     self.training_history['val_symmetry'].append(val_losses.get('symmetry', 0))
-                    self.training_history['val_multiscale'].append(val_losses.get('multiscale', 0))
+                    self.training_history['val_multiscale'].append(val_losses.get('multiscale', val_losses.get('aux', 0)))
                     self.training_history['batch_sizes'].append(self.training_config['batch_size'])
 
                     # 监控GPU显存使用
