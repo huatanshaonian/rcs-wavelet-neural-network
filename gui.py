@@ -372,6 +372,24 @@ class RCSWaveletGUI:
                                    font=self.font_small)
         cache_info_label.pack(padx=5, pady=(0, 5))
 
+        # 系统管理组
+        system_group = ttk.LabelFrame(main_frame, text="系统管理")
+        system_group.pack(fill=tk.X, pady=(10, 0))
+
+        system_frame = ttk.Frame(system_group)
+        system_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 系统管理按钮
+        ttk.Button(system_frame, text="重置CUDA", command=self.reset_cuda_manually).pack(side=tk.LEFT, padx=5)
+        ttk.Button(system_frame, text="检查CUDA状态", command=self.check_cuda_status).pack(side=tk.LEFT, padx=5)
+        ttk.Button(system_frame, text="清理GPU内存", command=self.clean_gpu_memory).pack(side=tk.LEFT, padx=5)
+
+        # 系统说明
+        system_info_label = ttk.Label(system_group,
+                                    text="CUDA重置功能可以解决GPU内存错误和训练启动问题。\n建议在遇到CUDA错误时使用重置功能。",
+                                    font=self.font_small)
+        system_info_label.pack(padx=5, pady=(0, 5))
+
         # 数据信息显示
         info_group = ttk.LabelFrame(main_frame, text="数据信息")
         info_group.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
@@ -1028,6 +1046,168 @@ class RCSWaveletGUI:
             error_msg = f"强制重新读取数据失败: {str(e)}"
             self.log_message(f"❌ {error_msg}")
             self.status_var.set("数据读取失败")
+            messagebox.showerror("错误", error_msg)
+
+    # ======= 系统管理功能 =======
+
+    def reset_cuda_manually(self):
+        """手动重置CUDA环境"""
+        try:
+            import torch
+            import gc
+
+            self.log_message("🔧 开始手动重置CUDA环境...")
+
+            if not torch.cuda.is_available():
+                messagebox.showinfo("信息", "CUDA不可用，无需重置")
+                return
+
+            # 1. 清理所有CUDA缓存
+            self.log_message("  清理CUDA缓存...")
+            torch.cuda.empty_cache()
+
+            # 2. 重置峰值内存统计
+            if hasattr(torch.cuda, 'reset_peak_memory_stats'):
+                torch.cuda.reset_peak_memory_stats()
+                self.log_message("  重置内存统计...")
+
+            # 3. 同步所有CUDA操作
+            torch.cuda.synchronize()
+            self.log_message("  同步CUDA操作...")
+
+            # 4. 强制垃圾回收
+            gc.collect()
+            self.log_message("  执行垃圾回收...")
+
+            # 5. 重新初始化随机种子
+            try:
+                torch.cuda.manual_seed(42)
+                torch.cuda.manual_seed_all(42)
+                self.log_message("  重置CUDA随机种子...")
+            except RuntimeError as seed_error:
+                self.log_message(f"  随机种子重置失败: {seed_error}")
+
+            # 6. 测试CUDA功能
+            try:
+                test_tensor = torch.tensor([1.0], device='cuda')
+                test_result = test_tensor + 1.0
+                del test_tensor, test_result
+                self.log_message("  CUDA功能测试通过...")
+            except RuntimeError as test_error:
+                self.log_message(f"  CUDA测试失败: {test_error}")
+                raise test_error
+
+            self.log_message("✅ CUDA环境重置完成！")
+            messagebox.showinfo("成功", "CUDA环境已成功重置！\n现在可以安全地开始训练。")
+
+        except Exception as e:
+            error_msg = f"CUDA重置失败: {str(e)}"
+            self.log_message(f"❌ {error_msg}")
+            messagebox.showerror("错误", f"{error_msg}\n\n建议：\n1. 重启程序\n2. 使用CPU模式训练")
+
+    def check_cuda_status(self):
+        """检查CUDA状态并显示详细信息"""
+        try:
+            import torch
+
+            self.log_message("🔍 检查CUDA状态...")
+
+            if not torch.cuda.is_available():
+                status_info = "CUDA状态: 不可用\n建议使用CPU模式训练"
+                self.log_message("❌ CUDA不可用")
+                messagebox.showinfo("CUDA状态", status_info)
+                return
+
+            # 获取设备信息
+            device_count = torch.cuda.device_count()
+            current_device = torch.cuda.current_device()
+            device_name = torch.cuda.get_device_name(current_device)
+
+            # 获取内存信息
+            properties = torch.cuda.get_device_properties(current_device)
+            total_memory = properties.total_memory
+            allocated_memory = torch.cuda.memory_allocated(current_device)
+            cached_memory = torch.cuda.memory_reserved(current_device)
+
+            # 计算内存使用率
+            memory_usage = (allocated_memory / total_memory) * 100
+            cache_usage = (cached_memory / total_memory) * 100
+
+            status_info = f"""CUDA状态: 可用 ✅
+
+设备信息:
+• 设备数量: {device_count}
+• 当前设备: {current_device}
+• 设备名称: {device_name}
+
+内存信息:
+• 总内存: {total_memory//1024//1024:,} MB
+• 已分配: {allocated_memory//1024//1024:,} MB ({memory_usage:.1f}%)
+• 缓存: {cached_memory//1024//1024:,} MB ({cache_usage:.1f}%)
+• 可用: {(total_memory-cached_memory)//1024//1024:,} MB
+
+计算能力: {properties.major}.{properties.minor}
+多处理器: {properties.multi_processor_count}"""
+
+            self.log_message("✅ CUDA状态检查完成")
+            messagebox.showinfo("CUDA状态详情", status_info)
+
+        except Exception as e:
+            error_msg = f"CUDA状态检查失败: {str(e)}"
+            self.log_message(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def clean_gpu_memory(self):
+        """清理GPU内存"""
+        try:
+            import torch
+            import gc
+
+            self.log_message("🧹 开始清理GPU内存...")
+
+            if not torch.cuda.is_available():
+                messagebox.showinfo("信息", "CUDA不可用，无需清理GPU内存")
+                return
+
+            # 记录清理前的内存使用
+            before_allocated = torch.cuda.memory_allocated()
+            before_cached = torch.cuda.memory_reserved()
+
+            self.log_message(f"  清理前: 已分配 {before_allocated//1024//1024}MB, 缓存 {before_cached//1024//1024}MB")
+
+            # 清理缓存
+            torch.cuda.empty_cache()
+
+            # 垃圾回收
+            gc.collect()
+
+            # 再次清理
+            torch.cuda.empty_cache()
+
+            # 记录清理后的内存使用
+            after_allocated = torch.cuda.memory_allocated()
+            after_cached = torch.cuda.memory_reserved()
+
+            freed_allocated = before_allocated - after_allocated
+            freed_cached = before_cached - after_cached
+
+            result_msg = f"""GPU内存清理完成 ✅
+
+清理结果:
+• 释放已分配内存: {freed_allocated//1024//1024} MB
+• 释放缓存内存: {freed_cached//1024//1024} MB
+
+当前状态:
+• 已分配: {after_allocated//1024//1024} MB
+• 缓存: {after_cached//1024//1024} MB"""
+
+            self.log_message("✅ GPU内存清理完成")
+            self.log_message(f"  释放内存: {freed_cached//1024//1024}MB")
+            messagebox.showinfo("清理完成", result_msg)
+
+        except Exception as e:
+            error_msg = f"GPU内存清理失败: {str(e)}"
+            self.log_message(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
     # ======= 训练功能 =======
