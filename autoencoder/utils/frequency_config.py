@@ -5,9 +5,15 @@
 
 import torch
 from typing import Dict, Tuple, Any
-from ..models.cnn_autoencoder import WaveletAutoEncoder, ParameterMapper
-from ..utils.wavelet_transform import WaveletTransform
-from .data_adapters import RCS_DataAdapter
+
+# 使用绝对导入避免相对导入问题
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from models.cnn_autoencoder import WaveletAutoEncoder, ParameterMapper
+from utils.wavelet_transform import WaveletTransform
+from utils.data_adapters import RCS_DataAdapter
 
 
 class FrequencyConfig:
@@ -204,7 +210,7 @@ def create_autoencoder_system(config_name: str = '2freq',
         'config_info': freq_config.get_info()
     }
 
-    print("✅ AutoEncoder系统创建完成!")
+    print(">> AutoEncoder系统创建完成!")
     print(f"配置信息: {system['config_info']}")
 
     return system
@@ -257,7 +263,7 @@ def test_frequency_configs():
     # 验证隐空间维度一致性
     print(f"\n--- 兼容性验证 ---")
     print(f"隐空间维度一致性: {latent_2freq.shape[1] == latent_3freq.shape[1]}")
-    print("✅ 不同频率配置可以使用相同的参数映射器")
+    print(">> 不同频率配置可以使用相同的参数映射器")
 
     # 测试参数映射
     mapper = system_2freq['parameter_mapper']  # 可以复用

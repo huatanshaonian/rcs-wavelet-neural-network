@@ -116,6 +116,11 @@ class RCSWaveletGUI:
         self.evaluation_results = {}
         self.stop_training_flag = False  # 训练停止标志
 
+        # AutoEncoder相关状态
+        self.ae_system = None
+        self.ae_training_history = {}
+        self.ae_trained = False
+
         # 学习率调度策略信息
         self.scheduler_descriptions = {
             'cosine_restart': '余弦退火+重启：周期性重置LR',
@@ -139,6 +144,7 @@ class RCSWaveletGUI:
         self.cache_manager = create_cache_manager()
 
         # 初始化界面
+        self.init_autoencoder_vars()
         self.create_widgets()
         self.setup_layout()
 
@@ -150,6 +156,31 @@ class RCSWaveletGUI:
         self.status_var.set("就绪")
         self.status_bar = ttk.Label(root, textvariable=self.status_var, relief=tk.SUNKEN)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def init_autoencoder_vars(self):
+        """初始化AutoEncoder配置变量"""
+
+        # 频率配置
+        self.ae_freq_config = tk.StringVar(value="2freq")  # 2freq 或 3freq
+
+        # 模型配置
+        self.ae_latent_dim = tk.StringVar(value="256")
+        self.ae_dropout_rate = tk.StringVar(value="0.2")
+        self.ae_wavelet_type = tk.StringVar(value="db4")
+
+        # 训练配置
+        self.ae_batch_size = tk.StringVar(value="16")
+        self.ae_learning_rate = tk.StringVar(value="1e-3")
+        self.ae_epochs_stage1 = tk.StringVar(value="100")  # AE预训练轮数
+        self.ae_epochs_stage2 = tk.StringVar(value="50")   # 参数映射训练轮数
+        self.ae_epochs_stage3 = tk.StringVar(value="20")   # 端到端微调轮数
+
+        # 数据预处理配置
+        self.ae_normalize = tk.BooleanVar(value=True)
+        self.ae_log_transform = tk.BooleanVar(value=False)
+
+        # 训练模式
+        self.ae_training_mode = tk.StringVar(value="三阶段训练")  # 三阶段训练 或 端到端训练
 
     def init_loss_config_vars(self):
         """初始化损失函数配置变量"""
@@ -284,22 +315,27 @@ class RCSWaveletGUI:
         self.notebook.add(self.loss_config_frame, text="损失函数配置")
         self.create_loss_config_tab()
 
-        # 标签页3: 模型训练
+        # 标签页3: AutoEncoder配置
+        self.autoencoder_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.autoencoder_frame, text="AutoEncoder")
+        self.create_autoencoder_tab()
+
+        # 标签页4: 模型训练
         self.training_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.training_frame, text="模型训练")
         self.create_training_tab()
 
-        # 标签页4: 模型评估
+        # 标签页5: 模型评估
         self.evaluation_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.evaluation_frame, text="模型评估")
         self.create_evaluation_tab()
 
-        # 标签页5: RCS预测
+        # 标签页6: RCS预测
         self.prediction_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.prediction_frame, text="RCS预测")
         self.create_prediction_tab()
 
-        # 标签页6: 可视化
+        # 标签页7: 可视化
         self.visualization_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.visualization_frame, text="可视化")
         self.create_visualization_tab()
@@ -434,6 +470,131 @@ class RCSWaveletGUI:
 
         self.data_info_text = scrolledtext.ScrolledText(info_group, height=15)
         self.data_info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def create_autoencoder_tab(self):
+        """创建AutoEncoder配置标签页"""
+
+        # 主框架
+        main_frame = ttk.Frame(self.autoencoder_frame)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 左侧面板：配置区域
+        left_panel = ttk.Frame(main_frame)
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+
+        # 频率配置组
+        freq_group = ttk.LabelFrame(left_panel, text="频率配置")
+        freq_group.pack(fill=tk.X, pady=(0, 10))
+
+        freq_frame = ttk.Frame(freq_group)
+        freq_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Label(freq_frame, text="频率配置:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        freq_combo = ttk.Combobox(freq_frame, textvariable=self.ae_freq_config,
+                                 values=["2freq", "3freq"], state="readonly", width=10)
+        freq_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        ttk.Label(freq_frame, text="(2freq: 1.5GHz+3GHz, 3freq: +6GHz)",
+                 font=self.font_small).grid(row=0, column=2, sticky="w")
+
+        # 模型架构配置组
+        model_group = ttk.LabelFrame(left_panel, text="模型架构配置")
+        model_group.pack(fill=tk.X, pady=(0, 10))
+
+        model_frame = ttk.Frame(model_group)
+        model_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行
+        ttk.Label(model_frame, text="隐空间维度:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        ttk.Entry(model_frame, textvariable=self.ae_latent_dim, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        ttk.Label(model_frame, text="Dropout率:").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(model_frame, textvariable=self.ae_dropout_rate, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        # 第二行
+        ttk.Label(model_frame, text="小波类型:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        wavelet_combo = ttk.Combobox(model_frame, textvariable=self.ae_wavelet_type,
+                                   values=["db4", "db8", "haar", "bior2.2"], state="readonly", width=8)
+        wavelet_combo.grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 训练配置组
+        training_group = ttk.LabelFrame(left_panel, text="训练配置")
+        training_group.pack(fill=tk.X, pady=(0, 10))
+
+        training_frame = ttk.Frame(training_group)
+        training_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行
+        ttk.Label(training_frame, text="批次大小:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        ttk.Entry(training_frame, textvariable=self.ae_batch_size, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        ttk.Label(training_frame, text="学习率:").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(training_frame, textvariable=self.ae_learning_rate, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        # 第二行：训练轮数
+        ttk.Label(training_frame, text="阶段1(AE预训练):").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage1, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        ttk.Label(training_frame, text="阶段2(参数映射):").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage2, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 第三行
+        ttk.Label(training_frame, text="阶段3(端到端):").grid(row=2, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage3, width=8).grid(row=2, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 数据预处理配置组
+        preprocess_group = ttk.LabelFrame(left_panel, text="数据预处理")
+        preprocess_group.pack(fill=tk.X, pady=(0, 10))
+
+        preprocess_frame = ttk.Frame(preprocess_group)
+        preprocess_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Checkbutton(preprocess_frame, text="数据标准化", variable=self.ae_normalize).pack(side=tk.LEFT, padx=(0, 20))
+        ttk.Checkbutton(preprocess_frame, text="对数变换", variable=self.ae_log_transform).pack(side=tk.LEFT)
+
+        # 训练控制组
+        control_group = ttk.LabelFrame(left_panel, text="训练控制")
+        control_group.pack(fill=tk.X, pady=(0, 10))
+
+        control_frame = ttk.Frame(control_group)
+        control_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 训练模式选择
+        ttk.Label(control_frame, text="训练模式:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        mode_combo = ttk.Combobox(control_frame, textvariable=self.ae_training_mode,
+                                values=["三阶段训练", "端到端训练"], state="readonly", width=12)
+        mode_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        # 按钮组
+        button_frame = ttk.Frame(control_frame)
+        button_frame.grid(row=1, column=0, columnspan=4, sticky="w", pady=(10, 0))
+
+        ttk.Button(button_frame, text="创建AE系统", command=self.create_ae_system).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="开始训练", command=self.start_ae_training).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="停止训练", command=self.stop_ae_training).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="保存模型", command=self.save_ae_model).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="加载模型", command=self.load_ae_model).pack(side=tk.LEFT)
+
+        # 右侧面板：状态和日志
+        right_panel = ttk.Frame(main_frame)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # 系统状态组
+        status_group = ttk.LabelFrame(right_panel, text="系统状态")
+        status_group.pack(fill=tk.X, pady=(0, 10))
+
+        self.ae_status_text = scrolledtext.ScrolledText(status_group, height=8, width=50)
+        self.ae_status_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 训练日志组
+        log_group = ttk.LabelFrame(right_panel, text="训练日志")
+        log_group.pack(fill=tk.BOTH, expand=True)
+
+        self.ae_log_text = scrolledtext.ScrolledText(log_group, height=20, width=50)
+        self.ae_log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 初始化状态显示
+        self.update_ae_status()
 
     def create_training_tab(self):
         """创建模型训练标签页"""
@@ -4112,6 +4273,229 @@ GPU峰值: {gpu_peak:.2f}GB"""
         except Exception as e:
             print(f"关闭时发生错误: {e}")
             self.root.destroy()
+
+
+    # ==================== AutoEncoder功能函数 ====================
+
+    def update_ae_status(self):
+        """更新AutoEncoder系统状态显示"""
+        try:
+            status_info = []
+            status_info.append("=== AutoEncoder系统状态 ===")
+
+            # 频率配置信息
+            freq_config = self.ae_freq_config.get()
+            freq_info = "1.5GHz+3GHz" if freq_config == "2freq" else "1.5GHz+3GHz+6GHz"
+            status_info.append(f"频率配置: {freq_config} ({freq_info})")
+
+            # 模型配置信息
+            status_info.append(f"隐空间维度: {self.ae_latent_dim.get()}")
+            status_info.append(f"小波类型: {self.ae_wavelet_type.get()}")
+            status_info.append(f"Dropout率: {self.ae_dropout_rate.get()}")
+
+            # 系统状态
+            if self.ae_system is None:
+                status_info.append("系统状态: 未创建")
+            else:
+                status_info.append("系统状态: 已创建")
+                # 显示模型信息
+                model_info = self.ae_system['autoencoder'].get_model_info()
+                status_info.append(f"模型参数量: {model_info['parameters']['total']:,}")
+                status_info.append(f"压缩比: {model_info['compression_ratio']}")
+
+            if self.ae_trained:
+                status_info.append("训练状态: 已训练")
+            else:
+                status_info.append("训练状态: 未训练")
+
+            # 更新显示
+            self.ae_status_text.delete(1.0, tk.END)
+            self.ae_status_text.insert(tk.END, "\n".join(status_info))
+
+        except Exception as e:
+            print(f"更新AE状态失败: {e}")
+
+    def ae_log(self, message):
+        """添加AutoEncoder日志信息"""
+        try:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            log_message = f"[{timestamp}] {message}\n"
+
+            self.ae_log_text.insert(tk.END, log_message)
+            self.ae_log_text.see(tk.END)
+            self.root.update_idletasks()
+
+        except Exception as e:
+            print(f"添加AE日志失败: {e}")
+
+    def create_ae_system(self):
+        """创建AutoEncoder系统"""
+        try:
+            if not self.data_loaded:
+                messagebox.showwarning("警告", "请先加载数据!")
+                return
+
+            self.ae_log("开始创建AutoEncoder系统...")
+
+            # 导入AutoEncoder模块
+            try:
+                import sys
+                sys.path.append('autoencoder')
+                from autoencoder.utils.frequency_config import create_autoencoder_system
+
+                # 获取配置参数
+                freq_config = self.ae_freq_config.get()
+                latent_dim = int(self.ae_latent_dim.get())
+                dropout_rate = float(self.ae_dropout_rate.get())
+                wavelet_type = self.ae_wavelet_type.get()
+                normalize = self.ae_normalize.get()
+
+                # 创建系统
+                self.ae_system = create_autoencoder_system(
+                    config_name=freq_config,
+                    latent_dim=latent_dim,
+                    dropout_rate=dropout_rate,
+                    wavelet=wavelet_type,
+                    normalize=normalize
+                )
+
+                self.ae_log(f"✓ AutoEncoder系统创建成功!")
+                self.ae_log(f"  配置: {freq_config}")
+                self.ae_log(f"  隐空间维度: {latent_dim}")
+                self.ae_log(f"  模型参数量: {self.ae_system['autoencoder'].get_parameter_count()['total']:,}")
+
+                # 更新状态
+                self.update_ae_status()
+
+                messagebox.showinfo("成功", "AutoEncoder系统创建成功!")
+
+            except ImportError as e:
+                error_msg = f"导入AutoEncoder模块失败: {e}"
+                self.ae_log(f"✗ {error_msg}")
+                messagebox.showerror("错误", error_msg)
+
+        except Exception as e:
+            error_msg = f"创建AutoEncoder系统失败: {e}"
+            self.ae_log(f"✗ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def start_ae_training(self):
+        """开始AutoEncoder训练"""
+        try:
+            if self.ae_system is None:
+                messagebox.showwarning("警告", "请先创建AutoEncoder系统!")
+                return
+
+            if not self.data_loaded:
+                messagebox.showwarning("警告", "请先加载数据!")
+                return
+
+            self.ae_log("开始AutoEncoder训练...")
+
+            # 获取训练配置
+            batch_size = int(self.ae_batch_size.get())
+            learning_rate = float(self.ae_learning_rate.get())
+            epochs_stage1 = int(self.ae_epochs_stage1.get())
+            epochs_stage2 = int(self.ae_epochs_stage2.get())
+            epochs_stage3 = int(self.ae_epochs_stage3.get())
+            training_mode = self.ae_training_mode.get()
+
+            self.ae_log(f"训练配置:")
+            self.ae_log(f"  批次大小: {batch_size}")
+            self.ae_log(f"  学习率: {learning_rate}")
+            self.ae_log(f"  训练模式: {training_mode}")
+
+            if training_mode == "三阶段训练":
+                self.ae_log(f"  阶段1(AE预训练): {epochs_stage1} epochs")
+                self.ae_log(f"  阶段2(参数映射): {epochs_stage2} epochs")
+                self.ae_log(f"  阶段3(端到端): {epochs_stage3} epochs")
+
+            # 这里应该启动训练线程，但需要实际的数据
+            # 目前先显示训练配置
+            self.ae_log("训练功能需要与实际数据集成...")
+            self.ae_log("请在数据管理页面加载真实的RCS数据集")
+
+            messagebox.showinfo("提示", "训练功能需要实际数据集成后完成实现")
+
+        except Exception as e:
+            error_msg = f"启动训练失败: {e}"
+            self.ae_log(f"✗ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def stop_ae_training(self):
+        """停止AutoEncoder训练"""
+        self.ae_log("训练停止请求...")
+        messagebox.showinfo("提示", "训练停止功能将在训练实现后完成")
+
+    def save_ae_model(self):
+        """保存AutoEncoder模型"""
+        try:
+            if self.ae_system is None:
+                messagebox.showwarning("警告", "没有可保存的模型!")
+                return
+
+            filename = filedialog.asksaveasfilename(
+                title="保存AutoEncoder模型",
+                defaultextension=".pth",
+                filetypes=[("PyTorch模型", "*.pth"), ("所有文件", "*.*")]
+            )
+
+            if filename:
+                # 保存模型状态
+                import torch
+                model_state = {
+                    'autoencoder': self.ae_system['autoencoder'].state_dict(),
+                    'parameter_mapper': self.ae_system['parameter_mapper'].state_dict(),
+                    'config': self.ae_system['config_info'],
+                    'training_history': self.ae_training_history
+                }
+
+                torch.save(model_state, filename)
+                self.ae_log(f"✓ 模型保存成功: {filename}")
+                messagebox.showinfo("成功", f"模型已保存到: {filename}")
+
+        except Exception as e:
+            error_msg = f"保存模型失败: {e}"
+            self.ae_log(f"✗ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def load_ae_model(self):
+        """加载AutoEncoder模型"""
+        try:
+            filename = filedialog.askopenfilename(
+                title="加载AutoEncoder模型",
+                filetypes=[("PyTorch模型", "*.pth"), ("所有文件", "*.*")]
+            )
+
+            if filename:
+                self.ae_log(f"正在加载模型: {filename}")
+
+                # 这里需要先创建系统，然后加载状态
+                if self.ae_system is None:
+                    self.ae_log("请先创建AutoEncoder系统框架")
+                    messagebox.showwarning("警告", "请先创建AutoEncoder系统!")
+                    return
+
+                import torch
+                checkpoint = torch.load(filename, map_location='cpu')
+
+                # 加载模型状态
+                self.ae_system['autoencoder'].load_state_dict(checkpoint['autoencoder'])
+                self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
+
+                if 'training_history' in checkpoint:
+                    self.ae_training_history = checkpoint['training_history']
+
+                self.ae_trained = True
+                self.ae_log(f"✓ 模型加载成功: {filename}")
+                self.update_ae_status()
+
+                messagebox.showinfo("成功", f"模型已从以下位置加载: {filename}")
+
+        except Exception as e:
+            error_msg = f"加载模型失败: {e}"
+            self.ae_log(f"✗ {error_msg}")
+            messagebox.showerror("错误", error_msg)
 
 
 def main():
