@@ -17,16 +17,19 @@ class RCS_DataAdapter:
 
     def __init__(self,
                  normalize: bool = True,
-                 log_transform: bool = False):
+                 log_transform: bool = False,
+                 expected_frequencies: int = 2):
         """
         初始化数据适配器
 
         Args:
             normalize: 是否标准化数据
             log_transform: 是否进行对数变换
+            expected_frequencies: 预期频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
         """
         self.normalize = normalize
         self.log_transform = log_transform
+        self.expected_frequencies = expected_frequencies
 
         # 数据统计信息
         self.data_stats = {}
@@ -37,14 +40,23 @@ class RCS_DataAdapter:
         适配RCS数据
 
         Args:
-            rcs_data: [N, 91, 91, 2] 原始RCS数据
+            rcs_data: [N, 91, 91, num_freq] 原始RCS数据
 
         Returns:
-            adapted_data: [N, 91, 91, 2] 适配后的数据
+            adapted_data: [N, 91, 91, num_freq] 适配后的数据
         """
-        # 确保数据格式正确
-        if len(rcs_data.shape) != 4 or rcs_data.shape[1:] != (91, 91, 2):
-            raise ValueError(f"RCS数据形状应为 [N, 91, 91, 2]，实际为 {rcs_data.shape}")
+        # 确保数据格式正确并检测频率数量
+        if len(rcs_data.shape) != 4:
+            raise ValueError(f"RCS数据应为4维，实际为{len(rcs_data.shape)}维")
+
+        actual_frequencies = rcs_data.shape[3]
+        if actual_frequencies != self.expected_frequencies:
+            print(f"[警告] 检测到{actual_frequencies}个频率，预期{self.expected_frequencies}个")
+            self.expected_frequencies = actual_frequencies  # 自动适配
+
+        expected_shape = (91, 91, self.expected_frequencies)
+        if rcs_data.shape[1:] != expected_shape:
+            raise ValueError(f"RCS数据形状应为 [N, {expected_shape[0]}, {expected_shape[1]}, {expected_shape[2]}]，实际为 {rcs_data.shape}")
 
         data = rcs_data.copy()
 
@@ -78,10 +90,10 @@ class RCS_DataAdapter:
         逆适配：将处理后的数据转回原始格式
 
         Args:
-            adapted_data: [N, 91, 91, 2] 适配后的数据
+            adapted_data: [N, 91, 91, num_freq] 适配后的数据
 
         Returns:
-            original_data: [N, 91, 91, 2] 原始格式数据
+            original_data: [N, 91, 91, num_freq] 原始格式数据
         """
         data = adapted_data.detach().cpu().numpy()
 
@@ -111,7 +123,7 @@ class AutoEncoderDataset(Dataset):
         初始化数据集
 
         Args:
-            rcs_data: [N, 91, 91, 2] RCS数据
+            rcs_data: [N, 91, 91, num_freq] RCS数据
             params_data: [N, 9] 参数数据（可选）
             adapter: 数据适配器
         """
@@ -159,7 +171,7 @@ def create_ae_dataloaders(rcs_data: np.ndarray,
     创建AutoEncoder训练用的数据加载器
 
     Args:
-        rcs_data: [N, 91, 91, 2] RCS数据
+        rcs_data: [N, 91, 91, num_freq] RCS数据
         params_data: [N, 9] 参数数据（可选）
         validation_split: 验证集比例
         batch_size: 批次大小
@@ -201,47 +213,76 @@ def test_data_adapters():
     """测试数据适配器"""
     print("=== 数据适配器测试 ===")
 
-    # 创建测试数据
+    # 测试2频率配置
+    print("=== 测试2频率配置 ===")
     n_samples = 10
-    rcs_data = np.random.randn(n_samples, 91, 91, 2) * 10
+    rcs_data_2freq = np.random.randn(n_samples, 91, 91, 2) * 10
     params_data = np.random.randn(n_samples, 9)
 
-    print(f"原始数据: RCS {rcs_data.shape}, 参数 {params_data.shape}")
+    print(f"2频率原始数据: RCS {rcs_data_2freq.shape}, 参数 {params_data.shape}")
 
-    # 测试适配器
-    adapter = RCS_DataAdapter(normalize=True, log_transform=False)
+    adapter_2freq = RCS_DataAdapter(normalize=True, log_transform=False, expected_frequencies=2)
 
-    # 适配数据
-    adapted_rcs = adapter.adapt_rcs_data(rcs_data)
-    print(f"适配后RCS形状: {adapted_rcs.shape}")
-    print(f"适配后数值范围: [{adapted_rcs.min():.3f}, {adapted_rcs.max():.3f}]")
+    # 适配2频率数据
+    adapted_rcs_2freq = adapter_2freq.adapt_rcs_data(rcs_data_2freq)
+    print(f"2频率适配后RCS形状: {adapted_rcs_2freq.shape}")
+    print(f"2频率适配后数值范围: [{adapted_rcs_2freq.min():.3f}, {adapted_rcs_2freq.max():.3f}]")
 
     # 逆适配
-    recovered_rcs = adapter.inverse_adapt(adapted_rcs)
-    print(f"恢复后RCS形状: {recovered_rcs.shape}")
+    recovered_rcs_2freq = adapter_2freq.inverse_adapt(adapted_rcs_2freq)
+    print(f"2频率恢复后RCS形状: {recovered_rcs_2freq.shape}")
 
     # 计算恢复误差
-    recovery_error = np.mean((rcs_data - recovered_rcs) ** 2)
-    print(f"恢复MSE误差: {recovery_error:.6f}")
+    recovery_error_2freq = np.mean((rcs_data_2freq - recovered_rcs_2freq) ** 2)
+    print(f"2频率恢复MSE误差: {recovery_error_2freq:.6f}")
+
+    # 测试3频率配置
+    print("\n=== 测试3频率配置 ===")
+    rcs_data_3freq = np.random.randn(n_samples, 91, 91, 3) * 10
+    print(f"3频率原始数据: RCS {rcs_data_3freq.shape}")
+
+    adapter_3freq = RCS_DataAdapter(normalize=True, log_transform=False, expected_frequencies=3)
+    adapted_rcs_3freq = adapter_3freq.adapt_rcs_data(rcs_data_3freq)
+    print(f"3频率适配后RCS形状: {adapted_rcs_3freq.shape}")
+
+    recovered_rcs_3freq = adapter_3freq.inverse_adapt(adapted_rcs_3freq)
+    recovery_error_3freq = np.mean((rcs_data_3freq - recovered_rcs_3freq) ** 2)
+    print(f"3频率恢复MSE误差: {recovery_error_3freq:.6f}")
 
     # 测试数据集
-    dataset = AutoEncoderDataset(rcs_data, params_data, adapter)
-    print(f"数据集大小: {len(dataset)}")
+    print("\n=== 测试数据集创建 ===")
+    dataset_2freq = AutoEncoderDataset(rcs_data_2freq, params_data, adapter_2freq)
+    dataset_3freq = AutoEncoderDataset(rcs_data_3freq, params_data, adapter_3freq)
+    print(f"2频率数据集大小: {len(dataset_2freq)}")
+    print(f"3频率数据集大小: {len(dataset_3freq)}")
 
     # 测试数据加载器
-    train_loader, val_loader = create_ae_dataloaders(
-        rcs_data, params_data, validation_split=0.3, batch_size=4
+    train_loader_2freq, val_loader_2freq = create_ae_dataloaders(
+        rcs_data_2freq, params_data, validation_split=0.3, batch_size=4
+    )
+    train_loader_3freq, val_loader_3freq = create_ae_dataloaders(
+        rcs_data_3freq, params_data, validation_split=0.3, batch_size=4
     )
 
-    print(f"训练加载器批次数: {len(train_loader)}")
-    print(f"验证加载器批次数: {len(val_loader)}")
+    print(f"2频率训练加载器批次数: {len(train_loader_2freq)}")
+    print(f"3频率训练加载器批次数: {len(train_loader_3freq)}")
 
-    # 测试一个批次
-    for batch_rcs in train_loader:
-        print(f"批次RCS形状: {batch_rcs.shape}")
+    # 测试批次数据
+    for batch_rcs in train_loader_2freq:
+        print(f"2频率批次RCS形状: {batch_rcs.shape}")
         break
 
-    return recovery_error < 1e-10  # 恢复应该是精确的
+    for batch_rcs in train_loader_3freq:
+        print(f"3频率批次RCS形状: {batch_rcs.shape}")
+        break
+
+    # 验证自动适配功能
+    print("\n=== 测试自动适配功能 ===")
+    adapter_auto = RCS_DataAdapter(expected_frequencies=2)  # 预期2频率
+    adapted_auto = adapter_auto.adapt_rcs_data(rcs_data_3freq)  # 但给3频率数据
+    print(f"自动适配后频率数: {adapter_auto.expected_frequencies}")
+
+    return (recovery_error_2freq < 1e-10 and recovery_error_3freq < 1e-10)
 
 
 if __name__ == "__main__":

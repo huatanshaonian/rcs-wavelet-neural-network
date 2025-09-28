@@ -18,16 +18,21 @@ class WaveletTransform:
     支持RCS数据的多频带小波分解和重建
     """
 
-    def __init__(self, wavelet: str = 'db4', mode: str = 'symmetric'):
+    def __init__(self,
+                 wavelet: str = 'db4',
+                 mode: str = 'symmetric',
+                 num_frequencies: int = 2):
         """
         初始化小波变换器
 
         Args:
             wavelet: 小波基函数 ('db1', 'db4', 'db8', 'haar', 'bior2.2')
             mode: 边界处理模式 ('symmetric', 'periodization', 'zero')
+            num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
         """
         self.wavelet = wavelet
         self.mode = mode
+        self.num_frequencies = num_frequencies
 
         # 验证小波类型
         if wavelet not in pywt.wavelist():
@@ -36,17 +41,17 @@ class WaveletTransform:
         # 获取小波属性
         self.wavelet_obj = pywt.Wavelet(wavelet)
 
-        print(f"初始化小波变换器: {wavelet}, 模式: {mode}")
+        print(f"初始化小波变换器: {wavelet}, 模式: {mode}, 频率数: {num_frequencies}")
 
     def forward_transform(self, rcs_data: torch.Tensor) -> torch.Tensor:
         """
         RCS数据 → 小波系数
 
         Args:
-            rcs_data: [B, 91, 91, 2] RCS数据 (批次, 高度, 宽度, 频率)
+            rcs_data: [B, 91, 91, num_freq] RCS数据 (批次, 高度, 宽度, 频率)
 
         Returns:
-            wavelet_coeffs: [B, 91, 91, 8] 小波系数 (2频率 × 4频带)
+            wavelet_coeffs: [B, 91, 91, num_freq*4] 小波系数 (num_freq频率 × 4频带)
         """
         batch_size = rcs_data.shape[0]
         height, width = rcs_data.shape[1], rcs_data.shape[2]
@@ -58,7 +63,7 @@ class WaveletTransform:
         for batch_idx in range(batch_size):
             batch_coeffs = []
 
-            for freq_idx in range(2):  # 1.5GHz, 3GHz
+            for freq_idx in range(self.num_frequencies):  # 动态频率数量
                 # 提取单频数据 [91, 91]
                 freq_data = rcs_data[batch_idx, :, :, freq_idx].detach().cpu().numpy()
 
@@ -83,11 +88,11 @@ class WaveletTransform:
 
                 batch_coeffs.extend(freq_coeffs)
 
-            # 堆叠为 [8, 91, 91]，然后转置为 [91, 91, 8]
+            # 堆叠为 [num_freq*4, 91, 91]，然后转置为 [91, 91, num_freq*4]
             sample_coeffs = torch.stack(batch_coeffs, dim=0).permute(1, 2, 0)
             all_coeffs.append(sample_coeffs)
 
-        # 最终输出: [B, 91, 91, 8]
+        # 最终输出: [B, 91, 91, num_freq*4]
         wavelet_tensor = torch.stack(all_coeffs, dim=0)
 
         # 移到原始设备
@@ -101,10 +106,10 @@ class WaveletTransform:
         小波系数 → RCS数据
 
         Args:
-            wavelet_coeffs: [B, 91, 91, 8] 小波系数
+            wavelet_coeffs: [B, 91, 91, num_freq*4] 小波系数
 
         Returns:
-            rcs_data: [B, 91, 91, 2] 重建的RCS数据
+            rcs_data: [B, 91, 91, num_freq] 重建的RCS数据
         """
         batch_size = wavelet_coeffs.shape[0]
         height, width = wavelet_coeffs.shape[1], wavelet_coeffs.shape[2]
@@ -116,10 +121,10 @@ class WaveletTransform:
         for batch_idx in range(batch_size):
             batch_rcs = []
 
-            # 提取当前样本的系数 [91, 91, 8]
+            # 提取当前样本的系数 [91, 91, num_freq*4]
             sample_coeffs = wavelet_coeffs[batch_idx].detach().cpu().numpy()
 
-            for freq_idx in range(2):  # 两个频率
+            for freq_idx in range(self.num_frequencies):  # 动态频率数量
                 # 提取当前频率的4个频带 [91, 91, 4]
                 start_idx = freq_idx * 4
                 cA = sample_coeffs[:, :, start_idx]     # LL
@@ -220,16 +225,32 @@ class WaveletTransform:
 
     def get_transform_info(self) -> dict:
         """获取变换器信息"""
+        # 动态生成频率频带标签
+        frequency_labels = {
+            2: ['1.5GHz', '3GHz'],
+            3: ['1.5GHz', '3GHz', '6GHz']
+        }
+
+        labels = frequency_labels.get(self.num_frequencies,
+                                    [f'Freq{i+1}' for i in range(self.num_frequencies)])
+
+        frequency_bands = []
+        for freq_label in labels:
+            frequency_bands.extend([
+                f'{freq_label}_LL', f'{freq_label}_LH',
+                f'{freq_label}_HL', f'{freq_label}_HH'
+            ])
+
         return {
             'wavelet': self.wavelet,
             'mode': self.mode,
+            'num_frequencies': self.num_frequencies,
             'family': self.wavelet_obj.family_name,
             'orthogonal': self.wavelet_obj.orthogonal,
             'biorthogonal': self.wavelet_obj.biorthogonal,
-            'input_shape': '[B, 91, 91, 2]',
-            'output_shape': '[B, 91, 91, 8]',
-            'frequency_bands': ['1.5GHz_LL', '1.5GHz_LH', '1.5GHz_HL', '1.5GHz_HH',
-                              '3GHz_LL', '3GHz_LH', '3GHz_HL', '3GHz_HH']
+            'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
+            'output_shape': f'[B, 91, 91, {self.num_frequencies * 4}]',
+            'frequency_bands': frequency_bands
         }
 
     def analyze_frequency_content(self, rcs_data: torch.Tensor) -> dict:
@@ -237,7 +258,7 @@ class WaveletTransform:
         分析RCS数据的频率成分
 
         Args:
-            rcs_data: [B, 91, 91, 2] RCS数据
+            rcs_data: [B, 91, 91, num_freq] RCS数据
 
         Returns:
             analysis: 频率分析结果
