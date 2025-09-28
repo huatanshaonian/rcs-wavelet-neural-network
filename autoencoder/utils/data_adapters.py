@@ -51,7 +51,7 @@ class RCS_DataAdapter:
 
         actual_frequencies = rcs_data.shape[3]
         if actual_frequencies != self.expected_frequencies:
-            print(f"[警告] 检测到{actual_frequencies}个频率，预期{self.expected_frequencies}个")
+            print(f"⚠️ 检测到{actual_frequencies}个频率，预期{self.expected_frequencies}个")
             self.expected_frequencies = actual_frequencies  # 自动适配
 
         expected_shape = (91, 91, self.expected_frequencies)

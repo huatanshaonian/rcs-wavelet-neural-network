@@ -9,6 +9,18 @@ from typing import Dict, Tuple, Any
 # 使用绝对导入避免相对导入问题
 import sys
 import os
+
+# 导入Unicode修复工具，支持可爱的Unicode字符 ✨
+try:
+    from unicode_fix import fix_unicode_output
+    fix_unicode_output()
+except ImportError:
+    # 如果导入失败，使用简单的编码修复
+    if sys.platform.startswith('win'):
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from models.cnn_autoencoder import WaveletAutoEncoder, ParameterMapper
@@ -210,7 +222,7 @@ def create_autoencoder_system(config_name: str = '2freq',
         'config_info': freq_config.get_info()
     }
 
-    print(">> AutoEncoder系统创建完成!")
+    print("✅ AutoEncoder系统创建完成!")
     print(f"配置信息: {system['config_info']}")
 
     return system
@@ -263,7 +275,7 @@ def test_frequency_configs():
     # 验证隐空间维度一致性
     print(f"\n--- 兼容性验证 ---")
     print(f"隐空间维度一致性: {latent_2freq.shape[1] == latent_3freq.shape[1]}")
-    print(">> 不同频率配置可以使用相同的参数映射器")
+    print("✅ 不同频率配置可以使用相同的参数映射器")
 
     # 测试参数映射
     mapper = system_2freq['parameter_mapper']  # 可以复用

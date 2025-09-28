@@ -14,6 +14,13 @@ RCS小波神经网络图形用户界面
 版本: 1.0
 """
 
+# Unicode字符支持 ✨
+try:
+    from unicode_fix import fix_unicode_output
+    fix_unicode_output()
+except ImportError:
+    pass
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import tkinter.font as tkFont
@@ -4359,10 +4366,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     normalize=normalize
                 )
 
-                self.ae_log(f"✓ AutoEncoder系统创建成功!")
-                self.ae_log(f"  配置: {freq_config}")
-                self.ae_log(f"  隐空间维度: {latent_dim}")
-                self.ae_log(f"  模型参数量: {self.ae_system['autoencoder'].get_parameter_count()['total']:,}")
+                self.ae_log(f"✅ AutoEncoder系统创建成功!")
+                self.ae_log(f"  📊 配置: {freq_config}")
+                self.ae_log(f"  🎯 隐空间维度: {latent_dim}")
+                self.ae_log(f"  📈 模型参数量: {self.ae_system['autoencoder'].get_parameter_count()['total']:,}")
 
                 # 更新状态
                 self.update_ae_status()
@@ -4371,12 +4378,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             except ImportError as e:
                 error_msg = f"导入AutoEncoder模块失败: {e}"
-                self.ae_log(f"✗ {error_msg}")
+                self.ae_log(f"❌ {error_msg}")
                 messagebox.showerror("错误", error_msg)
 
         except Exception as e:
             error_msg = f"创建AutoEncoder系统失败: {e}"
-            self.ae_log(f"✗ {error_msg}")
+            self.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
     def start_ae_training(self):
@@ -4406,20 +4413,20 @@ GPU峰值: {gpu_peak:.2f}GB"""
             self.ae_log(f"  训练模式: {training_mode}")
 
             if training_mode == "三阶段训练":
-                self.ae_log(f"  阶段1(AE预训练): {epochs_stage1} epochs")
-                self.ae_log(f"  阶段2(参数映射): {epochs_stage2} epochs")
-                self.ae_log(f"  阶段3(端到端): {epochs_stage3} epochs")
+                self.ae_log(f"  🚀 阶段1(AE预训练): {epochs_stage1} epochs")
+                self.ae_log(f"  🎯 阶段2(参数映射): {epochs_stage2} epochs")
+                self.ae_log(f"  ⚡ 阶段3(端到端): {epochs_stage3} epochs")
 
             # 这里应该启动训练线程，但需要实际的数据
             # 目前先显示训练配置
-            self.ae_log("训练功能需要与实际数据集成...")
-            self.ae_log("请在数据管理页面加载真实的RCS数据集")
+            self.ae_log("🔄 训练功能需要与实际数据集成...")
+            self.ae_log("📋 请在数据管理页面加载真实的RCS数据集")
 
             messagebox.showinfo("提示", "训练功能需要实际数据集成后完成实现")
 
         except Exception as e:
             error_msg = f"启动训练失败: {e}"
-            self.ae_log(f"✗ {error_msg}")
+            self.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
     def stop_ae_training(self):
@@ -4451,12 +4458,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 }
 
                 torch.save(model_state, filename)
-                self.ae_log(f"✓ 模型保存成功: {filename}")
+                self.ae_log(f"💾 模型保存成功: {filename}")
                 messagebox.showinfo("成功", f"模型已保存到: {filename}")
 
         except Exception as e:
             error_msg = f"保存模型失败: {e}"
-            self.ae_log(f"✗ {error_msg}")
+            self.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
     def load_ae_model(self):
@@ -4487,14 +4494,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     self.ae_training_history = checkpoint['training_history']
 
                 self.ae_trained = True
-                self.ae_log(f"✓ 模型加载成功: {filename}")
+                self.ae_log(f"📂 模型加载成功: {filename}")
                 self.update_ae_status()
 
                 messagebox.showinfo("成功", f"模型已从以下位置加载: {filename}")
 
         except Exception as e:
             error_msg = f"加载模型失败: {e}"
-            self.ae_log(f"✗ {error_msg}")
+            self.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
 
