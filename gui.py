@@ -85,6 +85,63 @@ try:
 except ImportError as e:
     print(f"导入错误: {e}")
     print("请确保所有模块文件都在当前目录下")
+    # 如果导入失败，创建空的替代函数避免NameError
+    def create_data_config(use_log_preprocessing=False):
+        return {
+            'params_file': "",
+            'rcs_data_dir': "",
+            'model_ids': [],
+            'frequencies': ['1.5G', '3G'],
+            'preprocessing': {
+                'use_log': use_log_preprocessing,
+                'log_epsilon': 1e-10
+            }
+        }
+    def create_training_config():
+        return {
+            'batch_size': 8,
+            'learning_rate': 1e-3,
+            'min_lr': 1e-5,
+            'weight_decay': 1e-4,
+            'epochs': 200,
+            'early_stopping_patience': 50,
+            'loss_weights': {
+                'mse': 1.0,
+                'symmetry': 0.02,
+                'multiscale': 0.1
+            },
+            'memory_optimization': {
+                'gradient_accumulation': True,
+                'mixed_precision': True,
+                'pin_memory': True,
+                'empty_cache_frequency': 10
+            }
+        }
+    def create_cache_manager():
+        return None
+    def create_model():
+        return None
+    def create_loss_function():
+        return None
+    def create_configurable_loss():
+        return None
+    class RCSDataset:
+        pass
+    class CrossValidationTrainer:
+        pass
+    class RCSDataLoader:
+        pass
+    class RCSEvaluator:
+        pass
+    def evaluate_model_with_visualizations(*args, **kwargs):
+        pass
+    def get_available_networks():
+        return []
+    def get_network_info():
+        return {}
+    def get_available_losses():
+        return []
+    MODERN_INTERFACE_AVAILABLE = False
 
 
 class RCSWaveletGUI:
@@ -182,12 +239,25 @@ class RCSWaveletGUI:
         self.ae_epochs_stage2 = tk.StringVar(value="50")   # 参数映射训练轮数
         self.ae_epochs_stage3 = tk.StringVar(value="20")   # 端到端微调轮数
 
+        # 学习率调度配置 (复用项目标准配置)
+        self.ae_lr_scheduler = tk.StringVar(value="constant")
+        self.ae_min_lr = tk.StringVar(value="1e-5")
+        self.ae_restart_period = tk.StringVar(value="50")
+
+        # 早停配置 (分阶段可配置)
+        self.ae_patience_stage1 = tk.StringVar(value="10")  # 阶段1早停耐心值
+        self.ae_patience_stage2 = tk.StringVar(value="10")  # 阶段2早停耐心值
+        self.ae_patience_stage3 = tk.StringVar(value="5")   # 阶段3早停耐心值
+        self.ae_patience_e2e = tk.StringVar(value="15")     # 端到端早停耐心值
+
         # 数据预处理配置
-        self.ae_normalize = tk.BooleanVar(value=True)
-        self.ae_log_transform = tk.BooleanVar(value=False)
+        # 预处理选项已移至数据管理页面，此处不再需要相关变量
 
         # 训练模式
         self.ae_training_mode = tk.StringVar(value="三阶段训练")  # 三阶段训练 或 端到端训练
+
+        # 损失函数配置复用
+        self.ae_use_custom_loss = tk.BooleanVar(value=False)  # 是否使用自定义损失函数
 
     def init_loss_config_vars(self):
         """初始化损失函数配置变量"""
@@ -535,29 +605,72 @@ class RCSWaveletGUI:
         ttk.Label(training_frame, text="批次大小:").grid(row=0, column=0, sticky="w", padx=(0, 5))
         ttk.Entry(training_frame, textvariable=self.ae_batch_size, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
 
-        ttk.Label(training_frame, text="学习率:").grid(row=0, column=2, sticky="w", padx=(10, 5))
-        ttk.Entry(training_frame, textvariable=self.ae_learning_rate, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
-
         # 第二行：训练轮数
-        ttk.Label(training_frame, text="阶段1(AE预训练):").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage1, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+        ttk.Label(training_frame, text="阶段1(AE预训练):").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage1, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
 
-        ttk.Label(training_frame, text="阶段2(参数映射):").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage2, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+        ttk.Label(training_frame, text="阶段2(参数映射):").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage2, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
 
-        # 第三行
-        ttk.Label(training_frame, text="阶段3(端到端):").grid(row=2, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage3, width=8).grid(row=2, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+        ttk.Label(training_frame, text="阶段3(端到端):").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.ae_epochs_stage3, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
 
-        # 数据预处理配置组
-        preprocess_group = ttk.LabelFrame(left_panel, text="数据预处理")
-        preprocess_group.pack(fill=tk.X, pady=(0, 10))
+        # 学习率调度配置组 (复用项目标准)
+        lr_group = ttk.LabelFrame(left_panel, text="学习率调度配置")
+        lr_group.pack(fill=tk.X, pady=(0, 10))
 
-        preprocess_frame = ttk.Frame(preprocess_group)
-        preprocess_frame.pack(fill=tk.X, padx=5, pady=5)
+        lr_frame = ttk.Frame(lr_group)
+        lr_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Checkbutton(preprocess_frame, text="数据标准化", variable=self.ae_normalize).pack(side=tk.LEFT, padx=(0, 20))
-        ttk.Checkbutton(preprocess_frame, text="对数变换", variable=self.ae_log_transform).pack(side=tk.LEFT)
+        # 第一行：调度策略和初始学习率
+        ttk.Label(lr_frame, text="调度策略:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        lr_scheduler_combo = ttk.Combobox(lr_frame, textvariable=self.ae_lr_scheduler,
+                                        values=['constant', 'cosine_restart', 'cosine_simple', 'adaptive'],
+                                        state="readonly", width=12)
+        lr_scheduler_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        ttk.Label(lr_frame, text="初始学习率:").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(lr_frame, textvariable=self.ae_learning_rate, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        # 第二行：最小学习率和重启周期
+        ttk.Label(lr_frame, text="最小学习率:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.ae_min_lr, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        ttk.Label(lr_frame, text="重启周期:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.ae_restart_period, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 早停配置组 (分阶段可配置)
+        patience_group = ttk.LabelFrame(left_panel, text="早停配置")
+        patience_group.pack(fill=tk.X, pady=(0, 10))
+
+        patience_frame = ttk.Frame(patience_group)
+        patience_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：阶段1和2早停耐心值
+        ttk.Label(patience_frame, text="阶段1耐心:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        ttk.Entry(patience_frame, textvariable=self.ae_patience_stage1, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        ttk.Label(patience_frame, text="阶段2耐心:").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(patience_frame, textvariable=self.ae_patience_stage2, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        # 第二行：阶段3和端到端早停耐心值
+        ttk.Label(patience_frame, text="阶段3耐心:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(patience_frame, textvariable=self.ae_patience_stage3, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        ttk.Label(patience_frame, text="端到端耐心:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        ttk.Entry(patience_frame, textvariable=self.ae_patience_e2e, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 损失函数配置组
+        loss_group = ttk.LabelFrame(left_panel, text="损失函数配置")
+        loss_group.pack(fill=tk.X, pady=(0, 10))
+
+        loss_frame = ttk.Frame(loss_group)
+        loss_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Checkbutton(loss_frame, text="使用自定义损失函数", variable=self.ae_use_custom_loss).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(loss_frame, text="配置损失函数", command=self._open_loss_config_for_ae).pack(side=tk.LEFT)
+
+        # 数据预处理配置已集成到数据管理页面，此处不再重复配置
 
         # 训练控制组
         control_group = ttk.LabelFrame(left_panel, text="训练控制")
@@ -1070,7 +1183,9 @@ class RCSWaveletGUI:
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.vis_type_var = tk.StringVar(value="2D热图")
         type_combo = ttk.Combobox(control_frame, textvariable=self.vis_type_var,
-                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "差值分析", "相关性分析", "训练历史", "统计对比"], state="readonly", width=12)
+                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "差值分析", "相关性分析",
+                                        "训练历史", "统计对比", "AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度"],
+                                 state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
 
         # 生成按钮
@@ -2519,9 +2634,13 @@ class RCSWaveletGUI:
     # ======= 评估功能 =======
 
     def start_evaluation(self):
-        """开始评估"""
-        if not self.model_trained or self.current_model is None:
-            messagebox.showwarning("警告", "请先训练或加载模型")
+        """开始评估（支持AutoEncoder和传统网络）"""
+        # 检查是否有训练好的模型（传统网络或AutoEncoder）
+        has_traditional_model = self.model_trained and self.current_model is not None
+        has_ae_model = hasattr(self, 'ae_system') and self.ae_system is not None
+
+        if not has_traditional_model and not has_ae_model:
+            messagebox.showwarning("警告", "请先训练或加载模型（传统网络或AutoEncoder）")
             return
 
         if not self.data_loaded:
@@ -2529,78 +2648,247 @@ class RCSWaveletGUI:
             return
 
         try:
-            # 准备预处理统计信息（使用训练时保存的stats）
-            use_log = self.use_log_preprocessing.get()
-
-            # 优先使用checkpoint中保存的preprocessing_stats
-            if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
-                preprocessing_stats = self.preprocessing_stats
-                self.log_message(f"使用checkpoint的preprocessing_stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
-            elif use_log:
-                # 尝试使用缓存的preprocessing_stats
-                if hasattr(self, '_preprocessing_stats') and self._preprocessing_stats:
-                    preprocessing_stats = self._preprocessing_stats
-                    self.log_message(f"使用缓存的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
-                else:
-                    # 如果没有缓存，重新计算预处理统计
-                    import numpy as np  # 确保numpy可用
-                    self.log_message("警告: 无checkpoint stats且无缓存，重新计算...")
-                    epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
-                    rcs_db = 10 * np.log10(np.maximum(self.rcs_data, epsilon))
-                    preprocessing_stats = {
-                        'mean': np.mean(rcs_db),
-                        'std': np.std(rcs_db)
-                    }
-                    # 缓存结果
-                    self._preprocessing_stats = preprocessing_stats
-                    self.log_message(f"重新计算的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+            # 根据模型类型选择评估路径
+            if has_ae_model:
+                self.log_message("🔬 开始AutoEncoder模型评估...")
+                self._evaluate_autoencoder_model()
             else:
-                preprocessing_stats = None
-
-            # 创建测试数据集：使用预处理后的数据
-            if use_log:
-                # 使用缓存的预处理数据用于评估
-                if hasattr(self, '_preprocessed_data'):
-                    params_eval = self._preprocessed_data['params'][-20:]
-                    rcs_eval = self._preprocessed_data['rcs'][-20:]
-                    test_dataset = RCSDataset(params_eval, rcs_eval, augment=False)
-                    self.log_message("使用缓存的预处理数据进行评估")
-                else:
-                    # 如果没有预处理缓存，使用原始数据
-                    self.log_message("警告: 无预处理缓存，使用原始数据")
-                    test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
-            else:
-                # 使用原始数据
-                test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
-
-            # 创建评估器
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            evaluator = RCSEvaluator(
-                self.current_model,
-                device,
-                use_log_output=use_log,
-                preprocessing_stats=preprocessing_stats
-            )
-
-            # 执行评估
-            self.evaluation_results = evaluator.evaluate_dataset(test_dataset)
-
-            # 更新评估结果显示
-            self._update_evaluation_display()
+                self.log_message("🔬 开始传统网络模型评估...")
+                self._evaluate_traditional_model()
 
             messagebox.showinfo("成功", "模型评估完成")
 
         except Exception as e:
             messagebox.showerror("错误", f"评估失败: {str(e)}")
 
+    def _evaluate_traditional_model(self):
+        """评估传统网络模型"""
+        # 准备预处理统计信息（使用训练时保存的stats）
+        use_log = self.use_log_preprocessing.get()
+
+        # 优先使用checkpoint中保存的preprocessing_stats
+        if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+            preprocessing_stats = self.preprocessing_stats
+            self.log_message(f"使用checkpoint的preprocessing_stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+        elif use_log:
+            # 尝试使用缓存的preprocessing_stats
+            if hasattr(self, '_preprocessing_stats') and self._preprocessing_stats:
+                preprocessing_stats = self._preprocessing_stats
+                self.log_message(f"使用缓存的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+            else:
+                # 如果没有缓存，重新计算预处理统计
+                import numpy as np  # 确保numpy可用
+                self.log_message("警告: 无checkpoint stats且无缓存，重新计算...")
+                epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
+                rcs_db = 10 * np.log10(np.maximum(self.rcs_data, epsilon))
+                preprocessing_stats = {
+                    'mean': np.mean(rcs_db),
+                    'std': np.std(rcs_db)
+                }
+                # 缓存结果
+                self._preprocessing_stats = preprocessing_stats
+                self.log_message(f"重新计算的stats: mean={preprocessing_stats['mean']:.2f}, std={preprocessing_stats['std']:.2f}")
+        else:
+            preprocessing_stats = None
+
+        # 创建测试数据集：使用预处理后的数据
+        if use_log:
+            # 使用缓存的预处理数据用于评估
+            if hasattr(self, '_preprocessed_data'):
+                params_eval = self._preprocessed_data['params'][-20:]
+                rcs_eval = self._preprocessed_data['rcs'][-20:]
+                test_dataset = RCSDataset(params_eval, rcs_eval, augment=False)
+                self.log_message("使用缓存的预处理数据进行评估")
+            else:
+                # 如果没有预处理缓存，使用原始数据
+                self.log_message("警告: 无预处理缓存，使用原始数据")
+                test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
+        else:
+            # 使用原始数据
+            test_dataset = RCSDataset(self.param_data[-20:], self.rcs_data[-20:], augment=False)
+
+        # 创建评估器
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        evaluator = RCSEvaluator(
+            self.current_model,
+            device,
+            use_log_output=use_log,
+            preprocessing_stats=preprocessing_stats
+        )
+
+        # 执行评估
+        self.evaluation_results = evaluator.evaluate_dataset(test_dataset)
+
+        # 更新评估结果显示
+        self._update_evaluation_display()
+
+    def _evaluate_autoencoder_model(self):
+        """评估AutoEncoder模型"""
+        import torch
+        import numpy as np
+        from torch.utils.data import DataLoader, TensorDataset
+
+        try:
+            # 获取AutoEncoder系统组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 获取测试数据
+            rcs_data = self.ae_system['rcs_data']
+            param_data = self.ae_system['param_data']
+
+            # 使用后20%的数据作为测试集
+            test_size = int(len(rcs_data) * 0.2)
+            test_rcs = rcs_data[-test_size:]
+            test_params = param_data[-test_size:]
+
+            self.log_message(f"📊 AutoEncoder评估配置:")
+            self.log_message(f"  测试样本数: {test_size}")
+            self.log_message(f"  RCS数据: {test_rcs.shape}")
+            self.log_message(f"  参数数据: {test_params.shape}")
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            parameter_mapper.to(device)
+
+            # 设置评估模式
+            autoencoder.eval()
+            parameter_mapper.eval()
+
+            # 创建数据加载器
+            test_params_tensor = torch.FloatTensor(test_params)
+            test_rcs_tensor = torch.FloatTensor(test_rcs)
+            test_dataset = TensorDataset(test_params_tensor, test_rcs_tensor)
+            test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False)
+
+            # 执行评估
+            total_loss = 0.0
+            total_samples = 0
+            predictions = []
+            targets = []
+
+            self.log_message("📈 开始AutoEncoder评估...")
+
+            with torch.no_grad():
+                for batch_idx, (batch_params, batch_rcs) in enumerate(test_loader):
+                    batch_params = batch_params.to(device)
+                    batch_rcs = batch_rcs.to(device)
+
+                    # 端到端预测
+                    predicted_latents = parameter_mapper(batch_params)
+                    predicted_coeffs = autoencoder.decode(predicted_latents)
+                    predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+
+                    # 计算损失
+                    loss = torch.nn.functional.mse_loss(predicted_rcs, batch_rcs)
+                    total_loss += loss.item() * batch_params.size(0)
+                    total_samples += batch_params.size(0)
+
+                    # 收集预测结果
+                    predictions.append(predicted_rcs.cpu().numpy())
+                    targets.append(batch_rcs.cpu().numpy())
+
+                    if batch_idx % 5 == 0:
+                        self.log_message(f"  批次 {batch_idx+1}: Loss = {loss.item():.6f}")
+
+            # 计算整体指标
+            avg_loss = total_loss / total_samples
+            predictions = np.concatenate(predictions, axis=0)
+            targets = np.concatenate(targets, axis=0)
+
+            # 计算评估指标
+            mse = np.mean((predictions - targets) ** 2)
+            rmse = np.sqrt(mse)
+            mae = np.mean(np.abs(predictions - targets))
+
+            # 按频率计算指标
+            freq_mse = []
+            freq_rmse = []
+            freq_mae = []
+
+            for freq_idx in range(predictions.shape[-1]):  # 最后一维是频率
+                pred_freq = predictions[..., freq_idx]
+                target_freq = targets[..., freq_idx]
+
+                freq_mse.append(np.mean((pred_freq - target_freq) ** 2))
+                freq_rmse.append(np.sqrt(freq_mse[-1]))
+                freq_mae.append(np.mean(np.abs(pred_freq - target_freq)))
+
+            # 创建评估结果
+            self.evaluation_results = {
+                'overall': {
+                    'mse': mse,
+                    'rmse': rmse,
+                    'mae': mae,
+                    'avg_loss': avg_loss
+                },
+                'frequencies': {
+                    'mse': freq_mse,
+                    'rmse': freq_rmse,
+                    'mae': freq_mae
+                },
+                'model_type': 'autoencoder',
+                'test_samples': test_size
+            }
+
+            self.log_message(f"✅ AutoEncoder评估完成:")
+            self.log_message(f"  平均损失: {avg_loss:.6f}")
+            self.log_message(f"  整体RMSE: {rmse:.6f}")
+            self.log_message(f"  整体MAE: {mae:.6f}")
+
+            # 更新评估结果显示
+            self._update_evaluation_display()
+
+        except Exception as e:
+            self.log_message(f"❌ AutoEncoder评估失败: {e}")
+            raise e
+
     def _update_evaluation_display(self):
-        """更新评估结果显示"""
+        """更新评估结果显示（支持AutoEncoder和传统网络）"""
         # 清空现有内容
         for item in self.eval_tree.get_children():
             self.eval_tree.delete(item)
 
         results = self.evaluation_results
 
+        # 根据模型类型显示不同的结果
+        if results.get('model_type') == 'autoencoder':
+            self._display_autoencoder_results(results)
+        else:
+            self._display_traditional_results(results)
+
+    def _display_autoencoder_results(self, results):
+        """显示AutoEncoder评估结果"""
+        # 添加基本信息
+        basic_node = self.eval_tree.insert("", "end", text="基本信息")
+        self.eval_tree.insert(basic_node, "end", values=("模型类型", "AutoEncoder", "", ""))
+        self.eval_tree.insert(basic_node, "end", values=("测试样本数", str(results['test_samples']), "", ""))
+
+        # 添加整体指标
+        overall_node = self.eval_tree.insert("", "end", text="整体指标")
+        overall = results['overall']
+        self.eval_tree.insert(overall_node, "end", values=("MSE", "", "", f"{overall['mse']:.6f}"))
+        self.eval_tree.insert(overall_node, "end", values=("RMSE", "", "", f"{overall['rmse']:.6f}"))
+        self.eval_tree.insert(overall_node, "end", values=("MAE", "", "", f"{overall['mae']:.6f}"))
+        self.eval_tree.insert(overall_node, "end", values=("平均损失", "", "", f"{overall['avg_loss']:.6f}"))
+
+        # 添加频率指标（如果有多个频率）
+        freq_metrics = results['frequencies']
+        if len(freq_metrics['mse']) > 1:
+            freq_node = self.eval_tree.insert("", "end", text="频率指标")
+            freq_labels = ['1.5GHz', '3GHz'] if len(freq_metrics['mse']) == 2 else [f'Freq{i+1}' for i in range(len(freq_metrics['mse']))]
+
+            for metric in ['mse', 'rmse', 'mae']:
+                values = [f"{val:.6f}" for val in freq_metrics[metric]]
+                if len(values) == 2:
+                    self.eval_tree.insert(freq_node, "end", values=(metric.upper(), values[0], values[1], ""))
+                else:
+                    self.eval_tree.insert(freq_node, "end", values=(metric.upper(), str(values), "", ""))
+
+    def _display_traditional_results(self, results):
+        """显示传统网络评估结果"""
         # 添加回归指标
         reg_node = self.eval_tree.insert("", "end", text="回归指标")
         metrics = results['regression_metrics']
@@ -2765,38 +3053,58 @@ class RCSWaveletGUI:
     # ======= 可视化功能 =======
 
     def generate_visualization(self):
-        """生成可视化图表"""
+        """生成可视化图表（支持AutoEncoder和传统网络）"""
         try:
             chart_type = self.vis_type_var.get()
 
-            # 分类处理：需要model_id的图表 vs 全局统计图表
+            # 检查模型可用性
+            has_traditional_model = self.model_trained and self.current_model is not None
+            has_ae_model = hasattr(self, 'ae_system') and self.ae_system is not None
+
+            # 分类处理：需要model_id的图表 vs 全局统计图表 vs AutoEncoder特定图表
             if chart_type in ["训练历史", "统计对比"]:
                 # 全局统计图表 - 不需要model_id
                 if chart_type == "训练历史":
                     self._plot_training_history()
                 elif chart_type == "统计对比":
                     self._plot_global_statistics_comparison()
+            elif chart_type in ["AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度"]:
+                # AutoEncoder特定图表
+                if not has_ae_model:
+                    messagebox.showwarning("警告", "AutoEncoder图表需要先训练或加载AutoEncoder模型")
+                    return
+                self._plot_autoencoder_visualization(chart_type)
             else:
-                # 单模型分析图表 - 需要model_id
-                model_id = self.vis_model_var.get()
-                if not model_id:
-                    messagebox.showwarning("警告", "请输入模型ID")
+                # 传统单模型分析图表 - 需要model_id
+                if not has_traditional_model and not has_ae_model:
+                    messagebox.showwarning("警告", "请先训练或加载模型")
                     return
 
-                freq = self.vis_freq_var.get()
+                if has_ae_model:
+                    # 使用AutoEncoder进行预测可视化
+                    freq = self.vis_freq_var.get()
+                    self._plot_autoencoder_prediction_visualization(chart_type, freq)
+                else:
+                    # 传统网络可视化
+                    model_id = self.vis_model_var.get()
+                    if not model_id:
+                        messagebox.showwarning("警告", "请输入模型ID")
+                        return
 
-                if chart_type == "2D热图":
-                    self._plot_2d_heatmap(model_id, freq)
-                elif chart_type == "3D表面图":
-                    self._plot_3d_surface(model_id, freq)
-                elif chart_type == "球坐标图":
-                    self._plot_spherical(model_id, freq)
-                elif chart_type == "对比图":
-                    self._plot_comparison(model_id)
-                elif chart_type == "差值分析":
-                    self._plot_difference_analysis(model_id)
-                elif chart_type == "相关性分析":
-                    self._plot_correlation_analysis(model_id)
+                    freq = self.vis_freq_var.get()
+
+                    if chart_type == "2D热图":
+                        self._plot_2d_heatmap(model_id, freq)
+                    elif chart_type == "3D表面图":
+                        self._plot_3d_surface(model_id, freq)
+                    elif chart_type == "球坐标图":
+                        self._plot_spherical(model_id, freq)
+                    elif chart_type == "对比图":
+                        self._plot_comparison(model_id)
+                    elif chart_type == "差值分析":
+                        self._plot_difference_analysis(model_id)
+                    elif chart_type == "相关性分析":
+                        self._plot_correlation_analysis(model_id)
 
         except Exception as e:
             messagebox.showerror("错误", f"图表生成失败: {str(e)}")
@@ -4325,6 +4633,16 @@ GPU峰值: {gpu_peak:.2f}GB"""
     def ae_log(self, message):
         """添加AutoEncoder日志信息"""
         try:
+            # 检查组件是否存在且有效
+            if not hasattr(self, 'ae_log_text') or self.ae_log_text is None:
+                print(f"AE日志组件未初始化: {message}")
+                return
+
+            # 检查组件是否还存在（没有被销毁）
+            if not self.ae_log_text.winfo_exists():
+                print(f"AE日志组件已销毁: {message}")
+                return
+
             timestamp = datetime.now().strftime("%H:%M:%S")
             log_message = f"[{timestamp}] {message}\n"
 
@@ -4339,10 +4657,41 @@ GPU峰值: {gpu_peak:.2f}GB"""
         """创建AutoEncoder系统"""
         try:
             if not self.data_loaded:
-                messagebox.showwarning("警告", "请先加载数据!")
+                messagebox.showwarning("警告", "请先在数据管理页面加载数据!")
                 return
 
-            self.ae_log("开始创建AutoEncoder系统...")
+            # 检查已加载的数据
+            if not hasattr(self, 'rcs_data') or self.rcs_data is None:
+                messagebox.showwarning("警告", "RCS数据未加载，请在数据管理页面加载数据!")
+                return
+
+            if not hasattr(self, 'param_data') or self.param_data is None:
+                messagebox.showwarning("警告", "参数数据未加载，请在数据管理页面加载数据!")
+                return
+
+            self.ae_log("📊 检测到已加载的数据:")
+            self.ae_log(f"  RCS数据形状: {self.rcs_data.shape}")
+            self.ae_log(f"  参数数据形状: {self.param_data.shape}")
+
+            # 自动检测频率配置
+            detected_freq = self.rcs_data.shape[-1] if len(self.rcs_data.shape) == 4 else 2
+            if detected_freq == 2:
+                auto_freq_config = "2freq"
+                freq_desc = "1.5GHz+3GHz"
+            elif detected_freq == 3:
+                auto_freq_config = "3freq"
+                freq_desc = "1.5GHz+3GHz+6GHz"
+            else:
+                auto_freq_config = "2freq"  # 默认
+                freq_desc = f"{detected_freq}频率"
+
+            # 更新频率配置（如果与检测结果不同）
+            current_config = self.ae_freq_config.get()
+            if current_config != auto_freq_config:
+                self.ae_log(f"⚠️ 自动调整频率配置: {current_config} → {auto_freq_config}")
+                self.ae_freq_config.set(auto_freq_config)
+
+            self.ae_log("🚀 开始创建AutoEncoder系统...")
 
             # 导入AutoEncoder模块
             try:
@@ -4355,7 +4704,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 latent_dim = int(self.ae_latent_dim.get())
                 dropout_rate = float(self.ae_dropout_rate.get())
                 wavelet_type = self.ae_wavelet_type.get()
-                normalize = self.ae_normalize.get()
+
+                # 移除重复的预处理配置，直接使用数据管理的预处理结果
+                normalize = True  # 数据管理页面已经处理过标准化
 
                 # 创建系统
                 self.ae_system = create_autoencoder_system(
@@ -4365,6 +4716,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     wavelet=wavelet_type,
                     normalize=normalize
                 )
+
+                # 存储数据引用，便于训练使用
+                self.ae_system['rcs_data'] = self.rcs_data
+                self.ae_system['param_data'] = self.param_data
 
                 self.ae_log(f"✅ AutoEncoder系统创建成功!")
                 self.ae_log(f"  📊 配置: {freq_config}")
@@ -4387,7 +4742,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             messagebox.showerror("错误", error_msg)
 
     def start_ae_training(self):
-        """开始AutoEncoder训练"""
+        """开始AutoEncoder训练 (使用统一配置管理器)"""
         try:
             if self.ae_system is None:
                 messagebox.showwarning("警告", "请先创建AutoEncoder系统!")
@@ -4397,32 +4752,46 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 messagebox.showwarning("警告", "请先加载数据!")
                 return
 
-            self.ae_log("开始AutoEncoder训练...")
+            self.ae_log("🚀 开始AutoEncoder训练...")
 
-            # 获取训练配置
-            batch_size = int(self.ae_batch_size.get())
-            learning_rate = float(self.ae_learning_rate.get())
-            epochs_stage1 = int(self.ae_epochs_stage1.get())
-            epochs_stage2 = int(self.ae_epochs_stage2.get())
-            epochs_stage3 = int(self.ae_epochs_stage3.get())
+            # 创建统一训练配置 (复用项目配置管理器)
+            training_config = self._create_ae_training_config()
+
+            self.ae_log(f"📊 训练配置:")
+            self.ae_log(f"  批次大小: {training_config['batch_size']}")
+            self.ae_log(f"  学习率: {training_config['learning_rate']} (min: {training_config['min_lr']})")
+            self.ae_log(f"  调度策略: {training_config['lr_scheduler']}")
+            self.ae_log(f"  损失函数: {'自定义配置' if training_config['use_custom_loss'] else '标准MSE'}")
+
             training_mode = self.ae_training_mode.get()
-
-            self.ae_log(f"训练配置:")
-            self.ae_log(f"  批次大小: {batch_size}")
-            self.ae_log(f"  学习率: {learning_rate}")
-            self.ae_log(f"  训练模式: {training_mode}")
-
             if training_mode == "三阶段训练":
-                self.ae_log(f"  🚀 阶段1(AE预训练): {epochs_stage1} epochs")
-                self.ae_log(f"  🎯 阶段2(参数映射): {epochs_stage2} epochs")
-                self.ae_log(f"  ⚡ 阶段3(端到端): {epochs_stage3} epochs")
+                self.ae_log(f"  🚀 阶段1(AE预训练): {training_config['epochs']['stage1']} epochs (耐心: {training_config['patience']['stage1']})")
+                self.ae_log(f"  🎯 阶段2(参数映射): {training_config['epochs']['stage2']} epochs (耐心: {training_config['patience']['stage2']})")
+                self.ae_log(f"  ⚡ 阶段3(端到端): {training_config['epochs']['stage3']} epochs (耐心: {training_config['patience']['stage3']})")
+            else:
+                total_epochs = sum(training_config['epochs'].values())
+                self.ae_log(f"  🔄 端到端训练: {total_epochs} epochs (耐心: {training_config['patience']['e2e']})")
 
-            # 这里应该启动训练线程，但需要实际的数据
-            # 目前先显示训练配置
-            self.ae_log("🔄 训练功能需要与实际数据集成...")
-            self.ae_log("📋 请在数据管理页面加载真实的RCS数据集")
+            # 检查数据可用性
+            if 'rcs_data' not in self.ae_system or 'param_data' not in self.ae_system:
+                self.ae_log("❌ 数据未正确集成到AutoEncoder系统")
+                messagebox.showerror("错误", "数据未正确集成，请重新创建AutoEncoder系统")
+                return
 
-            messagebox.showinfo("提示", "训练功能需要实际数据集成后完成实现")
+            rcs_data = self.ae_system['rcs_data']
+            param_data = self.ae_system['param_data']
+
+            self.ae_log(f"✅ 使用已预处理的数据:")
+            self.ae_log(f"  RCS数据: {rcs_data.shape}")
+            self.ae_log(f"  参数数据: {param_data.shape}")
+
+            # 启动训练过程（使用统一配置）
+            if training_mode == "三阶段训练":
+                self.ae_log("📊 开始三阶段训练流程")
+                self._run_three_stage_training_v2(rcs_data, param_data, training_config)
+            else:
+                self.ae_log("📊 开始端到端训练流程")
+                self._run_end_to_end_training_v2(rcs_data, param_data, training_config)
 
         except Exception as e:
             error_msg = f"启动训练失败: {e}"
@@ -4504,6 +4873,1654 @@ GPU峰值: {gpu_peak:.2f}GB"""
             self.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
+    def _run_three_stage_training(self, rcs_data, param_data, batch_size, learning_rate,
+                                epochs_stage1, epochs_stage2, epochs_stage3):
+        """执行三阶段训练"""
+        try:
+            self.ae_log("🚀 开始三阶段训练流程:")
+            self.ae_log(f"  📊 阶段1: AutoEncoder预训练 ({epochs_stage1} epochs)")
+            self.ae_log(f"  🎯 阶段2: 参数映射训练 ({epochs_stage2} epochs)")
+            self.ae_log(f"  ⚡ 阶段3: 端到端微调 ({epochs_stage3} epochs)")
+
+            # 阶段1: AutoEncoder预训练
+            self.ae_log("📊 开始阶段1: AutoEncoder预训练...")
+            self._train_autoencoder_stage1(rcs_data, batch_size, learning_rate, epochs_stage1)
+
+            # 阶段2: 参数映射训练
+            self.ae_log("🎯 开始阶段2: 参数映射训练...")
+            self._train_parameter_mapping_stage2(rcs_data, param_data, batch_size, learning_rate, epochs_stage2)
+
+            # 阶段3: 端到端微调
+            self.ae_log("⚡ 开始阶段3: 端到端微调...")
+            self._train_end_to_end_stage3(rcs_data, param_data, batch_size, learning_rate, epochs_stage3)
+
+            self.ae_log("🎉 三阶段训练完成!")
+            messagebox.showinfo("成功", "三阶段训练完成!")
+
+        except Exception as e:
+            error_msg = f"三阶段训练失败: {e}"
+            self.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def _run_end_to_end_training(self, rcs_data, param_data, batch_size, learning_rate, total_epochs):
+        """执行端到端训练"""
+        try:
+            self.ae_log("🚀 开始端到端训练流程:")
+            self.ae_log(f"  📊 总训练轮数: {total_epochs}")
+
+            # 实现端到端训练
+            self._train_full_end_to_end(rcs_data, param_data, batch_size, learning_rate, total_epochs)
+
+            self.ae_log("🎉 端到端训练完成!")
+            messagebox.showinfo("成功", "端到端训练完成!")
+
+        except Exception as e:
+            error_msg = f"端到端训练失败: {e}"
+            self.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def _train_autoencoder_stage1(self, rcs_data, batch_size, learning_rate, epochs):
+        """阶段1: AutoEncoder预训练"""
+        try:
+            import torch
+            import torch.nn as nn
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取AutoEncoder组件
+            autoencoder = self.ae_system['autoencoder']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+
+            self.ae_log(f"🖥️ 使用设备: {device}")
+
+            # 准备数据
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 数据划分: 80%训练，20%验证 (参照项目标准)
+            dataset = TensorDataset(wavelet_coeffs)
+
+            # 固定种子确保可重现性
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 阶段1数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 设置优化器
+            optimizer = torch.optim.Adam(autoencoder.parameters(), lr=learning_rate)
+            criterion = nn.MSELoss()
+
+            # 训练循环
+            autoencoder.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+            patience = 10  # 早停耐心值
+
+            for epoch in range(epochs):
+                # 训练
+                autoencoder.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_idx, (batch_coeffs,) in enumerate(train_loader):
+                    batch_coeffs = batch_coeffs.to(device)
+
+                    # 前向传播
+                    reconstructed, latent = autoencoder(batch_coeffs)
+                    loss = criterion(reconstructed, batch_coeffs)
+
+                    # 反向传播
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                autoencoder.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_coeffs, in val_loader:
+                        batch_coeffs = batch_coeffs.to(device)
+                        reconstructed, latent = autoencoder(batch_coeffs)
+                        loss = criterion(reconstructed, batch_coeffs)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 每10个epoch记录一次
+                if (epoch + 1) % 10 == 0:
+                    self.ae_log(f"  Epoch {epoch+1:4d}/{epochs}: Train={avg_train_loss:.6f}, Val={avg_val_loss:.6f}")
+                    self.root.update_idletasks()
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            self.ae_log(f"✅ 阶段1: AutoEncoder预训练完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 阶段1训练失败: {e}")
+            raise e
+
+    def _train_parameter_mapping_stage2(self, rcs_data, param_data, batch_size, learning_rate, epochs):
+        """阶段2: 参数映射训练"""
+        try:
+            import torch
+            import torch.nn as nn
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            parameter_mapper.to(device)
+
+            # 冻结AutoEncoder编码器
+            for param in autoencoder.encoder.parameters():
+                param.requires_grad = False
+
+            # 准备数据
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            param_tensor = torch.FloatTensor(param_data)
+
+            # 获取目标隐空间表示
+            autoencoder.eval()
+            with torch.no_grad():
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                _, target_latents = autoencoder(wavelet_coeffs.to(device))
+                target_latents = target_latents.cpu()
+
+            # 数据划分: 80%训练，20%验证
+            dataset = TensorDataset(param_tensor, target_latents)
+
+            # 固定种子确保可重现性
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 阶段2数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 设置优化器
+            optimizer = torch.optim.Adam(parameter_mapper.parameters(), lr=learning_rate)
+            criterion = nn.MSELoss()
+
+            # 训练循环
+            parameter_mapper.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+            patience = 10  # 早停耐心值
+
+            for epoch in range(epochs):
+                # 训练
+                parameter_mapper.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_idx, (batch_params, batch_latents) in enumerate(train_loader):
+                    batch_params = batch_params.to(device)
+                    batch_latents = batch_latents.to(device)
+
+                    # 前向传播
+                    predicted_latents = parameter_mapper(batch_params)
+                    loss = criterion(predicted_latents, batch_latents)
+
+                    # 反向传播
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                parameter_mapper.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_params, batch_latents in val_loader:
+                        batch_params = batch_params.to(device)
+                        batch_latents = batch_latents.to(device)
+                        predicted_latents = parameter_mapper(batch_params)
+                        loss = criterion(predicted_latents, batch_latents)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 每10个epoch记录一次
+                if (epoch + 1) % 10 == 0:
+                    self.ae_log(f"  Epoch {epoch+1:4d}/{epochs}: Train={avg_train_loss:.6f}, Val={avg_val_loss:.6f}")
+                    self.root.update_idletasks()
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            # 解冻AutoEncoder
+            for param in autoencoder.encoder.parameters():
+                param.requires_grad = True
+
+            self.ae_log(f"✅ 阶段2: 参数映射训练完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 阶段2训练失败: {e}")
+            raise e
+
+    def _train_end_to_end_stage3(self, rcs_data, param_data, batch_size, learning_rate, epochs):
+        """阶段3: 端到端微调"""
+        try:
+            import torch
+            import torch.nn as nn
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            parameter_mapper.to(device)
+
+            # 准备数据
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            param_tensor = torch.FloatTensor(param_data)
+
+            target_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 数据划分: 80%训练，20%验证
+            dataset = TensorDataset(param_tensor, target_wavelet_coeffs)
+
+            # 固定种子确保可重现性
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 阶段3数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 设置优化器（更低的学习率进行微调）
+            optimizer = torch.optim.Adam(
+                list(autoencoder.parameters()) + list(parameter_mapper.parameters()),
+                lr=learning_rate * 0.1  # 微调使用更小的学习率
+            )
+            criterion = nn.MSELoss()
+
+            # 训练循环
+            autoencoder.train()
+            parameter_mapper.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+            patience = 5  # 微调阶段使用更小的耐心值
+
+            for epoch in range(epochs):
+                # 训练
+                autoencoder.train()
+                parameter_mapper.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_idx, (batch_params, batch_target_coeffs) in enumerate(train_loader):
+                    batch_params = batch_params.to(device)
+                    batch_target_coeffs = batch_target_coeffs.to(device)
+
+                    # 端到端前向传播
+                    predicted_latents = parameter_mapper(batch_params)
+                    reconstructed_coeffs = autoencoder.decode(predicted_latents)
+
+                    # 计算损失
+                    loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+
+                    # 反向传播
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                autoencoder.eval()
+                parameter_mapper.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_params, batch_target_coeffs in val_loader:
+                        batch_params = batch_params.to(device)
+                        batch_target_coeffs = batch_target_coeffs.to(device)
+                        predicted_latents = parameter_mapper(batch_params)
+                        reconstructed_coeffs = autoencoder.decode(predicted_latents)
+                        loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 每5个epoch记录一次（微调阶段更频繁）
+                if (epoch + 1) % 5 == 0:
+                    self.ae_log(f"  Epoch {epoch+1:4d}/{epochs}: Train={avg_train_loss:.6f}, Val={avg_val_loss:.6f}")
+                    self.root.update_idletasks()
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            self.ae_log(f"✅ 阶段3: 端到端微调完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 阶段3训练失败: {e}")
+            raise e
+
+    def _train_full_end_to_end(self, rcs_data, param_data, batch_size, learning_rate, total_epochs):
+        """完整端到端训练"""
+        try:
+            import torch
+            import torch.nn as nn
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            parameter_mapper.to(device)
+
+            self.ae_log(f"🖥️ 使用设备: {device}")
+
+            # 准备数据
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            param_tensor = torch.FloatTensor(param_data)
+
+            target_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 数据划分: 80%训练，20%验证
+            dataset = TensorDataset(param_tensor, target_wavelet_coeffs)
+
+            # 固定种子确保可重现性
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 端到端数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 设置优化器
+            optimizer = torch.optim.Adam(
+                list(autoencoder.parameters()) + list(parameter_mapper.parameters()),
+                lr=learning_rate
+            )
+            criterion = nn.MSELoss()
+
+            # 训练循环
+            autoencoder.train()
+            parameter_mapper.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+            patience = 15  # 端到端训练使用较大的耐心值
+
+            self.ae_log("🔄 端到端训练进行中...")
+
+            for epoch in range(total_epochs):
+                # 训练
+                autoencoder.train()
+                parameter_mapper.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_idx, (batch_params, batch_target_coeffs) in enumerate(train_loader):
+                    batch_params = batch_params.to(device)
+                    batch_target_coeffs = batch_target_coeffs.to(device)
+
+                    # 端到端前向传播
+                    predicted_latents = parameter_mapper(batch_params)
+                    reconstructed_coeffs = autoencoder.decode(predicted_latents)
+
+                    # 计算损失
+                    loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+
+                    # 反向传播
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                autoencoder.eval()
+                parameter_mapper.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_params, batch_target_coeffs in val_loader:
+                        batch_params = batch_params.to(device)
+                        batch_target_coeffs = batch_target_coeffs.to(device)
+                        predicted_latents = parameter_mapper(batch_params)
+                        reconstructed_coeffs = autoencoder.decode(predicted_latents)
+                        loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 每20个epoch记录一次
+                if (epoch + 1) % 20 == 0:
+                    self.ae_log(f"  Epoch {epoch+1:4d}/{total_epochs}: Train={avg_train_loss:.6f}, Val={avg_val_loss:.6f}")
+                    self.root.update_idletasks()
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            self.ae_log(f"✅ 端到端训练完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 端到端训练失败: {e}")
+            raise e
+
+    def _run_three_stage_training_v2(self, rcs_data, param_data, training_config):
+        """执行三阶段训练 v2 (使用统一配置管理器)"""
+        try:
+            self.ae_log("🚀 开始三阶段训练流程 (v2统一配置):")
+
+            # 阶段1: AutoEncoder预训练
+            self.ae_log("📊 开始阶段1: AutoEncoder预训练...")
+            self._train_autoencoder_stage1_v2(rcs_data, training_config)
+
+            # 阶段2: 参数映射训练
+            self.ae_log("🎯 开始阶段2: 参数映射训练...")
+            self._train_parameter_mapping_stage2_v2(rcs_data, param_data, training_config)
+
+            # 阶段3: 端到端微调
+            self.ae_log("⚡ 开始阶段3: 端到端微调...")
+            self._train_end_to_end_stage3_v2(rcs_data, param_data, training_config)
+
+            self.ae_log("🎉 三阶段训练完成!")
+            messagebox.showinfo("成功", "三阶段训练完成!")
+
+        except Exception as e:
+            error_msg = f"三阶段训练失败: {e}"
+            self.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def _run_end_to_end_training_v2(self, rcs_data, param_data, training_config):
+        """执行端到端训练 v2 (使用统一配置管理器)"""
+        try:
+            total_epochs = sum(training_config['epochs'].values())
+            self.ae_log("🚀 开始端到端训练流程 (v2统一配置):")
+            self.ae_log(f"  📊 总训练轮数: {total_epochs}")
+
+            # 实现端到端训练
+            self._train_full_end_to_end_v2(rcs_data, param_data, training_config, total_epochs)
+
+            self.ae_log("🎉 端到端训练完成!")
+            messagebox.showinfo("成功", "端到端训练完成!")
+
+        except Exception as e:
+            error_msg = f"端到端训练失败: {e}"
+            self.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def _train_autoencoder_stage1_v2(self, rcs_data, training_config):
+        """阶段1: AutoEncoder预训练 v2 (使用统一配置)"""
+        try:
+            import torch
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取AutoEncoder组件
+            autoencoder = self.ae_system['autoencoder']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            self.ae_log(f"🖥️ 使用设备: {device}")
+
+            # 准备数据和划分
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 数据划分: 80%训练，20%验证
+            dataset = TensorDataset(wavelet_coeffs)
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 阶段1数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            batch_size = training_config['batch_size']
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 创建优化器和调度器 (复用项目标准)
+            optimizer, scheduler = self._create_ae_optimizer_and_scheduler(autoencoder.parameters(), training_config)
+
+            # 创建损失函数 (复用项目损失函数系统)
+            criterion = self._create_ae_loss_function(training_config)
+
+            # 训练配置
+            epochs = training_config['epochs']['stage1']
+            patience = training_config['patience']['stage1']
+            scheduler_type = training_config['lr_scheduler']
+
+            # 训练循环
+            autoencoder.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+
+            for epoch in range(epochs):
+                # 训练
+                autoencoder.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_coeffs, in train_loader:
+                    batch_coeffs = batch_coeffs.to(device)
+                    reconstructed, latent = autoencoder(batch_coeffs)
+                    loss = criterion(reconstructed, batch_coeffs)
+
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                autoencoder.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_coeffs, in val_loader:
+                        batch_coeffs = batch_coeffs.to(device)
+                        reconstructed, latent = autoencoder(batch_coeffs)
+                        loss = criterion(reconstructed, batch_coeffs)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 学习率调度
+                self._ae_step_scheduler(scheduler, scheduler_type, avg_val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 记录进度
+                if (epoch + 1) % 10 == 0:
+                    self._ae_log_training_progress(epoch, epochs, avg_train_loss, avg_val_loss, current_lr, "阶段1")
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            self.ae_log(f"✅ 阶段1: AutoEncoder预训练完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 阶段1训练失败: {e}")
+            raise e
+
+    def _train_parameter_mapping_stage2_v2(self, rcs_data, param_data, training_config):
+        """阶段2: 参数映射训练 v2 (使用统一配置)"""
+        try:
+            import torch
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            parameter_mapper.to(device)
+
+            # 冻结AutoEncoder编码器
+            for param in autoencoder.encoder.parameters():
+                param.requires_grad = False
+
+            # 准备数据
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            param_tensor = torch.FloatTensor(param_data)
+
+            # 获取目标隐空间表示
+            autoencoder.eval()
+            with torch.no_grad():
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                _, target_latents = autoencoder(wavelet_coeffs.to(device))
+                target_latents = target_latents.cpu()
+
+            # 数据划分
+            dataset = TensorDataset(param_tensor, target_latents)
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 阶段2数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            batch_size = training_config['batch_size']
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 创建优化器和调度器
+            optimizer, scheduler = self._create_ae_optimizer_and_scheduler(parameter_mapper.parameters(), training_config)
+
+            # 创建损失函数
+            criterion = self._create_ae_loss_function(training_config)
+
+            # 训练配置
+            epochs = training_config['epochs']['stage2']
+            patience = training_config['patience']['stage2']
+            scheduler_type = training_config['lr_scheduler']
+
+            # 训练循环
+            parameter_mapper.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+
+            for epoch in range(epochs):
+                # 训练
+                parameter_mapper.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_params, batch_latents in train_loader:
+                    batch_params = batch_params.to(device)
+                    batch_latents = batch_latents.to(device)
+
+                    predicted_latents = parameter_mapper(batch_params)
+                    loss = criterion(predicted_latents, batch_latents)
+
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                parameter_mapper.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_params, batch_latents in val_loader:
+                        batch_params = batch_params.to(device)
+                        batch_latents = batch_latents.to(device)
+                        predicted_latents = parameter_mapper(batch_params)
+                        loss = criterion(predicted_latents, batch_latents)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 学习率调度
+                self._ae_step_scheduler(scheduler, scheduler_type, avg_val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 记录进度
+                if (epoch + 1) % 10 == 0:
+                    self._ae_log_training_progress(epoch, epochs, avg_train_loss, avg_val_loss, current_lr, "阶段2")
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            # 解冻AutoEncoder
+            for param in autoencoder.encoder.parameters():
+                param.requires_grad = True
+
+            self.ae_log(f"✅ 阶段2: 参数映射训练完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 阶段2训练失败: {e}")
+            raise e
+
+    def _train_end_to_end_stage3_v2(self, rcs_data, param_data, training_config):
+        """阶段3: 端到端微调 v2 (使用统一配置)"""
+        try:
+            import torch
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            parameter_mapper.to(device)
+
+            # 准备数据
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            param_tensor = torch.FloatTensor(param_data)
+            target_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 数据划分
+            dataset = TensorDataset(param_tensor, target_wavelet_coeffs)
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 阶段3数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            batch_size = training_config['batch_size']
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 创建优化器和调度器 (微调使用更小的学习率)
+            training_config_fine = training_config.copy()
+            training_config_fine['learning_rate'] = training_config['learning_rate'] * 0.1
+
+            optimizer, scheduler = self._create_ae_optimizer_and_scheduler(
+                list(autoencoder.parameters()) + list(parameter_mapper.parameters()),
+                training_config_fine
+            )
+
+            # 创建损失函数
+            criterion = self._create_ae_loss_function(training_config)
+
+            # 训练配置
+            epochs = training_config['epochs']['stage3']
+            patience = training_config['patience']['stage3']
+            scheduler_type = training_config['lr_scheduler']
+
+            # 训练循环
+            autoencoder.train()
+            parameter_mapper.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+
+            for epoch in range(epochs):
+                # 训练
+                autoencoder.train()
+                parameter_mapper.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_params, batch_target_coeffs in train_loader:
+                    batch_params = batch_params.to(device)
+                    batch_target_coeffs = batch_target_coeffs.to(device)
+
+                    predicted_latents = parameter_mapper(batch_params)
+                    reconstructed_coeffs = autoencoder.decode(predicted_latents)
+                    loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                autoencoder.eval()
+                parameter_mapper.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_params, batch_target_coeffs in val_loader:
+                        batch_params = batch_params.to(device)
+                        batch_target_coeffs = batch_target_coeffs.to(device)
+                        predicted_latents = parameter_mapper(batch_params)
+                        reconstructed_coeffs = autoencoder.decode(predicted_latents)
+                        loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 学习率调度
+                self._ae_step_scheduler(scheduler, scheduler_type, avg_val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 记录进度 (微调阶段更频繁记录)
+                if (epoch + 1) % 5 == 0:
+                    self._ae_log_training_progress(epoch, epochs, avg_train_loss, avg_val_loss, current_lr, "阶段3")
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            self.ae_log(f"✅ 阶段3: 端到端微调完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 阶段3训练失败: {e}")
+            raise e
+
+    def _train_full_end_to_end_v2(self, rcs_data, param_data, training_config, total_epochs):
+        """完整端到端训练 v2 (使用统一配置)"""
+        try:
+            import torch
+            from torch.utils.data import DataLoader, TensorDataset, random_split
+
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            parameter_mapper.to(device)
+            self.ae_log(f"🖥️ 使用设备: {device}")
+
+            # 准备数据
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            param_tensor = torch.FloatTensor(param_data)
+            target_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 数据划分
+            dataset = TensorDataset(param_tensor, target_wavelet_coeffs)
+            torch.manual_seed(42)
+            train_size = int(len(dataset) * 0.8)
+            val_size = len(dataset) - train_size
+
+            generator = torch.Generator().manual_seed(42)
+            train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+
+            self.ae_log(f"📊 端到端数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 调整批次大小
+            batch_size = training_config['batch_size']
+            if batch_size > train_size:
+                batch_size = train_size
+                self.ae_log(f"⚠️ 批次大小调整为 {batch_size}")
+
+            # 创建数据加载器
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
+
+            # 创建优化器和调度器
+            optimizer, scheduler = self._create_ae_optimizer_and_scheduler(
+                list(autoencoder.parameters()) + list(parameter_mapper.parameters()),
+                training_config
+            )
+
+            # 创建损失函数
+            criterion = self._create_ae_loss_function(training_config)
+
+            # 训练配置
+            patience = training_config['patience']['e2e']
+            scheduler_type = training_config['lr_scheduler']
+
+            # 训练循环
+            autoencoder.train()
+            parameter_mapper.train()
+            best_val_loss = float('inf')
+            patience_counter = 0
+
+            self.ae_log("🔄 端到端训练进行中...")
+
+            for epoch in range(total_epochs):
+                # 训练
+                autoencoder.train()
+                parameter_mapper.train()
+                train_loss = 0.0
+                num_train_batches = 0
+
+                for batch_params, batch_target_coeffs in train_loader:
+                    batch_params = batch_params.to(device)
+                    batch_target_coeffs = batch_target_coeffs.to(device)
+
+                    predicted_latents = parameter_mapper(batch_params)
+                    reconstructed_coeffs = autoencoder.decode(predicted_latents)
+                    loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    train_loss += loss.item()
+                    num_train_batches += 1
+
+                avg_train_loss = train_loss / num_train_batches
+
+                # 验证
+                autoencoder.eval()
+                parameter_mapper.eval()
+                val_loss = 0.0
+                num_val_batches = 0
+
+                with torch.no_grad():
+                    for batch_params, batch_target_coeffs in val_loader:
+                        batch_params = batch_params.to(device)
+                        batch_target_coeffs = batch_target_coeffs.to(device)
+                        predicted_latents = parameter_mapper(batch_params)
+                        reconstructed_coeffs = autoencoder.decode(predicted_latents)
+                        loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+                        val_loss += loss.item()
+                        num_val_batches += 1
+
+                avg_val_loss = val_loss / num_val_batches
+
+                # 学习率调度
+                self._ae_step_scheduler(scheduler, scheduler_type, avg_val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+
+                # 早停检查
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                # 记录进度
+                if (epoch + 1) % 20 == 0:
+                    self._ae_log_training_progress(epoch, total_epochs, avg_train_loss, avg_val_loss, current_lr, "端到端")
+
+                # 早停
+                if patience_counter >= patience:
+                    self.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
+                    break
+
+            self.ae_log(f"✅ 端到端训练完成，最佳验证损失: {best_val_loss:.6f}")
+
+        except Exception as e:
+            self.ae_log(f"❌ 端到端训练失败: {e}")
+            raise e
+
+    def _open_loss_config_for_ae(self):
+        """为AutoEncoder打开损失函数配置页面"""
+        # 跳转到损失函数配置标签页
+        self.notebook.select(1)  # 损失函数配置是第2个标签页 (索引1)
+        messagebox.showinfo("提示", "请在损失函数配置页面设置后点击'应用配置'，然后返回AutoEncoder页面训练")
+
+    def _create_ae_training_config(self):
+        """创建AutoEncoder训练配置 (复用项目配置管理器)"""
+        config = {
+            'batch_size': int(self.ae_batch_size.get()),
+            'learning_rate': float(self.ae_learning_rate.get()),
+            'min_lr': float(self.ae_min_lr.get()),
+            'lr_scheduler': self.ae_lr_scheduler.get(),
+            'restart_period': int(self.ae_restart_period.get()),
+            'patience': {
+                'stage1': int(self.ae_patience_stage1.get()),
+                'stage2': int(self.ae_patience_stage2.get()),
+                'stage3': int(self.ae_patience_stage3.get()),
+                'e2e': int(self.ae_patience_e2e.get()),
+            },
+            'epochs': {
+                'stage1': int(self.ae_epochs_stage1.get()),
+                'stage2': int(self.ae_epochs_stage2.get()),
+                'stage3': int(self.ae_epochs_stage3.get()),
+            },
+            'use_custom_loss': self.ae_use_custom_loss.get()
+        }
+
+        # 如果使用自定义损失函数，复用项目的损失函数配置
+        if config['use_custom_loss'] and hasattr(self, 'training_config') and 'custom_loss_config' in self.training_config:
+            config['custom_loss_config'] = self.training_config['custom_loss_config']
+
+        return config
+
+    def _create_ae_optimizer_and_scheduler(self, model_params, training_config):
+        """创建AutoEncoder优化器和学习率调度器 (复用项目标准)"""
+        import torch.optim as optim
+
+        # 创建优化器
+        optimizer = optim.Adam(model_params, lr=training_config['learning_rate'])
+
+        # 根据选择的策略创建调度器 (完全复用项目代码)
+        scheduler_type = training_config['lr_scheduler']
+        if scheduler_type == 'constant':
+            # 常数学习率：不调整，保持初始学习率
+            scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0)
+        elif scheduler_type == 'cosine_restart':
+            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=training_config['restart_period'],
+                T_mult=1,
+                eta_min=training_config['min_lr'],
+                last_epoch=-1
+            )
+        elif scheduler_type == 'cosine_simple':
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=training_config['epochs']['stage1'],  # 使用最长阶段的轮数
+                eta_min=training_config['min_lr'],
+                last_epoch=-1
+            )
+        elif scheduler_type == 'adaptive':
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode='min',
+                factor=0.5,
+                patience=20,
+                min_lr=training_config['min_lr'],
+                verbose=True
+            )
+        else:
+            # 默认使用常数学习率（最简单的策略）
+            scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0)
+
+        return optimizer, scheduler
+
+    def _create_ae_loss_function(self, training_config):
+        """创建AutoEncoder损失函数 (复用项目损失函数系统)"""
+        import torch.nn as nn
+
+        if training_config['use_custom_loss'] and 'custom_loss_config' in training_config:
+            # 使用自定义损失函数配置
+            self.ae_log("使用自定义损失函数配置")
+            from configurable_loss import create_loss_function as create_configurable_loss
+            return create_configurable_loss(training_config['custom_loss_config'])
+        else:
+            # 使用标准MSE损失
+            self.ae_log("使用标准MSE损失函数")
+            return nn.MSELoss()
+
+    def _ae_step_scheduler(self, scheduler, scheduler_type, val_loss=None):
+        """AutoEncoder学习率调度器步进 (复用项目调度逻辑)"""
+        if scheduler_type == 'adaptive':
+            # ReduceLROnPlateau需要传入验证损失
+            if val_loss is not None:
+                scheduler.step(val_loss)
+        else:
+            # 其他调度器直接step
+            scheduler.step()
+
+    def _ae_log_training_progress(self, epoch, total_epochs, train_loss, val_loss, lr, stage_name):
+        """AutoEncoder训练进度日志 (统一格式)"""
+        lr_str = f", LR={lr:.2e}" if lr is not None else ""
+        self.ae_log(f"  {stage_name} Epoch {epoch+1:4d}/{total_epochs}: Train={train_loss:.6f}, Val={val_loss:.6f}{lr_str}")
+        self.root.update_idletasks()
+
+    # ======= AutoEncoder可视化功能 =======
+
+    def _plot_autoencoder_visualization(self, chart_type):
+        """绘制AutoEncoder特定可视化图表"""
+        if chart_type == "AE隐空间分析":
+            self._plot_ae_latent_space()
+        elif chart_type == "AE重建质量":
+            self._plot_ae_reconstruction_quality()
+        elif chart_type == "AE参数映射":
+            self._plot_ae_parameter_mapping()
+        elif chart_type == "AE训练进度":
+            self._plot_ae_training_progress_vis()
+
+    def _plot_ae_latent_space(self):
+        """绘制AutoEncoder隐空间分析"""
+        import torch
+        import numpy as np
+        from sklearn.decomposition import PCA
+        from sklearn.manifold import TSNE
+
+        try:
+            # 获取AutoEncoder组件
+            autoencoder = self.ae_system['autoencoder']
+            wavelet_transform = self.ae_system['wavelet_transform']
+            rcs_data = self.ae_system['rcs_data']
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
+
+            # 编码所有数据到隐空间
+            with torch.no_grad():
+                rcs_tensor = torch.FloatTensor(rcs_data[:50])  # 取前50个样本避免内存问题
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                _, latent_vectors = autoencoder(wavelet_coeffs.to(device))
+                latent_vectors = latent_vectors.cpu().numpy()
+
+            # 降维可视化
+            self.vis_fig.clear()
+
+            # 子图1: PCA降维
+            ax1 = self.vis_fig.add_subplot(2, 2, 1)
+            pca = PCA(n_components=2)
+            latent_2d_pca = pca.fit_transform(latent_vectors)
+            scatter = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
+                                c=range(len(latent_2d_pca)), cmap='viridis', alpha=0.6)
+            ax1.set_title('隐空间分布 - PCA')
+            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)')
+            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)')
+
+            # 子图2: t-SNE降维
+            ax2 = self.vis_fig.add_subplot(2, 2, 2)
+            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
+            latent_2d_tsne = tsne.fit_transform(latent_vectors)
+            ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
+                       c=range(len(latent_2d_tsne)), cmap='viridis', alpha=0.6)
+            ax2.set_title('隐空间分布 - t-SNE')
+            ax2.set_xlabel('t-SNE1')
+            ax2.set_ylabel('t-SNE2')
+
+            # 子图3: 隐空间维度分布
+            ax3 = self.vis_fig.add_subplot(2, 2, 3)
+            latent_means = np.mean(latent_vectors, axis=0)
+            latent_stds = np.std(latent_vectors, axis=0)
+            dims = range(len(latent_means[:20]))  # 只显示前20个维度
+            ax3.errorbar(dims, latent_means[:20], yerr=latent_stds[:20],
+                        capsize=3, marker='o', markersize=4)
+            ax3.set_title('隐空间维度统计 (前20维)')
+            ax3.set_xlabel('隐空间维度')
+            ax3.set_ylabel('数值')
+            ax3.grid(True, alpha=0.3)
+
+            # 子图4: 隐空间激活热图
+            ax4 = self.vis_fig.add_subplot(2, 2, 4)
+            im = ax4.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
+            ax4.set_title('隐空间激活模式 (前10样本×前20维)')
+            ax4.set_xlabel('样本索引')
+            ax4.set_ylabel('隐空间维度')
+            self.vis_fig.colorbar(im, ax=ax4)
+
+            self.vis_fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'隐空间分析失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center')
+            self.vis_canvas.draw()
+
+    def _plot_ae_reconstruction_quality(self):
+        """绘制AutoEncoder重建质量分析"""
+        import torch
+        import numpy as np
+
+        try:
+            # 获取AutoEncoder组件
+            autoencoder = self.ae_system['autoencoder']
+            wavelet_transform = self.ae_system['wavelet_transform']
+            rcs_data = self.ae_system['rcs_data']
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
+
+            # 选择测试样本
+            test_indices = [0, 10, 20, 30]  # 选择几个代表性样本
+            test_samples = rcs_data[test_indices]
+
+            self.vis_fig.clear()
+
+            for i, sample_idx in enumerate(test_indices):
+                # 原始数据
+                original_rcs = test_samples[i]
+
+                # AutoEncoder重建
+                with torch.no_grad():
+                    rcs_tensor = torch.FloatTensor([original_rcs])
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                    reconstructed_coeffs, _ = autoencoder(wavelet_coeffs.to(device))
+                    reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs)
+                    reconstructed_rcs = reconstructed_rcs.cpu().numpy()[0]
+
+                # 绘制对比图
+                ax = self.vis_fig.add_subplot(2, 2, i+1)
+
+                # 只显示第一个频率的数据
+                freq_idx = 0
+                original_2d = original_rcs[:, :, freq_idx]
+                reconstructed_2d = reconstructed_rcs[:, :, freq_idx]
+
+                # 计算重建误差
+                mse = np.mean((original_2d - reconstructed_2d)**2)
+
+                # 并排显示原始和重建
+                combined = np.hstack([original_2d, reconstructed_2d])
+                im = ax.imshow(combined, cmap='jet', aspect='equal')
+
+                # 添加分割线
+                ax.axvline(x=original_2d.shape[1]-0.5, color='white', linewidth=2)
+
+                ax.set_title(f'样本{sample_idx+1} (MSE={mse:.4f})\n左:原始 右:重建')
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+                self.vis_fig.colorbar(im, ax=ax, shrink=0.6)
+
+            self.vis_fig.suptitle('AutoEncoder重建质量对比')
+            self.vis_fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'重建质量分析失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center')
+            self.vis_canvas.draw()
+
+    def _plot_ae_parameter_mapping(self):
+        """绘制AutoEncoder参数映射分析"""
+        import torch
+        import numpy as np
+        from sklearn.decomposition import PCA
+
+        try:
+            # 获取组件
+            parameter_mapper = self.ae_system['parameter_mapper']
+            param_data = self.ae_system['param_data']
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            parameter_mapper.to(device).eval()
+
+            # 获取参数映射结果
+            with torch.no_grad():
+                param_tensor = torch.FloatTensor(param_data[:50])  # 前50个样本
+                mapped_latents = parameter_mapper(param_tensor.to(device))
+                mapped_latents = mapped_latents.cpu().numpy()
+
+            self.vis_fig.clear()
+
+            # 子图1: 参数空间分布
+            ax1 = self.vis_fig.add_subplot(2, 2, 1)
+            # 假设前两个参数最重要
+            ax1.scatter(param_data[:50, 0], param_data[:50, 1],
+                       c=range(50), cmap='viridis', alpha=0.6)
+            ax1.set_title('参数空间分布')
+            ax1.set_xlabel('参数1')
+            ax1.set_ylabel('参数2')
+
+            # 子图2: 映射后隐空间分布
+            ax2 = self.vis_fig.add_subplot(2, 2, 2)
+            pca = PCA(n_components=2)
+            mapped_2d = pca.fit_transform(mapped_latents)
+            ax2.scatter(mapped_2d[:, 0], mapped_2d[:, 1],
+                       c=range(50), cmap='viridis', alpha=0.6)
+            ax2.set_title('映射后隐空间分布')
+            ax2.set_xlabel('隐空间PC1')
+            ax2.set_ylabel('隐空间PC2')
+
+            # 子图3: 参数-隐空间相关性
+            ax3 = self.vis_fig.add_subplot(2, 2, 3)
+            # 计算每个参数与隐空间主成分的相关性
+            correlations = []
+            for param_idx in range(min(param_data.shape[1], 5)):  # 最多5个参数
+                corr = np.corrcoef(param_data[:50, param_idx], mapped_2d[:, 0])[0, 1]
+                correlations.append(abs(corr))
+
+            param_names = [f'参数{i+1}' for i in range(len(correlations))]
+            ax3.bar(param_names, correlations)
+            ax3.set_title('参数与隐空间PC1相关性')
+            ax3.set_ylabel('绝对相关系数')
+            ax3.tick_params(axis='x', rotation=45)
+
+            # 子图4: 隐空间维度激活强度
+            ax4 = self.vis_fig.add_subplot(2, 2, 4)
+            latent_means = np.mean(np.abs(mapped_latents), axis=0)
+            dims = range(len(latent_means[:20]))  # 前20维
+            ax4.bar(dims, latent_means[:20])
+            ax4.set_title('隐空间维度激活强度 (前20维)')
+            ax4.set_xlabel('隐空间维度')
+            ax4.set_ylabel('平均激活强度')
+
+            self.vis_fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'参数映射分析失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center')
+            self.vis_canvas.draw()
+
+    def _plot_ae_training_progress_vis(self):
+        """绘制AutoEncoder训练进度可视化"""
+        self.vis_fig.clear()
+        ax = self.vis_fig.add_subplot(1, 1, 1)
+        ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(需要训练历史数据支持)',
+               transform=ax.transAxes, ha='center', va='center')
+        ax.set_title('AutoEncoder训练进度')
+        self.vis_canvas.draw()
+
+    def _plot_autoencoder_prediction_visualization(self, chart_type, freq):
+        """使用AutoEncoder进行预测可视化"""
+        import torch
+        import numpy as np
+
+        try:
+            if chart_type == "2D热图":
+                self._plot_ae_2d_heatmap(freq)
+            elif chart_type == "对比图":
+                self._plot_ae_comparison()
+            else:
+                # 对其他图表类型，显示提示信息
+                self.vis_fig.clear()
+                ax = self.vis_fig.add_subplot(1, 1, 1)
+                ax.text(0.5, 0.5, f'AutoEncoder暂不支持"{chart_type}"类型\n请选择其他图表类型',
+                       transform=ax.transAxes, ha='center', va='center')
+                self.vis_canvas.draw()
+
+        except Exception as e:
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'AutoEncoder预测可视化失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center')
+            self.vis_canvas.draw()
+
+    def _plot_ae_2d_heatmap(self, freq):
+        """绘制AutoEncoder预测的2D热图 - 支持模型未加载时显示原始数据"""
+        import torch
+        import numpy as np
+
+        # 检查是否有加载的AutoEncoder系统
+        if (not hasattr(self, 'ae_system') or
+            self.ae_system is None or
+            'autoencoder' not in self.ae_system or
+            self.ae_system['autoencoder'] is None):
+
+            # 如果没有加载模型，显示原始RCS数据作为替代
+            self._plot_original_rcs_fallback(freq)
+            return
+
+        try:
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            parameter_mapper = self.ae_system['parameter_mapper']
+            wavelet_transform = self.ae_system['wavelet_transform']
+            param_data = self.ae_system['param_data']
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
+            parameter_mapper.to(device).eval()
+
+            # 选择一个测试样本
+            sample_idx = 0
+            test_params = param_data[sample_idx:sample_idx+1]
+
+            # 进行端到端预测
+            with torch.no_grad():
+                param_tensor = torch.FloatTensor(test_params).to(device)
+                predicted_latents = parameter_mapper(param_tensor)
+                predicted_coeffs = autoencoder.decode(predicted_latents)
+                predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+                predicted_rcs = predicted_rcs.cpu().numpy()[0]
+
+            # 绘制热图
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+
+            # 选择频率索引
+            freq_idx = 0 if freq == "1.5G" else 1
+            rcs_2d = predicted_rcs[:, :, freq_idx]
+
+            # 创建角度网格（实际角度范围：theta 45-135°, phi -45-45°）
+            theta_values = np.linspace(45, 135, rcs_2d.shape[0])
+            phi_values = np.linspace(-45, 45, rcs_2d.shape[1])
+
+            im = ax.imshow(rcs_2d, cmap='jet', aspect='equal',
+                          extent=[phi_values.min(), phi_values.max(),
+                                 theta_values.max(), theta_values.min()])
+            ax.set_title(f'AutoEncoder预测 - 样本{sample_idx+1} - {freq}Hz RCS分布')
+            ax.set_xlabel('φ (方位角, 度)')
+            ax.set_ylabel('θ (俯仰角, 度)')
+            self.vis_fig.colorbar(im, ax=ax, label='RCS')
+
+            self.vis_fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            # 如果模型预测失败，回退到原始数据显示
+            print(f"AutoEncoder预测失败，回退到原始数据显示: {str(e)}")
+            self._plot_original_rcs_fallback(freq)
+
+    def _plot_original_rcs_fallback(self, freq):
+        """当AutoEncoder模型未加载时，显示原始RCS数据作为替代"""
+        import rcs_visual as rv
+
+        try:
+            # 使用第一个可用的模型数据
+            model_id = "001"  # 默认使用模型001
+
+            # 从文件读取原始RCS数据
+            data = rv.get_rcs_matrix(model_id, freq, self.data_config['rcs_data_dir'])
+
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+
+            # 定义角度范围 (基于实际数据)
+            phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
+            theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
+            extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
+
+            # 绘制原始数据热图
+            im = ax.imshow(data, cmap='jet', aspect='equal', extent=extent)
+            ax.set_title(f'原始RCS数据 - 模型 {model_id} - {freq}Hz\n(AutoEncoder模型未加载，显示原始数据)')
+            ax.set_xlabel('φ (方位角, 度)')
+            ax.set_ylabel('θ (俯仰角, 度)')
+            self.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
+
+            self.vis_fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            # 如果连原始数据也读取失败
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'无法显示数据:\nAutoEncoder模型未加载\n且原始数据读取失败\n\n错误: {str(e)}',
+                   transform=ax.transAxes, ha='center', va='center')
+            self.vis_canvas.draw()
+
+    def _plot_ae_comparison(self):
+        """绘制AutoEncoder预测与真实值对比"""
+        import torch
+        import numpy as np
+
+        # 获取组件和数据
+        autoencoder = self.ae_system['autoencoder']
+        parameter_mapper = self.ae_system['parameter_mapper']
+        wavelet_transform = self.ae_system['wavelet_transform']
+        rcs_data = self.ae_system['rcs_data']
+        param_data = self.ae_system['param_data']
+
+        # 设置设备和评估模式
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        autoencoder.to(device).eval()
+        parameter_mapper.to(device).eval()
+
+        # 选择几个测试样本
+        test_indices = [0, 1, 2, 3]
+
+        self.vis_fig.clear()
+
+        for i, idx in enumerate(test_indices):
+            # 真实值
+            true_rcs = rcs_data[idx]
+            test_params = param_data[idx:idx+1]
+
+            # 预测值
+            with torch.no_grad():
+                param_tensor = torch.FloatTensor(test_params).to(device)
+                predicted_latents = parameter_mapper(param_tensor)
+                predicted_coeffs = autoencoder.decode(predicted_latents)
+                predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+                predicted_rcs = predicted_rcs.cpu().numpy()[0]
+
+            # 绘制对比
+            ax = self.vis_fig.add_subplot(2, 2, i+1)
+
+            # 选择第一个频率进行对比
+            true_2d = true_rcs[:, :, 0]
+            pred_2d = predicted_rcs[:, :, 0]
+
+            # 并排显示
+            comparison = np.hstack([true_2d, pred_2d])
+            im = ax.imshow(comparison, cmap='jet', aspect='equal')
+
+            # 添加分割线
+            ax.axvline(x=true_2d.shape[1]-0.5, color='white', linewidth=2)
+
+            # 计算误差
+            mse = np.mean((true_2d - pred_2d)**2)
+            ax.set_title(f'样本{idx+1} (MSE={mse:.4f})\n左:真实 右:预测')
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        self.vis_fig.suptitle('AutoEncoder预测 vs 真实值对比')
+        self.vis_fig.tight_layout()
+        self.vis_canvas.draw()
+
 
 def main():
     """主函数"""
@@ -4522,7 +6539,6 @@ def main():
 
     # 运行主循环
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()

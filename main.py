@@ -203,8 +203,46 @@ class RCSWaveletApp:
 
             # 4. 创建GUI
             root = tk.Tk()
+
+            # 设置窗口属性
+            root.title("RCS小波神经网络 - 增强版 (双模式AutoEncoder + 小波分析)")
+            root.geometry("1400x900")
+
+            # 创建主GUI实例
             app = RCSWaveletGUI(root)
-            print("GUI创建成功，启动主循环...")
+            print("GUI创建成功")
+
+            # 5. 集成AutoEncoder扩展功能
+            try:
+                from gui_autoencoder_extension import integrate_extension_to_gui
+                print("正在集成AutoEncoder扩展...")
+                extension = integrate_extension_to_gui(app)
+                print("✅ AutoEncoder扩展功能集成成功")
+
+                # 显示启动信息
+                startup_message = '''🎊 增强版GUI启动成功！
+
+新增功能:
+✨ 双模式AutoEncoder支持
+✨ 性能对比分析
+✨ 小波变换可视化
+✨ 优化的用户界面
+
+使用步骤:
+1. 切换到AutoEncoder标签页
+2. 选择模式 (小波增强/直接模式)
+3. 加载数据并创建系统
+4. 运行分析和对比
+
+享受使用吧！🚀'''
+
+                app.log_message(startup_message)
+
+            except ImportError as ext_e:
+                print(f"⚠️ AutoEncoder扩展加载失败: {ext_e}")
+                print("将使用基础GUI版本")
+
+            print("启动主循环...")
             root.mainloop()
         except ImportError:
             print("错误: tkinter未安装，无法启动GUI")

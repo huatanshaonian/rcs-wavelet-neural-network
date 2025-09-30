@@ -188,7 +188,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                             latent_dim: int = 256,
                             dropout_rate: float = 0.2,
                             wavelet: str = 'db4',
-                            normalize: bool = True) -> Dict[str, Any]:
+                            normalize: bool = True,
+                            mode: str = 'wavelet') -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -198,18 +199,30 @@ def create_autoencoder_system(config_name: str = '2freq',
         dropout_rate: Dropout比率
         wavelet: 小波类型
         normalize: 是否标准化数据
+        mode: 'wavelet' 或 'direct' 模式
 
     Returns:
         包含所有组件的字典
     """
-    print(f"=== 创建{config_name}配置的AutoEncoder系统 ===")
+    mode_desc = "小波增强" if mode == 'wavelet' else "直接处理"
+    print(f"=== 创建{config_name}配置的AutoEncoder系统 ({mode_desc}模式) ===")
 
     # 创建配置
     freq_config = FrequencyConfig(config_name)
 
     # 创建所有组件
-    autoencoder = freq_config.create_autoencoder(latent_dim, dropout_rate)
-    wavelet_transform = freq_config.create_wavelet_transform(wavelet)
+    if mode == 'wavelet':
+        autoencoder = freq_config.create_autoencoder(latent_dim, dropout_rate)
+        wavelet_transform = freq_config.create_wavelet_transform(wavelet)
+    else:
+        # 直接模式
+        from ..models.direct_autoencoder import create_direct_autoencoder
+        autoencoder = create_direct_autoencoder(
+            latent_dim=latent_dim,
+            num_frequencies=freq_config.config['num_frequencies'],
+            dropout_rate=dropout_rate
+        )
+        wavelet_transform = None
     data_adapter = freq_config.create_data_adapter(normalize)
     parameter_mapper = freq_config.create_parameter_mapper(latent_dim=latent_dim)
 
@@ -219,7 +232,8 @@ def create_autoencoder_system(config_name: str = '2freq',
         'wavelet_transform': wavelet_transform,
         'data_adapter': data_adapter,
         'parameter_mapper': parameter_mapper,
-        'config_info': freq_config.get_info()
+        'config_info': freq_config.get_info(),
+        'mode': mode
     }
 
     print("✅ AutoEncoder系统创建完成!")
