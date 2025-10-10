@@ -157,7 +157,7 @@ def create_wavelet_plot(analysis_result, data_type='dB', model_name='001', frequ
 
     # 第一行：原图、重建、误差、统计
     # 原始图像（使用统一colorbar范围）
-    im1 = axes[0, 0].imshow(original, cmap='jet', aspect='auto', extent=extent, vmin=vmin_data, vmax=vmax_data)
+    im1 = axes[0, 0].imshow(original, cmap='jet', aspect='equal', extent=extent, vmin=vmin_data, vmax=vmax_data)
     axes[0, 0].set_title(f'原始数据 ({unit_label})')
     axes[0, 0].set_xlabel('φ (度)')
     axes[0, 0].set_ylabel('θ (度)')
@@ -165,7 +165,7 @@ def create_wavelet_plot(analysis_result, data_type='dB', model_name='001', frequ
     cbar1.set_label(unit_label, rotation=270, labelpad=15)
 
     # 重建图像（使用统一colorbar范围）
-    im2 = axes[0, 1].imshow(reconstructed, cmap='jet', aspect='auto', extent=extent, vmin=vmin_data, vmax=vmax_data)
+    im2 = axes[0, 1].imshow(reconstructed, cmap='jet', aspect='equal', extent=extent, vmin=vmin_data, vmax=vmax_data)
     axes[0, 1].set_title(f'重建数据 ({unit_label})')
     axes[0, 1].set_xlabel('φ (度)')
     axes[0, 1].set_ylabel('θ (度)')
@@ -173,7 +173,7 @@ def create_wavelet_plot(analysis_result, data_type='dB', model_name='001', frequ
     cbar2.set_label(unit_label, rotation=270, labelpad=15)
 
     # 误差图
-    im3 = axes[0, 2].imshow(error, cmap='Reds', aspect='auto', extent=extent)
+    im3 = axes[0, 2].imshow(error, cmap='Reds', aspect='equal', extent=extent)
     axes[0, 2].set_title('重建误差')
     axes[0, 2].set_xlabel('φ (度)')
     axes[0, 2].set_ylabel('θ (度)')
@@ -213,7 +213,7 @@ HH: {stats['energy_ratios'][3]:.1%}
 
         # 小波分量显示其原始尺寸的完整角度范围
         # 每个小波分量都对应完整的角度空间，只是分辨率是原图的一半
-        im = ax.imshow(comp_data, cmap=cmaps[i], aspect='auto', extent=extent)
+        im = ax.imshow(comp_data, cmap=cmaps[i], aspect='equal', extent=extent)
 
         # 添加统计信息到标题
         energy_pct = stats['energy_ratios'][i] * 100
