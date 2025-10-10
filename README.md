@@ -1,35 +1,43 @@
 # RCS小波神经网络预测系统
 
-基于小波多尺度理论的飞行器RCS（雷达散射截面）预测系统，使用深度学习技术从9个飞行器参数预测双频RCS分布数据。
+基于小波多尺度理论的飞行器RCS（雷达散射截面）预测系统，使用深度学习技术从9个飞行器参数预测多频RCS分布数据。
 
 ## 🚀 项目特色
 
 - **小波多尺度架构**: 在φ-θ平面使用2D小波变换，支持4个不同尺度的特征提取
-- **双频预测**: 同时预测1.5GHz和3GHz频率的RCS分布 [91×91×2]
+- **多频率数据支持**: 完整支持2频(1.5GHz+3GHz)和3频(1.5GHz+3GHz+6GHz)配置 [91×91×2/3]
+- **双模式AutoEncoder系统**:
+  - **小波增强模式**: 结合小波变换的深度压缩，256维隐空间
+  - **直接CNN模式**: 纯卷积架构，更快推理速度
+  - **三阶段训练**: AE预训练 → 参数映射 → 端到端微调
 - **物理约束**: 集成φ=0°平面对称性约束和频率一致性损失
+- **插件化架构**: 零修改添加新网络，支持original/enhanced/自定义架构
 - **小数据集优化**: 针对~100样本设计的数据增强和交叉验证策略
 - **完整工作流**: 数据加载→训练→评估→预测→可视化的完整pipeline
-- **图形界面**: 基于tkinter的直观GUI操作界面
+- **现代化GUI**: 基于tkinter的直观操作界面，支持多频配置和小波分析
 
 ## 📁 项目结构
 
 ```
 wavelet/
-├── rcs_data_reader.py          # 数据读取模块（已有）
-├── rcs_visual.py               # 可视化模块（已有）
-├── wavelet_network.py          # 小波神经网络核心
-├── training.py                 # 训练模块
+├── gui.py                      # 图形界面主程序
+├── training.py                 # 训练框架
 ├── evaluation.py               # 评估模块
-├── gui.py                      # 图形界面
-├── main.py                     # 主程序入口
-├── config.json                 # 配置文件（自动生成）
-├── requirements.txt            # 依赖列表
-├── README.md                   # 本文件
-└── checkpoints/                # 模型检查点目录
-    models/                     # 训练好的模型
-    results/                    # 评估结果
-    logs/                       # 训练日志
-    visualizations/             # 可视化图片
+├── wavelet_network.py          # 小波神经网络核心
+├── modern_wavelet_network.py   # 插件化网络系统
+├── network_registry.py         # 网络注册中心
+├── configurable_loss.py        # 可配置损失函数
+├── autoencoder/                # AutoEncoder系统
+│   ├── models/                 # AE网络模型
+│   ├── training/               # AE训练器
+│   ├── evaluation/             # AE评估
+│   └── utils/                  # 小波变换等工具
+├── networks/                   # 插件化网络实现
+├── docs/                       # 完整技术文档
+│   ├── autoencoder_design.md  # AE系统设计
+│   └── autoencoder_development_log.md
+├── checkpoints/                # 模型检查点
+└── README.md                   # 本文件
 ```
 
 ## 🛠️ 安装和配置
@@ -49,17 +57,22 @@ pip install -r requirements.txt
 
 确保数据文件位于正确位置：
 - 飞行器参数: `../parameter/parameters_sorted.csv`
-- RCS数据: `../parameter/csv_output/` (包含001_1.5G.csv到100_3G.csv)
+- RCS数据: `../parameter/csv_output/`
+  - 2频配置: `001_1.5G.csv`, `001_3G.csv`, ... , `100_3G.csv`
+  - 3频配置: 额外需要 `001_6G.csv`, ... , `100_6G.csv`
 
 ## 🎯 快速开始
 
 ### 方式1: GUI界面（推荐）
 
 ```bash
-python main.py --mode gui
+python gui.py
 ```
 
-启动图形界面，提供完整的可视化操作流程。
+启动图形界面，提供完整的可视化操作流程：
+- **数据管理**: 配置数据路径、选择频率配置(2freq/3freq)、加载数据
+- **AutoEncoder**: 创建双模式AE系统、三阶段训练、性能对比分析
+- **小波分析**: 选择模型和频率进行小波变换分析和可视化
 
 ### 方式2: 命令行训练
 
@@ -249,7 +262,17 @@ python main.py --mode train --verbose
 
 ## 📝 更新日志
 
-### v1.1 (最新版本)
+### v2.0 (最新版本 - AutoEncoder专注)
+- ✅ **多频率数据支持**: 完整支持2频/3频配置，数据管理页可选择
+- ✅ **双模式AutoEncoder系统**:
+  - 小波增强模式 (WaveletAutoEncoder)
+  - 直接CNN模式 (DirectAutoEncoder)
+- ✅ **三阶段训练流程**: AE预训练 → 参数映射 → 端到端微调
+- ✅ **小波分析增强**: 支持选择模型和频率进行独立分析
+- ✅ **性能对比工具**: 双系统对比分析功能
+- ✅ **数据缓存优化**: 支持多频配置的智能缓存
+
+### v1.1
 - ✅ 修复φ=0°对称性约束维度错误 (CRITICAL)
 - ✅ 修复评估指标域不匹配问题 (对数域→线性域转换)
 - ✅ 所有可视化图表改用分贝(dB)显示
@@ -267,10 +290,13 @@ python main.py --mode train --verbose
 - ✅ tkinter图形界面
 - ✅ 命令行工具
 
-### 计划功能
-- 🔄 模型压缩和量化
-- 🔄 分布式训练支持
-- 🔄 Web界面版本
+### 🔮 后续开发方向 (AutoEncoder优化)
+- 🔄 **变分AutoEncoder (VAE)**: 概率生成模型
+- 🔄 **条件AutoEncoder**: 条件化参数生成
+- 🔄 **对抗训练 (GAN)**: 提升重建质量
+- 🔄 **注意力机制**: 关键特征聚焦
+- 🔄 **迁移学习**: 跨频率知识迁移
+- 🔄 **模型压缩**: 量化和剪枝优化
 
 ## 📧 联系方式
 
