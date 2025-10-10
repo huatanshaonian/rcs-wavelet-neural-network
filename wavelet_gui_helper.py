@@ -60,10 +60,18 @@ def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
 
     # 小波分量显示：直接使用原始尺寸，不进行填充
     # 这样可以正确显示小波分量的实际内容，而不是填充后的左上角部分
-    cA_display = cA
-    cH_display = cH
-    cV_display = cV
-    cD_display = cD
+    # 如果是分贝模式，将小波系数也转换为dB显示
+    if data_type == 'dB':
+        epsilon = 1e-10
+        cA_display = 10 * np.log10(np.maximum(np.abs(cA), epsilon))
+        cH_display = 10 * np.log10(np.maximum(np.abs(cH), epsilon))
+        cV_display = 10 * np.log10(np.maximum(np.abs(cV), epsilon))
+        cD_display = 10 * np.log10(np.maximum(np.abs(cD), epsilon))
+    else:
+        cA_display = cA
+        cH_display = cH
+        cV_display = cV
+        cD_display = cD
 
     # 计算误差（用于显示的数据）
     error = np.abs(display_original - display_reconstructed)
@@ -213,7 +221,12 @@ HH: {stats['energy_ratios'][3]:.1%}
 
         # 小波分量显示其原始尺寸的完整角度范围
         # 每个小波分量都对应完整的角度空间，只是分辨率是原图的一半
-        im = ax.imshow(comp_data, cmap=cmaps[i], aspect='equal', extent=extent)
+        # LL分量使用与原始数据相同的colorbar范围
+        if i == 0:  # LL component
+            im = ax.imshow(comp_data, cmap=cmaps[i], aspect='equal', extent=extent,
+                          vmin=vmin_data, vmax=vmax_data)
+        else:  # LH, HL, HH components
+            im = ax.imshow(comp_data, cmap=cmaps[i], aspect='equal', extent=extent)
 
         # 添加统计信息到标题
         energy_pct = stats['energy_ratios'][i] * 100

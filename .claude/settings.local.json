@@ -25,7 +25,16 @@
       "Bash(findstr:*)",
       "Bash(set CUDA_LAUNCH_BLOCKING=1)",
       "Bash(find:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(git clean:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(conda install:*)",
+      "Bash(conda list:*)",
+      "Bash(set TCL_LIBRARY=G:anacondaenvsRCS_OP1tcltcl8.6)",
+      "Bash(set TK_LIBRARY=G:anacondaenvsRCS_OP1tcltk8.6)",
+      "Bash(attrib:*)",
+      "Bash(del improvement_analysis.md)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
