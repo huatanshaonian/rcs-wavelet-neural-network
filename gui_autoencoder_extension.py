@@ -146,8 +146,107 @@ class AutoEncoderExtension:
         # 绑定模式变化事件
         self.main_gui.ae_mode.trace('w', self._on_mode_change)
 
-        # 4. 系统操作组
-        ops_group = ttk.LabelFrame(parent, text="🔧 系统操作")
+        # 4. 训练配置组
+        training_group = ttk.LabelFrame(parent, text="🎯 训练配置")
+        training_group.pack(fill=tk.X, pady=(0, 10))
+
+        training_frame = ttk.Frame(training_group)
+        training_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行
+        ttk.Label(training_frame, text="批次大小:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_batch_size, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        # 第二行：训练轮数
+        ttk.Label(training_frame, text="阶段1(AE预训练):").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage1, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        ttk.Label(training_frame, text="阶段2(参数映射):").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage2, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        ttk.Label(training_frame, text="阶段3(端到端):").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage3, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 5. 学习率调度配置组
+        lr_group = ttk.LabelFrame(parent, text="📈 学习率调度配置")
+        lr_group.pack(fill=tk.X, pady=(0, 10))
+
+        lr_frame = ttk.Frame(lr_group)
+        lr_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：调度策略和初始学习率
+        ttk.Label(lr_frame, text="调度策略:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        lr_scheduler_combo = ttk.Combobox(lr_frame, textvariable=self.main_gui.ae_lr_scheduler,
+                                        values=['constant', 'cosine_restart', 'cosine_simple', 'adaptive'],
+                                        state="readonly", width=12)
+        lr_scheduler_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        ttk.Label(lr_frame, text="初始学习率:").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_learning_rate, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        # 第二行：最小学习率和重启周期
+        ttk.Label(lr_frame, text="最小学习率:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_min_lr, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        ttk.Label(lr_frame, text="重启周期:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_restart_period, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 6. 早停配置组
+        patience_group = ttk.LabelFrame(parent, text="⏹️ 早停配置")
+        patience_group.pack(fill=tk.X, pady=(0, 10))
+
+        patience_frame = ttk.Frame(patience_group)
+        patience_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：阶段1和2早停耐心值
+        ttk.Label(patience_frame, text="阶段1耐心:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage1, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        ttk.Label(patience_frame, text="阶段2耐心:").grid(row=0, column=2, sticky="w", padx=(10, 5))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage2, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+
+        # 第二行：阶段3和端到端早停耐心值
+        ttk.Label(patience_frame, text="阶段3耐心:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage3, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        ttk.Label(patience_frame, text="端到端耐心:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_e2e, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+
+        # 7. 损失函数配置组
+        loss_group = ttk.LabelFrame(parent, text="🔧 损失函数配置")
+        loss_group.pack(fill=tk.X, pady=(0, 10))
+
+        loss_frame = ttk.Frame(loss_group)
+        loss_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Checkbutton(loss_frame, text="使用自定义损失函数", variable=self.main_gui.ae_use_custom_loss).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(loss_frame, text="配置损失函数", command=self.main_gui._open_loss_config_for_ae).pack(side=tk.LEFT)
+
+        # 8. 训练控制组
+        training_control_group = ttk.LabelFrame(parent, text="⚙️ 训练控制")
+        training_control_group.pack(fill=tk.X, pady=(0, 10))
+
+        training_control_frame = ttk.Frame(training_control_group)
+        training_control_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 训练模式选择
+        ttk.Label(training_control_frame, text="训练模式:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        mode_combo = ttk.Combobox(training_control_frame, textvariable=self.main_gui.ae_training_mode,
+                                values=["三阶段训练", "端到端训练"], state="readonly", width=12)
+        mode_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+
+        # 按钮组
+        button_frame = ttk.Frame(training_control_frame)
+        button_frame.grid(row=1, column=0, columnspan=4, sticky="w", pady=(10, 0))
+
+        # 注意：创建系统按钮已移至下方"系统操作"区域的"创建当前模式系统"
+        ttk.Button(button_frame, text="开始训练", command=self.main_gui.start_ae_training).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="停止训练", command=self.main_gui.stop_ae_training).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="保存模型", command=self.main_gui.save_ae_model).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="加载模型", command=self.main_gui.load_ae_model).pack(side=tk.LEFT)
+
+        # 9. 系统操作组（扩展功能）
+        ops_group = ttk.LabelFrame(parent, text="🔧 系统操作（扩展功能）")
         ops_group.pack(fill=tk.X, pady=(0, 10))
 
         ops_frame = ttk.Frame(ops_group)
@@ -164,22 +263,28 @@ class AutoEncoderExtension:
         ttk.Button(ops_frame, text="📊 性能对比分析",
                   command=self.run_performance_comparison).pack(fill=tk.X, pady=(0, 5))
 
-        # 5. 小波分析组
+        # 10. 小波分析组
         wavelet_group = ttk.LabelFrame(parent, text="🌊 小波变换分析")
         wavelet_group.pack(fill=tk.X, pady=(0, 10))
 
         wavelet_frame = ttk.Frame(wavelet_group)
         wavelet_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 模型选择
+        # 模型和频率选择
         model_select_frame = ttk.Frame(wavelet_frame)
         model_select_frame.pack(fill=tk.X, pady=(0, 5))
 
         ttk.Label(model_select_frame, text="分析模型:").pack(side=tk.LEFT)
         self.wavelet_model_selection = ttk.Combobox(model_select_frame,
-                                                   values=[], width=15, state="readonly")
-        self.wavelet_model_selection.pack(side=tk.LEFT, padx=(5, 0))
-        self.wavelet_model_selection.set("001 (默认)")
+                                                   values=["001"], width=10, state="readonly")
+        self.wavelet_model_selection.pack(side=tk.LEFT, padx=(5, 10))
+        self.wavelet_model_selection.set("001")
+
+        ttk.Label(model_select_frame, text="频率:").pack(side=tk.LEFT)
+        self.wavelet_freq_selection = ttk.Combobox(model_select_frame,
+                                                   values=["1.5G", "3G", "6G"], width=8, state="readonly")
+        self.wavelet_freq_selection.pack(side=tk.LEFT, padx=(5, 0))
+        self.wavelet_freq_selection.set("1.5G")
 
         # 数据类型选择
         data_type_frame = ttk.Frame(wavelet_frame)
@@ -201,16 +306,6 @@ class AutoEncoderExtension:
         ttk.Button(wavelet_frame, text="🔬 运行小波分析",
                   command=self.run_wavelet_analysis).pack(fill=tk.X, pady=(5, 0))
 
-        # 6. 模型操作组（沿用原有功能）
-        model_ops_group = ttk.LabelFrame(parent, text="💾 模型操作")
-        model_ops_group.pack(fill=tk.X, pady=(0, 10))
-
-        model_ops_frame = ttk.Frame(model_ops_group)
-        model_ops_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        ttk.Button(model_ops_frame, text="保存模型", command=self.main_gui.save_ae_model).pack(fill=tk.X, pady=(0, 2))
-        ttk.Button(model_ops_frame, text="加载模型", command=self.main_gui.load_ae_model).pack(fill=tk.X, pady=(0, 2))
-        ttk.Button(model_ops_frame, text="开始训练", command=self.main_gui.start_ae_training).pack(fill=tk.X, pady=(0, 2))
 
     def _create_right_panel(self, parent):
         """创建右侧状态和结果面板"""
@@ -245,6 +340,18 @@ class AutoEncoderExtension:
         # 小波分析结果显示区域
         self.wavelet_canvas_frame = ttk.Frame(wavelet_frame)
         self.wavelet_canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 4. 训练日志标签页 (重要: 重新创建ae_log_text组件)
+        log_frame = ttk.Frame(self.result_notebook)
+        self.result_notebook.add(log_frame, text="训练日志")
+
+        # 重新创建ae_log_text组件 (修复日志销毁问题)
+        import tkinter.scrolledtext as scrolledtext
+        self.main_gui.ae_log_text = scrolledtext.ScrolledText(log_frame, height=20, width=50, font=self.main_gui.font_small)
+        self.main_gui.ae_log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 重新创建ae_status_text组件 (系统状态)
+        self.main_gui.ae_status_text = self.status_text  # 复用状态文本组件
 
         # 初始状态更新
         self._update_status_display()
@@ -307,9 +414,9 @@ class AutoEncoderExtension:
             model_options = [f"{i+1:03d}" for i in range(num_models)]
             self.wavelet_model_selection['values'] = model_options
 
-            # 如果当前选择不在列表中，重置为默认
+            # 如果当前选择不在列表中，重置为第一个模型
             current = self.wavelet_model_selection.get()
-            if not current or current == "001 (默认)":
+            if not current or current not in model_options:
                 self.wavelet_model_selection.set(model_options[0] if model_options else "001")
         else:
             self.wavelet_model_selection['values'] = ["001"]
@@ -331,10 +438,10 @@ class AutoEncoderExtension:
             sys.path.append('autoencoder')
             from autoencoder.utils.frequency_config import create_autoencoder_system
 
-            # 获取配置参数
+            # 获取配置参数 (确保类型正确)
             freq_config = self.main_gui.ae_freq_config.get()
-            latent_dim = self.main_gui.ae_latent_dim.get()
-            dropout_rate = self.main_gui.ae_dropout_rate.get()
+            latent_dim = int(self.main_gui.ae_latent_dim.get())
+            dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             normalize = True
 
@@ -379,10 +486,10 @@ class AutoEncoderExtension:
             sys.path.append('autoencoder')
             from autoencoder.utils.frequency_config import create_autoencoder_system
 
-            # 获取配置参数
+            # 获取配置参数 (确保类型正确)
             freq_config = self.main_gui.ae_freq_config.get()
-            latent_dim = self.main_gui.ae_latent_dim.get()
-            dropout_rate = self.main_gui.ae_dropout_rate.get()
+            latent_dim = int(self.main_gui.ae_latent_dim.get())
+            dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             normalize = True
 
@@ -623,12 +730,14 @@ class AutoEncoderExtension:
 
                 # 获取用户选择
                 selected_model = self.wavelet_model_selection.get()
+                selected_freq = self.wavelet_freq_selection.get()
                 data_type = self.wavelet_data_type.get()
 
                 # 解析模型选择
-                if selected_model and selected_model != "001 (默认)":
+                if selected_model:
                     try:
-                        model_idx = int(selected_model.split()[0]) - 1  # 转换为0索引
+                        # 直接解析模型ID (格式如 "001", "002", 等)
+                        model_idx = int(selected_model) - 1  # 转换为0索引
                         if model_idx >= len(self.main_gui.rcs_data):
                             model_idx = 0
                     except:
@@ -636,12 +745,23 @@ class AutoEncoderExtension:
                 else:
                     model_idx = 0
 
+                # 解析频率选择
+                freq_map = {"1.5G": 0, "3G": 1, "6G": 2}
+                freq_idx = freq_map.get(selected_freq, 0)
+
+                # 检查频率索引是否在数据范围内
+                num_freqs = self.main_gui.rcs_data.shape[3]
+                if freq_idx >= num_freqs:
+                    self.main_gui.ae_log(f"⚠️ 警告: 选择的频率 {selected_freq} 不在数据中，使用第一个频率")
+                    freq_idx = 0
+                    selected_freq = ["1.5G", "3G", "6G"][0] if num_freqs > 0 else "1.5G"
+
                 # 执行小波分析
                 from wavelet_gui_helper import simple_wavelet_analysis
                 import numpy as np
 
                 # 选择分析数据
-                sample_data = self.main_gui.rcs_data[model_idx, :, :, 0]  # 取选择的模型的第一个频率
+                sample_data = self.main_gui.rcs_data[model_idx, :, :, freq_idx]
 
                 # 如果选择分贝模式，转换数据用于显示
                 if data_type == 'dB':
@@ -652,7 +772,7 @@ class AutoEncoderExtension:
                 else:
                     analysis_data = sample_data
 
-                self.main_gui.ae_log(f"📊 执行小波分解和重建 (模型: {selected_model}, 数据类型: {data_type})...")
+                self.main_gui.ae_log(f"📊 执行小波分解和重建 (模型: {selected_model}, 频率: {selected_freq}, 数据类型: {data_type})...")
                 analysis_result = simple_wavelet_analysis(
                     analysis_data,
                     wavelet=self.wavelet_analysis_wavelet.get(),
@@ -662,6 +782,7 @@ class AutoEncoderExtension:
                 self.main_gui.ae_log("📈 生成可视化结果...")
                 self.wavelet_analysis_results = analysis_result
                 self.current_analysis_model = selected_model
+                self.current_analysis_freq = selected_freq
                 self.current_analysis_data_type = data_type
 
                 # 在主线程中更新界面
@@ -687,8 +808,9 @@ class AutoEncoderExtension:
             # 创建小波分析图表
             from wavelet_gui_helper import create_wavelet_plot
             model_name = getattr(self, 'current_analysis_model', '001')
+            frequency = getattr(self, 'current_analysis_freq', '1.5G')
             data_type = getattr(self, 'current_analysis_data_type', 'dB')
-            fig = create_wavelet_plot(self.wavelet_analysis_results, data_type=data_type, model_name=model_name)
+            fig = create_wavelet_plot(self.wavelet_analysis_results, data_type=data_type, model_name=model_name, frequency=frequency)
 
             # 显示图表
             canvas = FigureCanvasTkAgg(fig, self.wavelet_canvas_frame)

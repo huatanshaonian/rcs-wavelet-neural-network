@@ -110,7 +110,7 @@ def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
         'stats': stats
     }
 
-def create_wavelet_plot(analysis_result, data_type='dB', model_name='001'):
+def create_wavelet_plot(analysis_result, data_type='dB', model_name='001', frequency='1.5G'):
     """
     创建小波分析图表
 
@@ -118,6 +118,7 @@ def create_wavelet_plot(analysis_result, data_type='dB', model_name='001'):
         analysis_result: simple_wavelet_analysis的返回结果
         data_type: 数据类型 ('dB' 或 'linear')
         model_name: 模型名称
+        frequency: 频率标识 ('1.5G', '3G', '6G')
 
     Returns:
         matplotlib.figure.Figure: 图表对象
@@ -145,22 +146,26 @@ def create_wavelet_plot(analysis_result, data_type='dB', model_name='001'):
 
     # 创建图形
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
-    fig.suptitle(f'模型 {model_name} 小波分析 ({data_type})', fontsize=16, fontweight='bold')
+    fig.suptitle(f'模型 {model_name} @ {frequency} 小波分析 ({data_type})', fontsize=16, fontweight='bold')
 
     # 确定单位标签
     unit_label = 'dB' if data_type == 'dB' else 'Linear'
 
+    # 计算统一的colorbar范围（原始数据和重建数据）
+    vmin_data = min(original.min(), reconstructed.min())
+    vmax_data = max(original.max(), reconstructed.max())
+
     # 第一行：原图、重建、误差、统计
-    # 原始图像
-    im1 = axes[0, 0].imshow(original, cmap='jet', aspect='auto', extent=extent)
+    # 原始图像（使用统一colorbar范围）
+    im1 = axes[0, 0].imshow(original, cmap='jet', aspect='auto', extent=extent, vmin=vmin_data, vmax=vmax_data)
     axes[0, 0].set_title(f'原始数据 ({unit_label})')
     axes[0, 0].set_xlabel('φ (度)')
     axes[0, 0].set_ylabel('θ (度)')
     cbar1 = plt.colorbar(im1, ax=axes[0, 0], shrink=0.8)
     cbar1.set_label(unit_label, rotation=270, labelpad=15)
 
-    # 重建图像
-    im2 = axes[0, 1].imshow(reconstructed, cmap='jet', aspect='auto', extent=extent)
+    # 重建图像（使用统一colorbar范围）
+    im2 = axes[0, 1].imshow(reconstructed, cmap='jet', aspect='auto', extent=extent, vmin=vmin_data, vmax=vmax_data)
     axes[0, 1].set_title(f'重建数据 ({unit_label})')
     axes[0, 1].set_xlabel('φ (度)')
     axes[0, 1].set_ylabel('θ (度)')

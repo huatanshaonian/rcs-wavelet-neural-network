@@ -174,6 +174,7 @@ class RCSDataCache:
         rcs_data = []
 
         print(f"开始读取 {len(model_ids)} 个模型的RCS数据...")
+        print(f"频率配置: {frequencies} ({len(frequencies)}个频率)")
 
         for i, model_id in enumerate(model_ids):
             try:
@@ -204,10 +205,12 @@ class RCSDataCache:
                         # 用零矩阵填充
                         rcs_matrices.append(np.zeros((91, 91)))
 
-                # 组合双频数据 [91, 91, 2]
-                if len(rcs_matrices) == 2:
+                # 组合多频数据 [91, 91, N] (N=2或3)
+                if len(rcs_matrices) >= 2:  # 支持2频或3频
                     combined_rcs = np.stack(rcs_matrices, axis=-1)
                     rcs_data.append(combined_rcs)
+                else:
+                    print(f"警告: 模型 {model_id} 缺少足够的频率数据 (需要至少2个，实际{len(rcs_matrices)}个)")
 
                 # 进度显示
                 if (i + 1) % 10 == 0 or i == 0:

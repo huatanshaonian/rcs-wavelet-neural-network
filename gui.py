@@ -459,9 +459,21 @@ class RCSWaveletGUI:
         self.model_end_var = tk.StringVar(value="100")
         ttk.Entry(range_frame, textvariable=self.model_end_var, width=5).pack(side=tk.LEFT, padx=2)
 
+        # 频率配置
+        ttk.Label(config_group, text="频率配置:").grid(
+            row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        freq_config_frame = ttk.Frame(config_group)
+        freq_config_frame.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+
+        freq_combo = ttk.Combobox(freq_config_frame, textvariable=self.ae_freq_config,
+                                 values=["2freq", "3freq"], state="readonly", width=10)
+        freq_combo.pack(side=tk.LEFT)
+        ttk.Label(freq_config_frame, text="(2freq: 1.5GHz+3GHz, 3freq: +6GHz)",
+                 font=self.font_small).pack(side=tk.LEFT, padx=(10, 0))
+
         # 操作按钮
         button_frame = ttk.Frame(config_group)
-        button_frame.grid(row=3, column=0, columnspan=3, pady=10)
+        button_frame.grid(row=4, column=0, columnspan=3, pady=10)
 
         ttk.Button(button_frame, text="加载数据", command=self.load_data,
                   style="Accent.TButton").pack(side=tk.LEFT, padx=5)
@@ -1176,7 +1188,7 @@ class RCSWaveletGUI:
         ttk.Label(control_frame, text="频率:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
         self.vis_freq_var = tk.StringVar(value="1.5G")
         freq_combo = ttk.Combobox(control_frame, textvariable=self.vis_freq_var,
-                                 values=["1.5G", "3G"], state="readonly", width=8)
+                                 values=["1.5G", "3G", "6G"], state="readonly", width=8)
         freq_combo.grid(row=0, column=3, padx=5, pady=2)
 
         # 可视化类型选择
@@ -1246,6 +1258,17 @@ class RCSWaveletGUI:
             end_id = int(self.model_end_var.get())
             self.data_config['model_ids'] = [f"{i:03d}" for i in range(start_id, end_id + 1)]
 
+            # 根据频率配置更新frequencies列表
+            freq_config = self.ae_freq_config.get()
+            self.log_message(f"🔍 检查频率配置变量: {freq_config}")
+            if freq_config == "3freq":
+                self.data_config['frequencies'] = ['1.5G', '3G', '6G']
+                self.log_message("✓ 频率配置: 3频率 (1.5GHz + 3GHz + 6GHz)")
+            else:
+                self.data_config['frequencies'] = ['1.5G', '3G']
+                self.log_message("✓ 频率配置: 2频率 (1.5GHz + 3GHz)")
+            self.log_message(f"📋 实际传递给缓存管理器的frequencies: {self.data_config['frequencies']}")
+
             # 使用缓存加载数据
             self.log_message("开始加载数据（支持缓存加速）...")
             self.param_data, self.rcs_data = self.cache_manager.load_data_with_cache(
@@ -1255,10 +1278,19 @@ class RCSWaveletGUI:
                 frequencies=self.data_config['frequencies']
             )
 
+            # 保存原始RCS数据副本，确保AutoEncoder训练使用线性域数据
+            self._original_rcs_data = self.rcs_data.copy()
+            self.log_message("已保存原始RCS数据副本，供AutoEncoder使用")
+
             self.data_loaded = True
             self.log_message("数据加载成功！")
             self.log_message(f"参数数据形状: {self.param_data.shape}")
             self.log_message(f"RCS数据形状: {self.rcs_data.shape}")
+
+            # 更新AutoEncoder扩展界面的模型选择列表
+            if hasattr(self, 'ae_extension') and self.ae_extension is not None:
+                self.ae_extension._update_model_selection()
+                self.log_message("已更新小波分析模型选择列表")
 
             self.status_var.set("数据加载完成")
 
@@ -1472,6 +1504,17 @@ class RCSWaveletGUI:
             end_id = int(self.model_end_var.get())
             self.data_config['model_ids'] = [f"{i:03d}" for i in range(start_id, end_id + 1)]
 
+            # 根据频率配置更新frequencies列表
+            freq_config = self.ae_freq_config.get()
+            self.log_message(f"🔍 检查频率配置变量: {freq_config}")
+            if freq_config == "3freq":
+                self.data_config['frequencies'] = ['1.5G', '3G', '6G']
+                self.log_message("✓ 频率配置: 3频率 (1.5GHz + 3GHz + 6GHz)")
+            else:
+                self.data_config['frequencies'] = ['1.5G', '3G']
+                self.log_message("✓ 频率配置: 2频率 (1.5GHz + 3GHz)")
+            self.log_message(f"📋 实际传递给缓存管理器的frequencies: {self.data_config['frequencies']}")
+
             # 强制重新读取（force_reload=True）
             self.param_data, self.rcs_data = self.cache_manager.load_data_with_cache(
                 params_file=self.data_config['params_file'],
@@ -1481,10 +1524,19 @@ class RCSWaveletGUI:
                 force_reload=True  # 强制重新读取
             )
 
+            # 保存原始RCS数据副本，确保AutoEncoder训练使用线性域数据
+            self._original_rcs_data = self.rcs_data.copy()
+            self.log_message("已保存原始RCS数据副本，供AutoEncoder使用")
+
             self.data_loaded = True
             self.log_message("✅ 数据重新读取完成！")
             self.log_message(f"参数数据形状: {self.param_data.shape}")
             self.log_message(f"RCS数据形状: {self.rcs_data.shape}")
+
+            # 更新AutoEncoder扩展界面的模型选择列表
+            if hasattr(self, 'ae_extension') and self.ae_extension is not None:
+                self.ae_extension._update_model_selection()
+                self.log_message("已更新小波分析模型选择列表")
 
             self.status_var.set("数据重新读取完成")
 
@@ -2733,6 +2785,7 @@ class RCSWaveletGUI:
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
             wavelet_transform = self.ae_system['wavelet_transform']
+            mode = self.ae_system.get('mode', 'wavelet')
 
             # 获取测试数据
             rcs_data = self.ae_system['rcs_data']
@@ -2778,8 +2831,15 @@ class RCSWaveletGUI:
 
                     # 端到端预测
                     predicted_latents = parameter_mapper(batch_params)
-                    predicted_coeffs = autoencoder.decode(predicted_latents)
-                    predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+                    predicted_output = autoencoder.decode(predicted_latents)
+
+                    # 根据模式处理输出
+                    if mode == 'wavelet':
+                        # 小波模式：小波系数 → RCS
+                        predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                    else:
+                        # 直接模式：直接输出RCS
+                        predicted_rcs = predicted_output
 
                     # 计算损失
                     loss = torch.nn.functional.mse_loss(predicted_rcs, batch_rcs)
@@ -4613,10 +4673,24 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 status_info.append("系统状态: 未创建")
             else:
                 status_info.append("系统状态: 已创建")
-                # 显示模型信息
+                # 显示模型信息 (兼容不同模型格式)
                 model_info = self.ae_system['autoencoder'].get_model_info()
-                status_info.append(f"模型参数量: {model_info['parameters']['total']:,}")
-                status_info.append(f"压缩比: {model_info['compression_ratio']}")
+
+                # 获取参数量 (兼容两种格式)
+                if 'parameters' in model_info and 'total' in model_info['parameters']:
+                    # WaveletAutoEncoder格式
+                    total_params = model_info['parameters']['total']
+                elif 'total_parameters' in model_info:
+                    # DirectAutoEncoder格式
+                    total_params = model_info['total_parameters']
+                else:
+                    total_params = 0
+
+                status_info.append(f"模型参数量: {total_params:,}")
+
+                # 压缩比 (可能不存在于直接模式)
+                if 'compression_ratio' in model_info:
+                    status_info.append(f"压缩比: {model_info['compression_ratio']}")
 
             if self.ae_trained:
                 status_info.append("训练状态: 已训练")
@@ -4633,20 +4707,22 @@ GPU峰值: {gpu_peak:.2f}GB"""
     def ae_log(self, message):
         """添加AutoEncoder日志信息"""
         try:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            log_message = f"[{timestamp}] {message}"
+
+            # 总是输出到控制台，确保用户能看到
+            print(log_message)
+
             # 检查组件是否存在且有效
             if not hasattr(self, 'ae_log_text') or self.ae_log_text is None:
-                print(f"AE日志组件未初始化: {message}")
                 return
 
             # 检查组件是否还存在（没有被销毁）
             if not self.ae_log_text.winfo_exists():
-                print(f"AE日志组件已销毁: {message}")
                 return
 
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            log_message = f"[{timestamp}] {message}\n"
-
-            self.ae_log_text.insert(tk.END, log_message)
+            # 输出到GUI日志组件
+            self.ae_log_text.insert(tk.END, log_message + "\n")
             self.ae_log_text.see(tk.END)
             self.root.update_idletasks()
 
@@ -4719,6 +4795,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 # 存储数据引用，便于训练使用
                 self.ae_system['rcs_data'] = self.rcs_data
+
                 self.ae_system['param_data'] = self.param_data
 
                 self.ae_log(f"✅ AutoEncoder系统创建成功!")
@@ -4938,7 +5015,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             # 准备数据
             rcs_tensor = torch.FloatTensor(rcs_data)
+            self.ae_log(f"🔧 原始RCS数据形状: {rcs_tensor.shape}, 范围: [{rcs_tensor.min():.4f}, {rcs_tensor.max():.4f}]")
+
+            import time
+            start_time = time.time()
             wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+            wavelet_time = time.time() - start_time
+            self.ae_log(f"📊 小波变换完成 - 耗时: {wavelet_time:.3f}s, 输出形状: {wavelet_coeffs.shape}")
+            self.ae_log(f"📊 小波系数范围: [{wavelet_coeffs.min():.4f}, {wavelet_coeffs.max():.4f}]")
 
             # 数据划分: 80%训练，20%验证 (参照项目标准)
             dataset = TensorDataset(wavelet_coeffs)
@@ -5060,9 +5144,15 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             # 获取目标隐空间表示
             autoencoder.eval()
+            mode = self.ae_system.get('mode', 'wavelet')
             with torch.no_grad():
-                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
-                _, target_latents = autoencoder(wavelet_coeffs.to(device))
+                # 根据模式决定输入数据
+                if mode == 'wavelet':
+                    input_data = wavelet_transform.forward_transform(rcs_tensor)
+                else:
+                    input_data = rcs_tensor
+
+                _, target_latents = autoencoder(input_data.to(device))
                 target_latents = target_latents.cpu()
 
             # 数据划分: 80%训练，20%验证
@@ -5476,18 +5566,27 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取AutoEncoder组件
             autoencoder = self.ae_system['autoencoder']
             wavelet_transform = self.ae_system['wavelet_transform']
+            mode = self.ae_system.get('mode', 'wavelet')
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             autoencoder.to(device)
             self.ae_log(f"🖥️ 使用设备: {device}")
+            self.ae_log(f"🔧 训练模式: {mode}")
 
             # 准备数据和划分
             rcs_tensor = torch.FloatTensor(rcs_data)
-            wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 根据模式决定输入数据
+            if mode == 'wavelet':
+                # 小波增强模式：使用小波系数
+                input_data = wavelet_transform.forward_transform(rcs_tensor)
+            else:
+                # 直接处理模式：直接使用RCS数据
+                input_data = rcs_tensor
 
             # 数据划分: 80%训练，20%验证
-            dataset = TensorDataset(wavelet_coeffs)
+            dataset = TensorDataset(input_data)
             torch.manual_seed(42)
             train_size = int(len(dataset) * 0.8)
             val_size = len(dataset) - train_size
@@ -5610,9 +5709,15 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             # 获取目标隐空间表示
             autoencoder.eval()
+            mode = self.ae_system.get('mode', 'wavelet')
             with torch.no_grad():
-                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
-                _, target_latents = autoencoder(wavelet_coeffs.to(device))
+                # 根据模式决定输入数据
+                if mode == 'wavelet':
+                    input_data = wavelet_transform.forward_transform(rcs_tensor)
+                else:
+                    input_data = rcs_tensor
+
+                _, target_latents = autoencoder(input_data.to(device))
                 target_latents = target_latents.cpu()
 
             # 数据划分
@@ -5639,8 +5744,11 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 创建优化器和调度器
             optimizer, scheduler = self._create_ae_optimizer_and_scheduler(parameter_mapper.parameters(), training_config)
 
-            # 创建损失函数
-            criterion = self._create_ae_loss_function(training_config)
+            # 创建损失函数 - 参数映射阶段使用MSE损失
+            # 配置化损失函数是为4D RCS数据设计的，不适用于2D隐空间向量
+            import torch.nn as nn
+            criterion = nn.MSELoss()
+            self.ae_log("阶段2使用MSE损失函数 (隐空间向量匹配)")
 
             # 训练配置
             epochs = training_config['epochs']['stage2']
@@ -5730,6 +5838,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
             wavelet_transform = self.ae_system['wavelet_transform']
+            mode = self.ae_system.get('mode', 'wavelet')
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -5739,10 +5848,15 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 准备数据
             rcs_tensor = torch.FloatTensor(rcs_data)
             param_tensor = torch.FloatTensor(param_data)
-            target_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            # 根据模式准备目标数据
+            if mode == 'wavelet':
+                target_data = wavelet_transform.forward_transform(rcs_tensor)
+            else:
+                target_data = rcs_tensor
 
             # 数据划分
-            dataset = TensorDataset(param_tensor, target_wavelet_coeffs)
+            dataset = TensorDataset(param_tensor, target_data)
             torch.manual_seed(42)
             train_size = int(len(dataset) * 0.8)
             val_size = len(dataset) - train_size
@@ -5771,8 +5885,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 training_config_fine
             )
 
-            # 创建损失函数
-            criterion = self._create_ae_loss_function(training_config)
+            # 创建端到端损失函数 - 专门用于RCS预测，与其他网络相同
+            criterion = self._create_end_to_end_loss_function(training_config)
 
             # 训练配置
             epochs = training_config['epochs']['stage3']
@@ -5796,9 +5910,21 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     batch_params = batch_params.to(device)
                     batch_target_coeffs = batch_target_coeffs.to(device)
 
+                    # 端到端训练：参数 → 隐空间 → 输出数据 → RCS
                     predicted_latents = parameter_mapper(batch_params)
-                    reconstructed_coeffs = autoencoder.decode(predicted_latents)
-                    loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+                    reconstructed_output = autoencoder.decode(predicted_latents)
+
+                    # 根据模式处理输出
+                    if mode == 'wavelet':
+                        # 小波模式：小波系数 → RCS
+                        predicted_rcs = wavelet_transform.inverse_transform(reconstructed_output)
+                        target_rcs = wavelet_transform.inverse_transform(batch_target_coeffs)
+                    else:
+                        # 直接模式：直接输出RCS
+                        predicted_rcs = reconstructed_output
+                        target_rcs = batch_target_coeffs
+
+                    loss = criterion(predicted_rcs, target_rcs)
 
                     optimizer.zero_grad()
                     loss.backward()
@@ -5928,9 +6054,21 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     batch_params = batch_params.to(device)
                     batch_target_coeffs = batch_target_coeffs.to(device)
 
+                    # 端到端训练：参数 → 隐空间 → 输出数据 → RCS
                     predicted_latents = parameter_mapper(batch_params)
-                    reconstructed_coeffs = autoencoder.decode(predicted_latents)
-                    loss = criterion(reconstructed_coeffs, batch_target_coeffs)
+                    reconstructed_output = autoencoder.decode(predicted_latents)
+
+                    # 根据模式处理输出
+                    if mode == 'wavelet':
+                        # 小波模式：小波系数 → RCS
+                        predicted_rcs = wavelet_transform.inverse_transform(reconstructed_output)
+                        target_rcs = wavelet_transform.inverse_transform(batch_target_coeffs)
+                    else:
+                        # 直接模式：直接输出RCS
+                        predicted_rcs = reconstructed_output
+                        target_rcs = batch_target_coeffs
+
+                    loss = criterion(predicted_rcs, target_rcs)
 
                     optimizer.zero_grad()
                     loss.backward()
@@ -6062,17 +6200,33 @@ GPU峰值: {gpu_peak:.2f}GB"""
         return optimizer, scheduler
 
     def _create_ae_loss_function(self, training_config):
-        """创建AutoEncoder损失函数 (复用项目损失函数系统)"""
+        """创建AutoEncoder损失函数 (用于阶段1小波系数重建)"""
+        import torch.nn as nn
+
+        # 阶段1专用：小波系数重建，使用简单MSE损失
+        # 小波系数的物理约束应该由小波变换本身保证
+        self.ae_log("阶段1使用MSE损失函数 (小波系数重建)")
+        return nn.MSELoss()
+
+    def _create_end_to_end_loss_function(self, training_config):
+        """创建端到端损失函数 (用于阶段3 RCS预测，与其他网络相同)"""
         import torch.nn as nn
 
         if training_config['use_custom_loss'] and 'custom_loss_config' in training_config:
-            # 使用自定义损失函数配置
-            self.ae_log("使用自定义损失函数配置")
+            # 使用自定义损失函数配置 - 这与项目其他网络完全相同
+            self.ae_log("阶段3使用配置化损失函数 (与其他网络相同)")
             from configurable_loss import create_loss_function as create_configurable_loss
-            return create_configurable_loss(training_config['custom_loss_config'])
+            configurable_loss = create_configurable_loss(training_config['custom_loss_config'])
+
+            # 创建包装函数，确保返回tensor而不是字典
+            def loss_wrapper(pred, target):
+                loss_dict = configurable_loss(pred, target)
+                return loss_dict['total']  # 返回总损失tensor
+
+            return loss_wrapper
         else:
             # 使用标准MSE损失
-            self.ae_log("使用标准MSE损失函数")
+            self.ae_log("阶段3使用标准MSE损失函数")
             return nn.MSELoss()
 
     def _ae_step_scheduler(self, scheduler, scheduler_type, val_loss=None):
@@ -6326,12 +6480,96 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
     def _plot_ae_training_progress_vis(self):
         """绘制AutoEncoder训练进度可视化"""
-        self.vis_fig.clear()
-        ax = self.vis_fig.add_subplot(1, 1, 1)
-        ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(需要训练历史数据支持)',
-               transform=ax.transAxes, ha='center', va='center')
-        ax.set_title('AutoEncoder训练进度')
-        self.vis_canvas.draw()
+        try:
+            if not hasattr(self, 'ae_training_history') or not self.ae_training_history:
+                self.vis_fig.clear()
+                ax = self.vis_fig.add_subplot(1, 1, 1)
+                ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(暂无训练历史数据)',
+                       transform=ax.transAxes, ha='center', va='center', fontsize=12)
+                ax.set_title('AutoEncoder训练进度')
+                self.vis_canvas.draw()
+                return
+
+            # 获取训练历史数据
+            history = self.ae_training_history
+
+            # 检查历史数据结构
+            if 'stage_histories' not in history:
+                self.vis_fig.clear()
+                ax = self.vis_fig.add_subplot(1, 1, 1)
+                ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(训练历史数据结构不完整)',
+                       transform=ax.transAxes, ha='center', va='center', fontsize=12)
+                ax.set_title('AutoEncoder训练进度')
+                self.vis_canvas.draw()
+                return
+
+            # 清除之前的图形
+            self.vis_fig.clear()
+
+            # 创建子图
+            fig = self.vis_fig
+
+            # 检查有多少训练阶段
+            stage_histories = history['stage_histories']
+            num_stages = len(stage_histories)
+
+            if num_stages == 0:
+                ax = fig.add_subplot(1, 1, 1)
+                ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(暂无阶段历史数据)',
+                       transform=ax.transAxes, ha='center', va='center', fontsize=12)
+                ax.set_title('AutoEncoder训练进度')
+                self.vis_canvas.draw()
+                return
+
+            # 创建多个子图来显示不同阶段
+            rows = (num_stages + 1) // 2  # 两列布局
+            cols = 2 if num_stages > 1 else 1
+
+            stage_colors = ['blue', 'green', 'red', 'orange']
+            stage_names = ['阶段1(AE预训练)', '阶段2(参数映射)', '阶段3(端到端)', '完整训练']
+
+            for i, (stage_name, stage_data) in enumerate(stage_histories.items()):
+                if 'train_losses' not in stage_data or 'val_losses' not in stage_data:
+                    continue
+
+                # 计算子图位置
+                if num_stages == 1:
+                    ax = fig.add_subplot(1, 1, 1)
+                else:
+                    row = i // cols
+                    col = i % cols
+                    ax = fig.add_subplot(rows, cols, i + 1)
+
+                # 绘制训练和验证损失
+                epochs = range(1, len(stage_data['train_losses']) + 1)
+                color = stage_colors[i % len(stage_colors)]
+
+                ax.plot(epochs, stage_data['train_losses'], f'{color}-', label='训练损失', linewidth=2)
+                ax.plot(epochs, stage_data['val_losses'], f'{color}--', label='验证损失', linewidth=2)
+
+                ax.set_xlabel('训练轮数')
+                ax.set_ylabel('损失值')
+                ax.set_title(f'{stage_names[i] if i < len(stage_names) else stage_name}')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                ax.set_yscale('log')
+
+                # 添加最佳损失标记
+                if 'best_val_loss' in stage_data:
+                    best_epoch = stage_data.get('best_epoch', len(stage_data['val_losses']))
+                    ax.axvline(x=best_epoch, color='red', linestyle=':', alpha=0.7, label=f'最佳: Epoch {best_epoch}')
+
+            fig.suptitle('AutoEncoder训练进度', fontsize=14, fontweight='bold')
+            fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            self.vis_fig.clear()
+            ax = self.vis_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'AutoEncoder训练进度可视化失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center', fontsize=12)
+            ax.set_title('AutoEncoder训练进度')
+            self.vis_canvas.draw()
 
     def _plot_autoencoder_prediction_visualization(self, chart_type, freq):
         """使用AutoEncoder进行预测可视化"""
