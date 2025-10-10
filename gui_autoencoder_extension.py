@@ -110,21 +110,16 @@ class AutoEncoderExtension:
         ttk.Label(mode_frame, text="   • 优势：更快速度、更少参数、简单部署",
                  font=self.main_gui.font_small).pack(anchor=tk.W)
 
-        # 2. 频率配置组（沿用原有）
-        freq_group = ttk.LabelFrame(parent, text="📡 频率配置")
-        freq_group.pack(fill=tk.X, pady=(0, 10))
+        # 频率配置说明（配置在数据管理页面）
+        freq_info_frame = ttk.Frame(parent)
+        freq_info_frame.pack(fill=tk.X, pady=(0, 10))
 
-        freq_frame = ttk.Frame(freq_group)
-        freq_frame.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(freq_info_frame,
+                 text="💡 提示：频率配置(2freq/3freq)请在【数据管理】标签页设置",
+                 font=self.main_gui.font_small,
+                 foreground="blue").pack(padx=5, pady=5)
 
-        ttk.Label(freq_frame, text="频率配置:").grid(row=0, column=0, sticky="w", padx=(0, 5))
-        freq_combo = ttk.Combobox(freq_frame, textvariable=self.main_gui.ae_freq_config,
-                                 values=["2freq", "3freq"], state="readonly", width=10)
-        freq_combo.grid(row=0, column=1, sticky="w")
-        ttk.Label(freq_frame, text="(2freq: 1.5+3GHz, 3freq: +6GHz)",
-                 font=self.main_gui.font_small).grid(row=0, column=2, sticky="w", padx=(5, 0))
-
-        # 3. 模型架构配置组
+        # 2. 模型架构配置组
         model_group = ttk.LabelFrame(parent, text="🏗️ 模型架构配置")
         model_group.pack(fill=tk.X, pady=(0, 10))
 
