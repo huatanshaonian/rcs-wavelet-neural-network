@@ -159,8 +159,8 @@ class FrequencyConfig:
     def create_parameter_mapper(self,
                               param_dim: int = 9,
                               latent_dim: int = 256,
-                              hidden_dims: list = [128, 256, 512],
-                              dropout_rate: float = 0.2) -> ParameterMapper:
+                              hidden_dims: list = [64, 128],
+                              dropout_rate: float = 0.3) -> ParameterMapper:
         """
         创建参数映射器 (与频率配置无关，但为了API一致性提供)
 
