@@ -231,6 +231,7 @@ class RCSWaveletGUI:
         self.ae_latent_dim = tk.StringVar(value="256")
         self.ae_dropout_rate = tk.StringVar(value="0.2")
         self.ae_wavelet_type = tk.StringVar(value="db4")
+        self.ae_architecture_type = tk.StringVar(value="CNN")  # 架构类型: CNN或MLP
 
         # 训练配置
         self.ae_batch_size = tk.StringVar(value="16")
@@ -705,7 +706,9 @@ class RCSWaveletGUI:
         ttk.Button(button_frame, text="开始训练", command=self.start_ae_training).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="停止训练", command=self.stop_ae_training).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="保存模型", command=self.save_ae_model).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="加载模型", command=self.load_ae_model).pack(side=tk.LEFT)
+        ttk.Button(button_frame, text="加载模型", command=self.load_ae_model).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="保存参数", command=self.save_ae_params).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="加载参数", command=self.load_ae_params).pack(side=tk.LEFT)
 
         # 右侧面板：状态和日志
         right_panel = ttk.Frame(main_frame)
@@ -2784,7 +2787,7 @@ class RCSWaveletGUI:
             # 获取AutoEncoder系统组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             mode = self.ae_system.get('mode', 'wavelet')
 
             # 获取测试数据
@@ -2837,6 +2840,8 @@ class RCSWaveletGUI:
                     if mode == 'wavelet':
                         # 小波模式：小波系数 → RCS
                         predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                        # 确保在正确的设备上
+                        predicted_rcs = predicted_rcs.to(device)
                     else:
                         # 直接模式：直接输出RCS
                         predicted_rcs = predicted_output
@@ -3134,37 +3139,43 @@ class RCSWaveletGUI:
                     messagebox.showwarning("警告", "AutoEncoder图表需要先训练或加载AutoEncoder模型")
                     return
                 self._plot_autoencoder_visualization(chart_type)
+            elif chart_type in ["2D热图", "3D表面图", "球坐标图"]:
+                # 这些图表始终显示原始RCS数据，不使用模型预测
+                model_id = self.vis_model_var.get()
+                if not model_id:
+                    messagebox.showwarning("警告", "请输入模型ID")
+                    return
+
+                freq = self.vis_freq_var.get()
+
+                if chart_type == "2D热图":
+                    self._plot_2d_heatmap(model_id, freq)
+                elif chart_type == "3D表面图":
+                    self._plot_3d_surface(model_id, freq)
+                elif chart_type == "球坐标图":
+                    self._plot_spherical(model_id, freq)
             else:
-                # 传统单模型分析图表 - 需要model_id
+                # 对比图、差值分析、相关性分析 - 需要模型预测
                 if not has_traditional_model and not has_ae_model:
                     messagebox.showwarning("警告", "请先训练或加载模型")
                     return
 
-                if has_ae_model:
-                    # 使用AutoEncoder进行预测可视化
-                    freq = self.vis_freq_var.get()
-                    self._plot_autoencoder_prediction_visualization(chart_type, freq)
-                else:
-                    # 传统网络可视化
-                    model_id = self.vis_model_var.get()
-                    if not model_id:
-                        messagebox.showwarning("警告", "请输入模型ID")
-                        return
+                model_id = self.vis_model_var.get()
+                if not model_id:
+                    messagebox.showwarning("警告", "请输入模型ID")
+                    return
 
-                    freq = self.vis_freq_var.get()
+                freq = self.vis_freq_var.get()
 
-                    if chart_type == "2D热图":
-                        self._plot_2d_heatmap(model_id, freq)
-                    elif chart_type == "3D表面图":
-                        self._plot_3d_surface(model_id, freq)
-                    elif chart_type == "球坐标图":
-                        self._plot_spherical(model_id, freq)
-                    elif chart_type == "对比图":
+                if chart_type == "对比图":
+                    if has_ae_model:
+                        self._plot_ae_comparison()
+                    else:
                         self._plot_comparison(model_id)
-                    elif chart_type == "差值分析":
-                        self._plot_difference_analysis(model_id)
-                    elif chart_type == "相关性分析":
-                        self._plot_correlation_analysis(model_id)
+                elif chart_type == "差值分析":
+                    self._plot_difference_analysis(model_id)
+                elif chart_type == "相关性分析":
+                    self._plot_correlation_analysis(model_id)
 
         except Exception as e:
             messagebox.showerror("错误", f"图表生成失败: {str(e)}")
@@ -3953,8 +3964,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             print("生成改进的全局统计对比分析...")
 
-            # 创建结果保存目录
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # 创建结果保存目录（使用会话时间戳）
+            timestamp = self.get_ae_session_timestamp() if hasattr(self, 'ae_session_timestamp') else datetime.now().strftime("%Y%m%d_%H%M%S")
             results_dir = os.path.join("results", f"statistics_comparison_{timestamp}")
             os.makedirs(results_dir, exist_ok=True)
 
@@ -3966,43 +3977,123 @@ GPU峰值: {gpu_peak:.2f}GB"""
             model_stats = []
 
             # 检查是否有训练好的模型和缓存数据
+            # 优先检查AutoEncoder系统
+            has_ae_system = hasattr(self, 'ae_system') and self.ae_system is not None
             has_model = hasattr(self, 'current_model') and self.current_model is not None
-            has_param_data = hasattr(self, 'param_data') and self.param_data is not None
-            has_rcs_data = hasattr(self, 'rcs_data') and self.rcs_data is not None
 
-            print(f"缓存数据检查: 模型={has_model}, 参数数据={has_param_data}, RCS数据={has_rcs_data}")
-            if has_param_data and has_rcs_data:
-                print(f"缓存数据形状: 参数={self.param_data.shape}, RCS={self.rcs_data.shape}")
+            # 检查数据来源：优先使用ae_system，其次使用self.rcs_data
+            if has_ae_system and 'rcs_data' in self.ae_system and 'param_data' in self.ae_system:
+                print("检测到AutoEncoder系统缓存数据")
+                has_param_data = True
+                has_rcs_data = True
+                param_data = self.ae_system['param_data']
+                rcs_data = self.ae_system['rcs_data']
+                # 获取AutoEncoder组件用于预测
+                autoencoder = self.ae_system.get('autoencoder')
+                parameter_mapper = self.ae_system.get('parameter_mapper')
+                wavelet_transform = self.ae_system.get('wavelet_transform', None)
+                use_ae_system = True
+                print(f"AutoEncoder数据形状: 参数={param_data.shape}, RCS={rcs_data.shape}")
+            else:
+                # 降级到传统模型数据
+                has_param_data = hasattr(self, 'param_data') and self.param_data is not None
+                has_rcs_data = hasattr(self, 'rcs_data') and self.rcs_data is not None
+                if has_param_data and has_rcs_data:
+                    param_data = self.param_data
+                    rcs_data = self.rcs_data
+                    print(f"传统模型缓存数据形状: 参数={param_data.shape}, RCS={rcs_data.shape}")
+                use_ae_system = False
 
-            if has_model and has_param_data and has_rcs_data:
+            print(f"缓存数据检查: AE系统={has_ae_system}, 传统模型={has_model}, 参数数据={has_param_data}, RCS数据={has_rcs_data}")
+
+            if (has_model or (has_ae_system and autoencoder is not None and parameter_mapper is not None)) and has_param_data and has_rcs_data:
 
                 print("使用缓存数据进行快速统计计算...")
 
                 # 使用缓存的参数和RCS数据进行批量预测
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-                self.current_model.to(device)
-                self.current_model.eval()
 
-                with torch.no_grad():
-                    # 批量预测所有模型（速度更快）
-                    params_tensor = torch.FloatTensor(self.param_data).to(device)
-                    predicted_batch = self.current_model(params_tensor).cpu().numpy()
+                # 根据系统类型选择预测方式
+                if use_ae_system:
+                    # AutoEncoder系统预测
+                    print("使用AutoEncoder系统进行预测...")
+                    autoencoder.to(device).eval()
+                    parameter_mapper.to(device).eval()
+
+                    with torch.no_grad():
+                        # 批量预测所有模型
+                        params_tensor = torch.FloatTensor(param_data).to(device)
+
+                        # 调试：检查输入参数的多样性
+                        print(f"输入参数形状: {param_data.shape}")
+                        print(f"前3个样本的参数: \n{param_data[:3]}")
+                        print(f"参数统计: min={param_data.min():.6f}, max={param_data.max():.6f}, mean={param_data.mean():.6f}, std={param_data.std():.6f}")
+
+                        predicted_latents = parameter_mapper(params_tensor)
+
+                        # 调试：检查latent的多样性
+                        latent_np = predicted_latents.cpu().numpy()
+                        print(f"预测的latent形状: {latent_np.shape}")
+                        print(f"前3个样本的latent均值: {latent_np[:3].mean(axis=1)}")
+                        print(f"前3个样本的latent标准差: {latent_np[:3].std(axis=1)}")
+                        print(f"所有latent的整体统计: min={latent_np.min():.6f}, max={latent_np.max():.6f}, mean={latent_np.mean():.6f}, std={latent_np.std():.6f}")
+
+                        # 检查不同样本间的latent差异
+                        if len(latent_np) >= 2:
+                            latent_diff = np.abs(latent_np[0] - latent_np[1]).mean()
+                            print(f"样本1和样本2的latent平均差异: {latent_diff:.6f}")
+
+                        predicted_output = autoencoder.decode(predicted_latents)
+
+                        # 根据模式处理输出
+                        if wavelet_transform is not None:
+                            # 小波模式：需要逆变换
+                            predicted_batch = wavelet_transform.inverse_transform(predicted_output).cpu().numpy()
+                        else:
+                            # 直接模式：直接使用输出
+                            predicted_batch = predicted_output.cpu().numpy()
+
+                        # 调试：检查预测输出的多样性
+                        print(f"预测输出形状: {predicted_batch.shape}")
+                        print(f"前3个样本的预测RCS均值: {[predicted_batch[i].mean() for i in range(min(3, len(predicted_batch)))]}")
+                        print(f"前3个样本的预测RCS标准差: {[predicted_batch[i].std() for i in range(min(3, len(predicted_batch)))]}")
+                else:
+                    # 传统模型预测
+                    print("使用传统神经网络模型进行预测...")
+                    self.current_model.to(device).eval()
+
+                    with torch.no_grad():
+                        # 批量预测所有模型（速度更快）
+                        params_tensor = torch.FloatTensor(param_data).to(device)
+                        predicted_batch = self.current_model(params_tensor).cpu().numpy()
 
                 # 收集所有数据和统计信息
-                for i, rcs_data in enumerate(self.rcs_data):
+                for i, current_rcs_data in enumerate(rcs_data):
                     model_id = f"{i+1:03d}"
 
-                    # 实际数据 [91, 91, 2] - 线性域
-                    actual_1_5g = rcs_data[:, :, 0].flatten()
-                    actual_3g = rcs_data[:, :, 1].flatten()
+                    # 实际数据 [91, 91, 2/3] - 线性域
+                    actual_1_5g = current_rcs_data[:, :, 0].flatten()
+                    actual_3g = current_rcs_data[:, :, 1].flatten()
 
-                    # 预测数据域转换 - 关键修复！
+                    # 预测数据域转换
                     pred_raw_1_5g = predicted_batch[i, :, :, 0].flatten()
                     pred_raw_3g = predicted_batch[i, :, :, 1].flatten()
 
-                    # 检查模型输出类型并进行正确的域转换
-                    if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
-                        # 新格式：网络输出是标准化的dB值，需要反标准化到dB，然后转线性
+                    # 根据系统类型进行域转换
+                    if use_ae_system:
+                        # AutoEncoder系统：输出已经是线性域RCS
+                        # (因为训练时输入就是线性域的RCS数据)
+                        pred_1_5g = pred_raw_1_5g
+                        pred_3g = pred_raw_3g
+
+                        # 调试信息：检查预测值的分布
+                        if i < 3:  # 只打印前3个模型
+                            print(f"模型{model_id} [1.5GHz]: 预测值 min={pred_1_5g.min():.6f}, max={pred_1_5g.max():.6f}, mean={pred_1_5g.mean():.6f}, std={pred_1_5g.std():.6f}")
+                            print(f"模型{model_id} [1.5GHz]: 真实值 min={actual_1_5g.min():.6f}, max={actual_1_5g.max():.6f}, mean={actual_1_5g.mean():.6f}, std={actual_1_5g.std():.6f}")
+                            print(f"模型{model_id} [1.5GHz]: 预测前5个值: {pred_1_5g[:5]}")
+                            print(f"模型{model_id} [1.5GHz]: 真实前5个值: {actual_1_5g[:5]}")
+                    elif hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
+                        # 传统模型 + 预处理：网络输出是标准化的dB值
                         mean = self.preprocessing_stats['mean']
                         std = self.preprocessing_stats['std']
                         # 反标准化到dB域
@@ -4011,12 +4102,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
                         # 从 dB 转换到线性域： RCS = 10^(dB/10)
                         pred_1_5g = np.power(10, pred_db_1_5g / 10.0)
                         pred_3g = np.power(10, pred_db_3g / 10.0)
-                        print(f"模型{model_id}: 使用preprocessing_stats进行域转换")
+                        print(f"模型{model_id}: 传统模型（dB域 → 线性域）")
                     else:
-                        # 旧格式或无stats：假设网络输出已经是线性域
+                        # 传统模型无预处理：假设输出已经是线性域
                         pred_1_5g = pred_raw_1_5g
                         pred_3g = pred_raw_3g
-                        print(f"模型{model_id}: 假设网络输出为线性域")
+                        print(f"模型{model_id}: 传统模型输出（线性域）")
 
                     # 确保线性域数值为正
                     pred_1_5g = np.maximum(pred_1_5g, 1e-12)  # 避免负值和零值
@@ -4057,7 +4148,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     all_predicted_1_5g.extend(pred_1_5g)
                     all_predicted_3g.extend(pred_3g)
 
-                print(f"使用缓存数据处理了 {len(self.rcs_data)} 个模型")
+                print(f"使用缓存数据处理了 {len(rcs_data)} 个模型")
 
             else:
                 # 降级方案：使用文件读取
@@ -4704,6 +4795,13 @@ GPU峰值: {gpu_peak:.2f}GB"""
         except Exception as e:
             print(f"更新AE状态失败: {e}")
 
+    def get_ae_session_timestamp(self):
+        """获取当前AE会话的时间戳（固定，除非重新创建系统）"""
+        if not hasattr(self, 'ae_session_timestamp') or self.ae_session_timestamp is None:
+            # 如果还没有会话时间戳，生成一个新的
+            self.ae_session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return self.ae_session_timestamp
+
     def ae_log(self, message):
         """添加AutoEncoder日志信息"""
         try:
@@ -4745,6 +4843,11 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 messagebox.showwarning("警告", "参数数据未加载，请在数据管理页面加载数据!")
                 return
 
+            # 重置并生成本次会话的时间戳（用于命名一致性）
+            self.ae_session_timestamp = None  # 清空旧的时间戳
+            session_ts = self.get_ae_session_timestamp()  # 生成新的时间戳
+            self.ae_log(f"🕐 会话时间戳: {session_ts}")
+
             self.ae_log("📊 检测到已加载的数据:")
             self.ae_log(f"  RCS数据形状: {self.rcs_data.shape}")
             self.ae_log(f"  参数数据形状: {self.param_data.shape}")
@@ -4781,6 +4884,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 dropout_rate = float(self.ae_dropout_rate.get())
                 wavelet_type = self.ae_wavelet_type.get()
 
+                # 获取mode和architecture参数（如果存在）
+                mode = self.ae_mode.get() if hasattr(self, 'ae_mode') else 'wavelet'
+                architecture = self.ae_architecture_type.get().lower() if hasattr(self, 'ae_architecture_type') else 'cnn'
+
                 # 移除重复的预处理配置，直接使用数据管理的预处理结果
                 normalize = True  # 数据管理页面已经处理过标准化
 
@@ -4790,7 +4897,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     latent_dim=latent_dim,
                     dropout_rate=dropout_rate,
                     wavelet=wavelet_type,
-                    normalize=normalize
+                    normalize=normalize,
+                    mode=mode,
+                    architecture=architecture
                 )
 
                 # 存储数据引用，便于训练使用
@@ -4800,13 +4909,19 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 self.ae_log(f"✅ AutoEncoder系统创建成功!")
                 self.ae_log(f"  📊 配置: {freq_config}")
+                self.ae_log(f"  🔧 模式: {mode}")
+                self.ae_log(f"  🏗️ 架构: {architecture.upper()}")
                 self.ae_log(f"  🎯 隐空间维度: {latent_dim}")
                 self.ae_log(f"  📈 模型参数量: {self.ae_system['autoencoder'].get_parameter_count()['total']:,}")
 
                 # 更新状态
                 self.update_ae_status()
 
-                messagebox.showinfo("成功", "AutoEncoder系统创建成功!")
+                messagebox.showinfo("成功",
+                    f"AutoEncoder系统创建成功!\n\n"
+                    f"模式: {mode}\n"
+                    f"架构: {architecture.upper()}\n"
+                    f"频率: {freq_config}")
 
             except ImportError as e:
                 error_msg = f"导入AutoEncoder模块失败: {e}"
@@ -4894,17 +5009,31 @@ GPU峰值: {gpu_peak:.2f}GB"""
             )
 
             if filename:
-                # 保存模型状态
+                # 保存模型状态（包含完整配置信息）
                 import torch
+
+                # 构建完整配置（包含系统创建所需的所有参数）
+                complete_config = self.ae_system['config_info'].copy()
+                complete_config.update({
+                    'config_name': self.ae_freq_config.get(),
+                    'latent_dim': int(self.ae_latent_dim.get()),
+                    'dropout_rate': float(self.ae_dropout_rate.get()),
+                    'wavelet': self.ae_wavelet_type.get(),
+                    'normalize': True,  # 数据管理页面已标准化
+                    'mode': self.ae_system.get('mode', 'wavelet'),  # 从系统字典获取
+                    'architecture': self.ae_system.get('architecture', 'cnn')  # 从系统字典获取
+                })
+
                 model_state = {
                     'autoencoder': self.ae_system['autoencoder'].state_dict(),
                     'parameter_mapper': self.ae_system['parameter_mapper'].state_dict(),
-                    'config': self.ae_system['config_info'],
+                    'config': complete_config,
                     'training_history': self.ae_training_history
                 }
 
                 torch.save(model_state, filename)
                 self.ae_log(f"💾 模型保存成功: {filename}")
+                self.ae_log(f"  保存配置: mode={complete_config['mode']}, arch={complete_config['architecture']}")
                 messagebox.showinfo("成功", f"模型已保存到: {filename}")
 
         except Exception as e:
@@ -4913,7 +5042,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             messagebox.showerror("错误", error_msg)
 
     def load_ae_model(self):
-        """加载AutoEncoder模型"""
+        """加载AutoEncoder模型 (自动重建系统)"""
         try:
             filename = filedialog.askopenfilename(
                 title="加载AutoEncoder模型",
@@ -4923,30 +5052,239 @@ GPU峰值: {gpu_peak:.2f}GB"""
             if filename:
                 self.ae_log(f"正在加载模型: {filename}")
 
-                # 这里需要先创建系统，然后加载状态
-                if self.ae_system is None:
-                    self.ae_log("请先创建AutoEncoder系统框架")
-                    messagebox.showwarning("警告", "请先创建AutoEncoder系统!")
-                    return
-
                 import torch
                 checkpoint = torch.load(filename, map_location='cpu')
 
-                # 加载模型状态
+                # 从检查点提取配置信息
+                if 'config' not in checkpoint:
+                    self.ae_log("❌ 检查点缺少config信息，无法自动重建系统")
+                    messagebox.showerror("错误", "模型文件缺少配置信息，请使用旧版方式先创建系统再加载")
+                    return
+
+                config = checkpoint['config']
+
+                # 提取系统创建所需参数
+                freq_config = config.get('config_name', '2freq')
+                latent_dim = config.get('latent_dim', 256)
+                dropout_rate = config.get('dropout_rate', 0.2)
+                wavelet_type = config.get('wavelet', 'db4')
+                normalize = config.get('normalize', True)
+                mode = config.get('mode', 'wavelet')  # 默认小波模式
+
+                # 智能检测架构类型（从config或state_dict推断）
+                architecture = config.get('architecture', None)
+
+                if architecture is None:
+                    # 旧版模型没有保存architecture，需要从state_dict推断
+                    state_dict_keys = list(checkpoint['autoencoder'].keys())
+
+                    self.ae_log("🔍 检测旧版模型架构...")
+                    self.ae_log(f"  State dict前5个键: {state_dict_keys[:5]}")
+
+                    # 检测MLP特征：encoder.1是大型Linear层（输入维度>1000）
+                    if 'encoder.1.weight' in state_dict_keys:
+                        shape = checkpoint['autoencoder']['encoder.1.weight'].shape
+                        self.ae_log(f"  encoder.1.weight形状: {shape}")
+
+                        if len(shape) == 2 and shape[1] > 1000:  # 注意：shape[1]是输入维度
+                            architecture = 'mlp'
+                            self.ae_log("⚠️ 检测到旧版MLP模型（encoder.1输入维度={})".format(shape[1]))
+                        else:
+                            architecture = 'cnn'
+                            self.ae_log("⚠️ 检测到旧版CNN模型")
+
+                    # 检测Enhanced CNN特征：multi_scale模块
+                    elif any('multi_scale' in key for key in state_dict_keys):
+                        architecture = 'enhanced_cnn'
+                        self.ae_log("⚠️ 检测到Enhanced CNN模型")
+
+                    # 检测标准CNN/Direct特征
+                    elif 'encoder.0.weight' in state_dict_keys:
+                        shape = checkpoint['autoencoder']['encoder.0.weight'].shape
+                        if len(shape) == 4:  # Conv2d
+                            architecture = 'cnn'
+                            self.ae_log("⚠️ 检测到标准CNN模型")
+                        else:
+                            architecture = 'cnn'
+                            self.ae_log("⚠️ 无法确定架构，默认CNN")
+                    else:
+                        architecture = 'cnn'  # 默认CNN
+                        self.ae_log("⚠️ 无法确定架构，默认使用CNN")
+
+                self.ae_log(f"📋 从检查点读取配置:")
+                self.ae_log(f"  频率配置: {freq_config}")
+                self.ae_log(f"  隐空间维度: {latent_dim}")
+                self.ae_log(f"  模式: {mode}")
+                self.ae_log(f"  架构: {architecture}")
+
+                # 导入AutoEncoder模块
+                import sys
+                sys.path.append('autoencoder')
+                from autoencoder.utils.frequency_config import create_autoencoder_system
+
+                # 自动创建系统
+                self.ae_log("🔧 正在自动重建AutoEncoder系统...")
+                self.ae_system = create_autoencoder_system(
+                    config_name=freq_config,
+                    latent_dim=latent_dim,
+                    dropout_rate=dropout_rate,
+                    wavelet=wavelet_type,
+                    normalize=normalize,
+                    mode=mode,
+                    architecture=architecture
+                )
+
+                # 加载模型权重
                 self.ae_system['autoencoder'].load_state_dict(checkpoint['autoencoder'])
                 self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
+
+                # 如果有数据，也加载到系统中
+                if hasattr(self, 'rcs_data') and self.rcs_data is not None:
+                    self.ae_system['rcs_data'] = self.rcs_data
+                if hasattr(self, 'param_data') and self.param_data is not None:
+                    self.ae_system['param_data'] = self.param_data
 
                 if 'training_history' in checkpoint:
                     self.ae_training_history = checkpoint['training_history']
 
+                # 重置会话时间戳（加载模型算作新会话）
+                self.ae_session_timestamp = None
+                session_ts = self.get_ae_session_timestamp()
+
                 self.ae_trained = True
-                self.ae_log(f"📂 模型加载成功: {filename}")
+                self.ae_log(f"✅ 模型加载成功: {filename}")
+                self.ae_log(f"  系统已自动重建，无需手动创建")
+                self.ae_log(f"🕐 新会话时间戳: {session_ts}")
                 self.update_ae_status()
 
-                messagebox.showinfo("成功", f"模型已从以下位置加载: {filename}")
+                messagebox.showinfo("成功",
+                    f"模型已加载并自动重建系统!\n\n"
+                    f"文件: {filename}\n"
+                    f"模式: {mode}\n"
+                    f"架构: {architecture}\n"
+                    f"频率: {freq_config}")
 
         except Exception as e:
             error_msg = f"加载模型失败: {e}"
+            self.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+            import traceback
+            traceback.print_exc()
+
+    def save_ae_params(self):
+        """保存AutoEncoder训练参数配置"""
+        try:
+            filename = filedialog.asksaveasfilename(
+                title="保存AutoEncoder参数配置",
+                defaultextension=".json",
+                filetypes=[("JSON配置", "*.json"), ("所有文件", "*.*")]
+            )
+
+            if filename:
+                import json
+
+                # 收集所有参数
+                params = {
+                    'freq_config': self.ae_freq_config.get(),
+                    'latent_dim': self.ae_latent_dim.get(),
+                    'dropout_rate': self.ae_dropout_rate.get(),
+                    'wavelet_type': self.ae_wavelet_type.get(),
+                    'architecture_type': self.ae_architecture_type.get(),
+                    'mode': self.ae_mode.get() if hasattr(self, 'ae_mode') else 'wavelet',
+
+                    # 训练参数
+                    'batch_size': self.ae_batch_size.get(),
+                    'learning_rate': self.ae_learning_rate.get(),
+                    'epochs_stage1': self.ae_epochs_stage1.get(),
+                    'epochs_stage2': self.ae_epochs_stage2.get(),
+                    'epochs_stage3': self.ae_epochs_stage3.get(),
+
+                    # 学习率调度
+                    'lr_scheduler': self.ae_lr_scheduler.get(),
+                    'min_lr': self.ae_min_lr.get(),
+                    'restart_period': self.ae_restart_period.get(),
+
+                    # 早停参数
+                    'patience_stage1': self.ae_patience_stage1.get(),
+                    'patience_stage2': self.ae_patience_stage2.get(),
+                    'patience_stage3': self.ae_patience_stage3.get(),
+                    'patience_e2e': self.ae_patience_e2e.get(),
+
+                    # 训练模式和损失函数
+                    'training_mode': self.ae_training_mode.get(),
+                    'use_custom_loss': self.ae_use_custom_loss.get()
+                }
+
+                with open(filename, 'w', encoding='utf-8') as f:
+                    json.dump(params, f, indent=4, ensure_ascii=False)
+
+                self.ae_log(f"💾 参数配置保存成功: {filename}")
+                messagebox.showinfo("成功", f"参数配置已保存到:\n{filename}")
+
+        except Exception as e:
+            error_msg = f"保存参数配置失败: {e}"
+            self.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def load_ae_params(self):
+        """加载AutoEncoder训练参数配置"""
+        try:
+            filename = filedialog.askopenfilename(
+                title="加载AutoEncoder参数配置",
+                filetypes=[("JSON配置", "*.json"), ("所有文件", "*.*")]
+            )
+
+            if filename:
+                import json
+
+                with open(filename, 'r', encoding='utf-8') as f:
+                    params = json.load(f)
+
+                # 应用参数
+                self.ae_freq_config.set(params.get('freq_config', '2freq'))
+                self.ae_latent_dim.set(params.get('latent_dim', '256'))
+                self.ae_dropout_rate.set(params.get('dropout_rate', '0.2'))
+                self.ae_wavelet_type.set(params.get('wavelet_type', 'db4'))
+                self.ae_architecture_type.set(params.get('architecture_type', 'CNN'))
+                if hasattr(self, 'ae_mode'):
+                    self.ae_mode.set(params.get('mode', 'wavelet'))
+
+                # 训练参数
+                self.ae_batch_size.set(params.get('batch_size', '16'))
+                self.ae_learning_rate.set(params.get('learning_rate', '1e-3'))
+                self.ae_epochs_stage1.set(params.get('epochs_stage1', '100'))
+                self.ae_epochs_stage2.set(params.get('epochs_stage2', '50'))
+                self.ae_epochs_stage3.set(params.get('epochs_stage3', '20'))
+
+                # 学习率调度
+                self.ae_lr_scheduler.set(params.get('lr_scheduler', 'constant'))
+                self.ae_min_lr.set(params.get('min_lr', '1e-5'))
+                self.ae_restart_period.set(params.get('restart_period', '50'))
+
+                # 早停参数
+                self.ae_patience_stage1.set(params.get('patience_stage1', '10'))
+                self.ae_patience_stage2.set(params.get('patience_stage2', '10'))
+                self.ae_patience_stage3.set(params.get('patience_stage3', '5'))
+                self.ae_patience_e2e.set(params.get('patience_e2e', '15'))
+
+                # 训练模式和损失函数
+                self.ae_training_mode.set(params.get('training_mode', '三阶段训练'))
+                self.ae_use_custom_loss.set(params.get('use_custom_loss', False))
+
+                self.ae_log(f"📂 参数配置加载成功: {filename}")
+                self.ae_log(f"  模式: {params.get('mode', 'wavelet')}")
+                self.ae_log(f"  架构: {params.get('architecture_type', 'CNN')}")
+                self.ae_log(f"  隐空间维度: {params.get('latent_dim', '256')}")
+                self.ae_log(f"  批次大小: {params.get('batch_size', '16')}")
+
+                messagebox.showinfo("成功",
+                    f"参数配置已加载!\n\n"
+                    f"文件: {filename}\n"
+                    f"模式: {params.get('mode', 'wavelet')}\n"
+                    f"架构: {params.get('architecture_type', 'CNN')}")
+
+        except Exception as e:
+            error_msg = f"加载参数配置失败: {e}"
             self.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
@@ -5005,7 +5343,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             # 获取AutoEncoder组件
             autoencoder = self.ae_system['autoencoder']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -5127,7 +5465,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -5264,7 +5602,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -5392,7 +5730,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -5519,17 +5857,23 @@ GPU峰值: {gpu_peak:.2f}GB"""
         try:
             self.ae_log("🚀 开始三阶段训练流程 (v2统一配置):")
 
+            # 初始化训练历史
+            self.ae_training_history = {'stage_histories': {}}
+
             # 阶段1: AutoEncoder预训练
             self.ae_log("📊 开始阶段1: AutoEncoder预训练...")
-            self._train_autoencoder_stage1_v2(rcs_data, training_config)
+            stage1_history = self._train_autoencoder_stage1_v2(rcs_data, training_config)
+            self.ae_training_history['stage_histories']['stage1'] = stage1_history
 
             # 阶段2: 参数映射训练
             self.ae_log("🎯 开始阶段2: 参数映射训练...")
-            self._train_parameter_mapping_stage2_v2(rcs_data, param_data, training_config)
+            stage2_history = self._train_parameter_mapping_stage2_v2(rcs_data, param_data, training_config)
+            self.ae_training_history['stage_histories']['stage2'] = stage2_history
 
             # 阶段3: 端到端微调
             self.ae_log("⚡ 开始阶段3: 端到端微调...")
-            self._train_end_to_end_stage3_v2(rcs_data, param_data, training_config)
+            stage3_history = self._train_end_to_end_stage3_v2(rcs_data, param_data, training_config)
+            self.ae_training_history['stage_histories']['stage3'] = stage3_history
 
             self.ae_log("🎉 三阶段训练完成!")
             messagebox.showinfo("成功", "三阶段训练完成!")
@@ -5565,7 +5909,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             # 获取AutoEncoder组件
             autoencoder = self.ae_system['autoencoder']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             mode = self.ae_system.get('mode', 'wavelet')
 
             # 设置设备
@@ -5620,7 +5964,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 训练循环
             autoencoder.train()
             best_val_loss = float('inf')
+            best_epoch = 0
             patience_counter = 0
+
+            # 用于保存历史
+            train_losses = []
+            val_losses = []
 
             for epoch in range(epochs):
                 # 训练
@@ -5657,6 +6006,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 avg_val_loss = val_loss / num_val_batches
 
+                # 保存历史
+                train_losses.append(avg_train_loss)
+                val_losses.append(avg_val_loss)
+
                 # 学习率调度
                 self._ae_step_scheduler(scheduler, scheduler_type, avg_val_loss)
                 current_lr = optimizer.param_groups[0]['lr']
@@ -5664,6 +6017,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 早停检查
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
+                    best_epoch = epoch + 1
                     patience_counter = 0
                 else:
                     patience_counter += 1
@@ -5679,6 +6033,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             self.ae_log(f"✅ 阶段1: AutoEncoder预训练完成，最佳验证损失: {best_val_loss:.6f}")
 
+            # 返回历史数据
+            return {
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch
+            }
+
         except Exception as e:
             self.ae_log(f"❌ 阶段1训练失败: {e}")
             raise e
@@ -5692,7 +6054,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -5758,7 +6120,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 训练循环
             parameter_mapper.train()
             best_val_loss = float('inf')
+            best_epoch = 0
             patience_counter = 0
+
+            # 初始化训练历史记录
+            train_losses = []
+            val_losses = []
 
             for epoch in range(epochs):
                 # 训练
@@ -5798,6 +6165,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 avg_val_loss = val_loss / num_val_batches
 
+                # 记录训练历史
+                train_losses.append(avg_train_loss)
+                val_losses.append(avg_val_loss)
+
                 # 学习率调度
                 self._ae_step_scheduler(scheduler, scheduler_type, avg_val_loss)
                 current_lr = optimizer.param_groups[0]['lr']
@@ -5805,6 +6176,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 早停检查
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
+                    best_epoch = epoch
                     patience_counter = 0
                 else:
                     patience_counter += 1
@@ -5824,6 +6196,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             self.ae_log(f"✅ 阶段2: 参数映射训练完成，最佳验证损失: {best_val_loss:.6f}")
 
+            # 返回训练历史
+            return {
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch
+            }
+
         except Exception as e:
             self.ae_log(f"❌ 阶段2训练失败: {e}")
             raise e
@@ -5837,7 +6217,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             mode = self.ae_system.get('mode', 'wavelet')
 
             # 设置设备
@@ -5897,7 +6277,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
             autoencoder.train()
             parameter_mapper.train()
             best_val_loss = float('inf')
+            best_epoch = 0
             patience_counter = 0
+
+            # 初始化训练历史记录
+            train_losses = []
+            val_losses = []
 
             for epoch in range(epochs):
                 # 训练
@@ -5910,21 +6295,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     batch_params = batch_params.to(device)
                     batch_target_coeffs = batch_target_coeffs.to(device)
 
-                    # 端到端训练：参数 → 隐空间 → 输出数据 → RCS
+                    # 端到端训练：参数 → 隐空间 → 输出数据
                     predicted_latents = parameter_mapper(batch_params)
                     reconstructed_output = autoencoder.decode(predicted_latents)
 
-                    # 根据模式处理输出
-                    if mode == 'wavelet':
-                        # 小波模式：小波系数 → RCS
-                        predicted_rcs = wavelet_transform.inverse_transform(reconstructed_output)
-                        target_rcs = wavelet_transform.inverse_transform(batch_target_coeffs)
-                    else:
-                        # 直接模式：直接输出RCS
-                        predicted_rcs = reconstructed_output
-                        target_rcs = batch_target_coeffs
-
-                    loss = criterion(predicted_rcs, target_rcs)
+                    # 在小波/直接模式下，都直接在输出域计算损失（不进行逆变换）
+                    # 小波模式：损失在小波系数域计算
+                    # 直接模式：损失在RCS域计算
+                    loss = criterion(reconstructed_output, batch_target_coeffs)
 
                     optimizer.zero_grad()
                     loss.backward()
@@ -5953,6 +6331,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 avg_val_loss = val_loss / num_val_batches
 
+                # 记录训练历史
+                train_losses.append(avg_train_loss)
+                val_losses.append(avg_val_loss)
+
                 # 学习率调度
                 self._ae_step_scheduler(scheduler, scheduler_type, avg_val_loss)
                 current_lr = optimizer.param_groups[0]['lr']
@@ -5960,6 +6342,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 早停检查
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
+                    best_epoch = epoch
                     patience_counter = 0
                 else:
                     patience_counter += 1
@@ -5975,6 +6358,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             self.ae_log(f"✅ 阶段3: 端到端微调完成，最佳验证损失: {best_val_loss:.6f}")
 
+            # 返回训练历史
+            return {
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch
+            }
+
         except Exception as e:
             self.ae_log(f"❌ 阶段3训练失败: {e}")
             raise e
@@ -5988,7 +6379,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -6054,21 +6445,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     batch_params = batch_params.to(device)
                     batch_target_coeffs = batch_target_coeffs.to(device)
 
-                    # 端到端训练：参数 → 隐空间 → 输出数据 → RCS
+                    # 端到端训练：参数 → 隐空间 → 输出数据
                     predicted_latents = parameter_mapper(batch_params)
                     reconstructed_output = autoencoder.decode(predicted_latents)
 
-                    # 根据模式处理输出
-                    if mode == 'wavelet':
-                        # 小波模式：小波系数 → RCS
-                        predicted_rcs = wavelet_transform.inverse_transform(reconstructed_output)
-                        target_rcs = wavelet_transform.inverse_transform(batch_target_coeffs)
-                    else:
-                        # 直接模式：直接输出RCS
-                        predicted_rcs = reconstructed_output
-                        target_rcs = batch_target_coeffs
-
-                    loss = criterion(predicted_rcs, target_rcs)
+                    # 在小波/直接模式下，都直接在输出域计算损失（不进行逆变换）
+                    # 小波模式：损失在小波系数域计算
+                    # 直接模式：损失在RCS域计算
+                    loss = criterion(reconstructed_output, batch_target_coeffs)
 
                     optimizer.zero_grad()
                     loss.backward()
@@ -6268,7 +6652,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
         try:
             # 获取AutoEncoder组件
             autoencoder = self.ae_system['autoencoder']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             rcs_data = self.ae_system['rcs_data']
 
             # 设置设备和评估模式
@@ -6343,7 +6727,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
         try:
             # 获取AutoEncoder组件
             autoencoder = self.ae_system['autoencoder']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             rcs_data = self.ae_system['rcs_data']
 
             # 设置设备和评估模式
@@ -6362,10 +6746,18 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 # AutoEncoder重建
                 with torch.no_grad():
-                    rcs_tensor = torch.FloatTensor([original_rcs])
-                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
-                    reconstructed_coeffs, _ = autoencoder(wavelet_coeffs.to(device))
-                    reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs)
+                    rcs_tensor = torch.FloatTensor([original_rcs]).to(device)
+
+                    # 根据模式处理
+                    if wavelet_transform is not None:
+                        # 小波模式：RCS → 小波系数 → AE → 逆变换 → RCS
+                        wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                        reconstructed_coeffs, _ = autoencoder(wavelet_coeffs)
+                        reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs)
+                    else:
+                        # 直接模式：RCS → AE → RCS
+                        reconstructed_rcs, _ = autoencoder(rcs_tensor)
+
                     reconstructed_rcs = reconstructed_rcs.cpu().numpy()[0]
 
                 # 绘制对比图
@@ -6497,9 +6889,19 @@ GPU峰值: {gpu_peak:.2f}GB"""
             if 'stage_histories' not in history:
                 self.vis_fig.clear()
                 ax = self.vis_fig.add_subplot(1, 1, 1)
-                ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(训练历史数据结构不完整)',
-                       transform=ax.transAxes, ha='center', va='center', fontsize=12)
+                message = ('AutoEncoder训练进度可视化\n\n'
+                          '训练历史数据不完整或为空\n\n'
+                          '可能原因:\n'
+                          '1. 加载的是旧版模型 (训练时未保存历史)\n'
+                          '2. 模型尚未训练\n\n'
+                          '解决方案:\n'
+                          '• 重新训练模型 (新版会自动保存历史)\n'
+                          '• 或查看"训练历史"图表查看传统模型历史')
+                ax.text(0.5, 0.5, message,
+                       transform=ax.transAxes, ha='center', va='center',
+                       fontsize=10, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
                 ax.set_title('AutoEncoder训练进度')
+                ax.axis('off')
                 self.vis_canvas.draw()
                 return
 
@@ -6615,7 +7017,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 获取组件
             autoencoder = self.ae_system['autoencoder']
             parameter_mapper = self.ae_system['parameter_mapper']
-            wavelet_transform = self.ae_system['wavelet_transform']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             param_data = self.ae_system['param_data']
 
             # 设置设备和评估模式
@@ -6631,8 +7033,16 @@ GPU峰值: {gpu_peak:.2f}GB"""
             with torch.no_grad():
                 param_tensor = torch.FloatTensor(test_params).to(device)
                 predicted_latents = parameter_mapper(param_tensor)
-                predicted_coeffs = autoencoder.decode(predicted_latents)
-                predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+                predicted_output = autoencoder.decode(predicted_latents)
+
+                # 根据模式处理输出
+                if wavelet_transform is not None:
+                    # 小波模式：需要逆变换
+                    predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                else:
+                    # 直接模式：直接使用输出
+                    predicted_rcs = predicted_output
+
                 predicted_rcs = predicted_rcs.cpu().numpy()[0]
 
             # 绘制热图
@@ -6701,15 +7111,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
             self.vis_canvas.draw()
 
     def _plot_ae_comparison(self):
-        """绘制AutoEncoder预测与真实值对比"""
+        """绘制AutoEncoder对比图：原图、重构图、残差图"""
         import torch
         import numpy as np
 
-        # 获取组件和数据
+        # 获取组件
         autoencoder = self.ae_system['autoencoder']
         parameter_mapper = self.ae_system['parameter_mapper']
-        wavelet_transform = self.ae_system['wavelet_transform']
-        rcs_data = self.ae_system['rcs_data']
+        wavelet_transform = self.ae_system.get('wavelet_transform', None)
         param_data = self.ae_system['param_data']
 
         # 设置设备和评估模式
@@ -6717,47 +7126,117 @@ GPU峰值: {gpu_peak:.2f}GB"""
         autoencoder.to(device).eval()
         parameter_mapper.to(device).eval()
 
-        # 选择几个测试样本
-        test_indices = [0, 1, 2, 3]
+        # 获取用户输入的模型ID
+        model_id_str = self.vis_model_var.get()
 
-        self.vis_fig.clear()
+        # 获取用户选择的频率
+        freq_str = self.vis_freq_var.get()
 
-        for i, idx in enumerate(test_indices):
-            # 真实值
-            true_rcs = rcs_data[idx]
-            test_params = param_data[idx:idx+1]
+        try:
+            # 从文件读取原始RCS数据 (与2D热图使用相同的数据源)
+            data = rv.get_rcs_matrix(model_id_str, freq_str, self.data_config['rcs_data_dir'])
+            true_rcs_linear = data['rcs_linear']  # 线性值
+            true_rcs_db = data['rcs_db']  # dB值
+            phi_values = data['phi_values']
+            theta_values = data['theta_values']
 
-            # 预测值
+            # 转换model_id为索引用于获取参数
+            model_idx = int(model_id_str) - 1
+            if model_idx < 0 or model_idx >= len(param_data):
+                raise ValueError(f"模型ID超出范围，有效范围: 1-{len(param_data)}")
+
+            test_params = param_data[model_idx:model_idx+1]
+
+            # 使用参数映射器预测
             with torch.no_grad():
                 param_tensor = torch.FloatTensor(test_params).to(device)
                 predicted_latents = parameter_mapper(param_tensor)
-                predicted_coeffs = autoencoder.decode(predicted_latents)
-                predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+                predicted_output = autoencoder.decode(predicted_latents)
+
+                # 根据模式处理输出
+                if wavelet_transform is not None:
+                    # 小波模式：需要逆变换
+                    predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                else:
+                    # 直接模式：直接使用输出
+                    predicted_rcs = predicted_output
+
                 predicted_rcs = predicted_rcs.cpu().numpy()[0]
 
-            # 绘制对比
-            ax = self.vis_fig.add_subplot(2, 2, i+1)
+            # 获取频率索引
+            freq_map = {"1.5G": 0, "3G": 1, "6G": 2}
+            freq_idx = freq_map.get(freq_str, 0)
 
-            # 选择第一个频率进行对比
-            true_2d = true_rcs[:, :, 0]
-            pred_2d = predicted_rcs[:, :, 0]
+            # 提取该频率的数据
+            pred_2d = predicted_rcs[:, :, freq_idx]
 
-            # 并排显示
-            comparison = np.hstack([true_2d, pred_2d])
-            im = ax.imshow(comparison, cmap='jet', aspect='equal')
+            # 将预测数据转换为dB，处理负值和零值
+            pred_2d_clipped = np.maximum(pred_2d, 1e-10)  # 避免log10(负数)
+            pred_2d_db = 10 * np.log10(pred_2d_clipped)
 
-            # 添加分割线
-            ax.axvline(x=true_2d.shape[1]-0.5, color='white', linewidth=2)
+            # 残差计算（dB域）
+            residual_db = true_rcs_db - pred_2d_db
 
-            # 计算误差
-            mse = np.mean((true_2d - pred_2d)**2)
-            ax.set_title(f'样本{idx+1} (MSE={mse:.4f})\n左:真实 右:预测')
-            ax.set_xticks([])
-            ax.set_yticks([])
+            # 创建三个子图
+            self.vis_fig.clear()
 
-        self.vis_fig.suptitle('AutoEncoder预测 vs 真实值对比')
-        self.vis_fig.tight_layout()
-        self.vis_canvas.draw()
+            # 设置extent用于正确显示角度范围
+            extent = [phi_values.min(), phi_values.max(),
+                     theta_values.max(), theta_values.min()]
+
+            # 子图1: 原图（真实值）- 使用自动范围（与2D热图一致）
+            ax1 = self.vis_fig.add_subplot(1, 3, 1)
+            im1 = ax1.imshow(true_rcs_db, cmap='jet', aspect='equal', extent=extent)
+            ax1.set_title(f'原图（真实RCS）\n模型{model_id_str} @ {freq_str}', fontsize=10)
+            ax1.set_xlabel('φ (方位角, °)', fontsize=9)
+            ax1.set_ylabel('θ (俯仰角, °)', fontsize=9)
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+            divider1 = make_axes_locatable(ax1)
+            cax1 = divider1.append_axes("right", size="5%", pad=0.05)
+            cbar1 = self.vis_fig.colorbar(im1, cax=cax1)
+            cbar1.set_label('RCS (dB)', fontsize=8)
+
+            # 获取原图的colorbar范围，用于重构图
+            vmin, vmax = im1.get_clim()
+
+            # 子图2: AE重构图 - 使用原图的colorbar范围
+            ax2 = self.vis_fig.add_subplot(1, 3, 2)
+            im2 = ax2.imshow(pred_2d_db, cmap='jet', aspect='equal',
+                            vmin=vmin, vmax=vmax, extent=extent)
+            mse_linear = np.mean((true_rcs_linear - pred_2d)**2)
+            ax2.set_title(f'AE重构图\nMSE={mse_linear:.4e}', fontsize=10)
+            ax2.set_xlabel('φ (方位角, °)', fontsize=9)
+            ax2.set_ylabel('θ (俯仰角, °)', fontsize=9)
+            divider2 = make_axes_locatable(ax2)
+            cax2 = divider2.append_axes("right", size="5%", pad=0.05)
+            cbar2 = self.vis_fig.colorbar(im2, cax=cax2)
+            cbar2.set_label('RCS (dB)', fontsize=8)
+
+            # 子图3: 残差图
+            ax3 = self.vis_fig.add_subplot(1, 3, 3)
+            # 残差图使用对称colorbar，中心为0
+            residual_finite = residual_db[np.isfinite(residual_db)]
+            residual_abs_max = np.percentile(np.abs(residual_finite), 95) if len(residual_finite) > 0 else 10
+            im3 = ax3.imshow(residual_db, cmap='RdBu_r', aspect='equal',
+                            vmin=-residual_abs_max, vmax=residual_abs_max, extent=extent)
+            mae_db = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
+            ax3.set_title(f'残差图（原图-重构）\nMAE={mae_db:.2f} dB', fontsize=10)
+            ax3.set_xlabel('φ (方位角, °)', fontsize=9)
+            ax3.set_ylabel('θ (俯仰角, °)', fontsize=9)
+            divider3 = make_axes_locatable(ax3)
+            cax3 = divider3.append_axes("right", size="5%", pad=0.05)
+            cbar3 = self.vis_fig.colorbar(im3, cax=cax3)
+            cbar3.set_label('残差 (dB)', fontsize=8)
+
+            self.vis_fig.suptitle(f'AutoEncoder对比分析 - 模型{model_id_str} @ {freq_str}',
+                                 fontsize=12, fontweight='bold')
+            self.vis_fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            messagebox.showerror("错误", f"无法生成对比图: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
 
 def main():
