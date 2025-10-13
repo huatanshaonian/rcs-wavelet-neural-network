@@ -7022,8 +7022,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 epochs = range(1, len(stage_data['train_losses']) + 1)
                 color = stage_colors[i % len(stage_colors)]
 
-                ax.plot(epochs, stage_data['train_losses'], f'{color}-', label='训练损失', linewidth=2)
-                ax.plot(epochs, stage_data['val_losses'], f'{color}--', label='验证损失', linewidth=2)
+                # 分开指定color和linestyle参数，避免格式字符串错误
+                ax.plot(epochs, stage_data['train_losses'], color=color, linestyle='-', label='训练损失', linewidth=2)
+                ax.plot(epochs, stage_data['val_losses'], color=color, linestyle='--', label='验证损失', linewidth=2)
 
                 ax.set_xlabel('训练轮数')
                 ax.set_ylabel('损失值')
