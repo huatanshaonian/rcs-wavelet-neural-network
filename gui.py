@@ -7135,10 +7135,41 @@ GPU峰值: {gpu_peak:.2f}GB"""
         try:
             # 从文件读取原始RCS数据 (与2D热图使用相同的数据源)
             data = rv.get_rcs_matrix(model_id_str, freq_str, self.data_config['rcs_data_dir'])
-            true_rcs_linear = data['rcs_linear']  # 线性值
-            true_rcs_db = data['rcs_db']  # dB值
+            true_rcs_linear = data['rcs_linear']  # 线性值 [91, 91]
+            true_rcs_db = data['rcs_db']  # dB值 [91, 91]
             phi_values = data['phi_values']
             theta_values = data['theta_values']
+
+            # 调试：对比训练数据和CSV数据
+            model_idx = int(model_id_str) - 1
+            if hasattr(self, 'ae_system') and 'rcs_data' in self.ae_system:
+                training_rcs = self.ae_system['rcs_data'][model_idx]  # [91, 91, 2/3]
+                freq_map_debug = {"1.5G": 0, "3G": 1, "6G": 2}
+                freq_idx_debug = freq_map_debug.get(freq_str, 0)
+                training_rcs_freq = training_rcs[:, :, freq_idx_debug]  # [91, 91]
+
+                print(f"\n【数据源对比 - 模型{model_id_str} @ {freq_str}】")
+                print(f"CSV数据 (true_rcs_linear):")
+                print(f"  形状: {true_rcs_linear.shape}")
+                print(f"  范围: [{true_rcs_linear.min():.6e}, {true_rcs_linear.max():.6e}]")
+                print(f"  均值: {true_rcs_linear.mean():.6e}")
+                print(f"  前3x3: \n{true_rcs_linear[:3, :3]}")
+
+                print(f"\n训练数据 (ae_system['rcs_data']):")
+                print(f"  形状: {training_rcs_freq.shape}")
+                print(f"  范围: [{training_rcs_freq.min():.6e}, {training_rcs_freq.max():.6e}]")
+                print(f"  均值: {training_rcs_freq.mean():.6e}")
+                print(f"  前3x3: \n{training_rcs_freq[:3, :3]}")
+
+                # 检查是否完全一致
+                if np.allclose(true_rcs_linear, training_rcs_freq, rtol=1e-5):
+                    print(f"✓ 两个数据源完全一致！")
+                else:
+                    diff = np.abs(true_rcs_linear - training_rcs_freq)
+                    print(f"✗ 数据源不一致！")
+                    print(f"  最大差异: {diff.max():.6e}")
+                    print(f"  平均差异: {diff.mean():.6e}")
+                    print(f"  差异位置数: {(diff > 1e-6).sum()} / {diff.size}")
 
             # 转换model_id为索引用于获取参数
             model_idx = int(model_id_str) - 1
@@ -7150,18 +7181,30 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 使用参数映射器预测
             with torch.no_grad():
                 param_tensor = torch.FloatTensor(test_params).to(device)
+                print(f"\n【预测流程调试】")
+                print(f"输入参数: {test_params[0]}")
+
                 predicted_latents = parameter_mapper(param_tensor)
+                print(f"预测latent形状: {predicted_latents.shape}, 范围: [{predicted_latents.min():.4f}, {predicted_latents.max():.4f}]")
+
                 predicted_output = autoencoder.decode(predicted_latents)
+                print(f"Decoder输出形状: {predicted_output.shape}")
+                print(f"Decoder输出范围: [{predicted_output.min():.6e}, {predicted_output.max():.6e}]")
+                print(f"Decoder输出统计: 负值数={(predicted_output < 0).sum().item()}, 零值数={(predicted_output == 0).sum().item()}")
 
                 # 根据模式处理输出
                 if wavelet_transform is not None:
                     # 小波模式：需要逆变换
                     predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                    print(f"逆变换后形状: {predicted_rcs.shape}")
                 else:
                     # 直接模式：直接使用输出
                     predicted_rcs = predicted_output
+                    print(f"直接模式，无需逆变换")
 
                 predicted_rcs = predicted_rcs.cpu().numpy()[0]
+                print(f"转为numpy后形状: {predicted_rcs.shape}")
+                print(f"预测RCS范围: [{predicted_rcs.min():.6e}, {predicted_rcs.max():.6e}]")
 
             # 获取频率索引
             freq_map = {"1.5G": 0, "3G": 1, "6G": 2}
@@ -7169,6 +7212,11 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             # 提取该频率的数据
             pred_2d = predicted_rcs[:, :, freq_idx]
+            print(f"\n提取频率{freq_str} (索引{freq_idx}):")
+            print(f"  pred_2d形状: {pred_2d.shape}")
+            print(f"  pred_2d范围: [{pred_2d.min():.6e}, {pred_2d.max():.6e}]")
+            print(f"  pred_2d均值: {pred_2d.mean():.6e}")
+            print(f"  pred_2d前3x3:\n{pred_2d[:3, :3]}")
 
             # 将预测数据转换为dB，处理负值和零值
             pred_2d_clipped = np.maximum(pred_2d, 1e-10)  # 避免log10(负数)
