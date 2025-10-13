@@ -133,8 +133,9 @@ class NetworkRegistry:
             raise ValueError(f"{network_class.__name__} must inherit from BaseNetwork")
 
         name = network_class.get_name()
+        # 如果已经注册过，静默跳过
         if name in cls._networks:
-            print(f"Warning: Overriding existing network '{name}'")
+            return network_class
 
         cls._networks[name] = network_class
         print(f"Registered network: {name} - {network_class.get_description()}")
@@ -147,8 +148,9 @@ class NetworkRegistry:
             raise ValueError(f"{loss_class.__name__} must inherit from BaseLoss")
 
         name = loss_class.get_name()
+        # 如果已经注册过，静默跳过
         if name in cls._losses:
-            print(f"Warning: Overriding existing loss '{name}'")
+            return loss_class
 
         cls._losses[name] = loss_class
         print(f"Registered loss: {name}")
