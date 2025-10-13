@@ -7316,9 +7316,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
             print(f"  pred_2d均值: {pred_2d.mean():.6e}")
             print(f"  pred_2d前3x3:\n{pred_2d[:3, :3]}")
 
-            # 将预测数据转换为dB，处理负值和零值
-            pred_2d_clipped = np.maximum(pred_2d, 1e-10)  # 避免log10(负数)
-            pred_2d_db = 10 * np.log10(pred_2d_clipped)
+            # 将预测数据转换为dB（不做clip，让错误数据直接暴露）
+            pred_2d_db = 10 * np.log10(pred_2d)
 
             # 残差计算（dB域）
             residual_db = true_rcs_db - pred_2d_db
