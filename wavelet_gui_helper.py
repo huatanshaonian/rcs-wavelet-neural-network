@@ -3,21 +3,33 @@
 """
 小波GUI助手模块
 提供小波分析相关的独立功能函数
+
+修改历史：
+- 2025-01-13: 改用 CorrectWaveletTransform 进行小波变换，便于验证训练时使用的小波变换是否正确
 """
 
 import numpy as np
-import pywt
+import torch
 import matplotlib.pyplot as plt
+import sys
+import os
+
+# 导入 AutoEncoder 的小波变换工具
+sys.path.append(os.path.join(os.path.dirname(__file__), 'autoencoder'))
+from autoencoder.utils.correct_wavelet_transform import CorrectWaveletTransform
 
 def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
     """
     简化的小波分析函数
-    独立于其他模块，可直接在GUI中使用
+    **现在使用 CorrectWaveletTransform 进行变换，与 AutoEncoder 训练时保持一致**
 
     重要原理：
     - 小波变换始终在原始（线性）RCS数据上进行
     - data_type参数只影响最终的可视化显示
-    - 这样确保小波变换的数学性质最优
+    - 使用与训练时相同的小波变换实现，便于验证正确性
+
+    修改历史：
+    - 2025-01-13: 改用 CorrectWaveletTransform 替代直接调用 pywt
 
     Args:
         data: 2D numpy数组（如果data_type='dB'，则为分贝值；否则为线性值）
@@ -40,14 +52,40 @@ def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
         analysis_data = data         # 小波分析用原始线性数据
         display_original = data      # 显示也用线性数据
 
-    # 对线性数据进行小波分解（确保最佳数学性质）
-    coeffs = pywt.dwt2(analysis_data, wavelet)
-    cA, (cH, cV, cD) = coeffs
+    # 使用 CorrectWaveletTransform 进行小波变换（与 AutoEncoder 训练时一致）
+    print(f"\n=== 使用 CorrectWaveletTransform 进行小波分析 ===")
+    print(f"小波类型: {wavelet}")
+    print(f"输入数据形状: {analysis_data.shape}")
 
-    # 重建（在线性域）
-    reconstructed_linear = pywt.idwt2(coeffs, wavelet)
-    if reconstructed_linear.shape != analysis_data.shape:
-        reconstructed_linear = reconstructed_linear[:analysis_data.shape[0], :analysis_data.shape[1]]
+    # 创建小波变换器（单频率）
+    wavelet_transform = CorrectWaveletTransform(wavelet=wavelet, mode='symmetric', num_frequencies=1)
+
+    # 将 2D 数据转换为 4D tensor: [1, 91, 91, 1]
+    data_4d = torch.from_numpy(analysis_data).float().unsqueeze(0).unsqueeze(-1)  # [1, H, W, 1]
+    print(f"转换为4D tensor: {data_4d.shape}")
+
+    # 前向小波变换
+    wavelet_coeffs_4d = wavelet_transform.forward_transform(data_4d)  # [1, 49, 49, 4]
+    print(f"小波系数形状: {wavelet_coeffs_4d.shape}")
+
+    # 提取4个小波分量（从4D tensor中）
+    # 格式: [1, 49, 49, 4] -> 4个 [49, 49] 数组
+    cA = wavelet_coeffs_4d[0, :, :, 0].numpy()  # LL
+    cH = wavelet_coeffs_4d[0, :, :, 1].numpy()  # LH
+    cV = wavelet_coeffs_4d[0, :, :, 2].numpy()  # HL
+    cD = wavelet_coeffs_4d[0, :, :, 3].numpy()  # HH
+
+    print(f"提取的小波分量形状: cA={cA.shape}, cH={cH.shape}, cV={cV.shape}, cD={cD.shape}")
+
+    # 逆小波变换重建（在线性域）
+    reconstructed_4d = wavelet_transform.inverse_transform(wavelet_coeffs_4d)  # [1, 91, 91, 1]
+    print(f"重建数据形状: {reconstructed_4d.shape}")
+
+    # 转换回 2D numpy 数组
+    reconstructed_linear = reconstructed_4d[0, :, :, 0].numpy()
+    print(f"最终重建数据形状: {reconstructed_linear.shape}")
+    print(f"重建数据范围: [{reconstructed_linear.min():.6e}, {reconstructed_linear.max():.6e}]")
+    print("=" * 60)
 
     # 准备显示数据
     if data_type == 'dB':
@@ -73,10 +111,17 @@ def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
         cV_display = cV
         cD_display = cD
 
-    # 计算误差（用于显示的数据）
-    error = np.abs(display_original - display_reconstructed)
-    mse = np.mean((display_original - display_reconstructed)**2)
-    psnr = 20 * np.log10(np.max(np.abs(display_original)) / np.sqrt(mse)) if mse > 0 else float('inf')
+    # 计算误差（始终在线性域计算，因为小波变换在线性域进行）
+    error_linear = np.abs(analysis_data - reconstructed_linear)
+    mse = np.mean((analysis_data - reconstructed_linear)**2)
+    psnr = 20 * np.log10(np.max(np.abs(analysis_data)) / np.sqrt(mse)) if mse > 0 else float('inf')
+
+    # 如果是分贝模式，将误差转换为dB用于显示
+    if data_type == 'dB':
+        epsilon = 1e-10
+        error_display = 10 * np.log10(np.maximum(error_linear, epsilon))
+    else:
+        error_display = error_linear
 
     # 计算统计信息（基于线性域的小波系数）
     components_orig = [cA, cH, cV, cD]
@@ -104,7 +149,7 @@ def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
         'max_values': max_values,
         'mse': mse,
         'psnr': psnr,
-        'max_error': np.max(error),
+        'max_error': np.max(error_linear),  # 最大误差使用线性域值
         'analysis_domain': 'linear',  # 标明小波分析在线性域进行
         'display_domain': data_type   # 标明显示域
     }
@@ -112,7 +157,7 @@ def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
     return {
         'original': display_original,
         'reconstructed': display_reconstructed,
-        'error': error,
+        'error': error_display,
         'components': components_display,
         'component_names': component_names,
         'stats': stats
@@ -305,6 +350,7 @@ def simple_performance_comparison(rcs_data, param_data, wavelet_system, direct_s
     print("测试直接模式系统...")
     direct_ae = direct_system['autoencoder']
     direct_mapper = direct_system['parameter_mapper']
+    direct_wavelet_transform = direct_system.get('wavelet_transform', None)  # 可能为None
 
     direct_ae.eval()
     direct_mapper.eval()
@@ -312,12 +358,24 @@ def simple_performance_comparison(rcs_data, param_data, wavelet_system, direct_s
     with torch.no_grad():
         start_time = time.time()
 
-        # 直接模式推理
-        recon_rcs, latent = direct_ae(rcs_tensor)
+        # 直接模式推理 (检查是否有小波变换)
+        if direct_wavelet_transform is not None:
+            # 直接系统也使用小波模式
+            direct_coeffs = direct_wavelet_transform.forward_transform(rcs_tensor)
+            recon_coeffs, latent = direct_ae(direct_coeffs)
+            recon_rcs = direct_wavelet_transform.inverse_transform(recon_coeffs)
 
-        # 参数映射
-        mapped_latent = direct_mapper(param_tensor)
-        pred_rcs = direct_ae.decode(mapped_latent)
+            # 参数映射
+            mapped_latent = direct_mapper(param_tensor)
+            pred_coeffs = direct_ae.decode(mapped_latent)
+            pred_rcs = direct_wavelet_transform.inverse_transform(pred_coeffs)
+        else:
+            # 直接系统不使用小波变换
+            recon_rcs, latent = direct_ae(rcs_tensor)
+
+            # 参数映射
+            mapped_latent = direct_mapper(param_tensor)
+            pred_rcs = direct_ae.decode(mapped_latent)
 
         direct_time = time.time() - start_time
 
