@@ -1290,6 +1290,27 @@ class RCSWaveletGUI:
             self.log_message(f"参数数据形状: {self.param_data.shape}")
             self.log_message(f"RCS数据形状: {self.rcs_data.shape}")
 
+            # 验证频率配置匹配性（如果已加载模型）
+            if hasattr(self, 'ae_system') and self.ae_system is not None:
+                config_info = self.ae_system.get('config_info', {})
+                model_num_freq = config_info.get('num_frequencies', None)
+                model_freq_labels = config_info.get('frequency_labels', [])
+                data_num_freq = self.rcs_data.shape[-1]
+
+                if model_num_freq is not None:
+                    self.log_message(f"检查频率配置: 模型={model_num_freq}频, 数据={data_num_freq}频")
+                    if model_num_freq != data_num_freq:
+                        warning_msg = (
+                            f"⚠️ 频率配置不匹配！\n\n"
+                            f"已加载模型: {model_num_freq}频 {model_freq_labels}\n"
+                            f"当前数据: {data_num_freq}频\n\n"
+                            f"建议重新加载匹配的模型或数据！"
+                        )
+                        self.log_message(f"❌ {warning_msg}")
+                        messagebox.showwarning("频率配置不匹配", warning_msg)
+                    else:
+                        self.log_message(f"✅ 频率配置匹配：{data_num_freq}频")
+
             # 更新AutoEncoder扩展界面的模型选择列表
             if hasattr(self, 'ae_extension') and self.ae_extension is not None:
                 self.ae_extension._update_model_selection()
@@ -1535,6 +1556,27 @@ class RCSWaveletGUI:
             self.log_message("✅ 数据重新读取完成！")
             self.log_message(f"参数数据形状: {self.param_data.shape}")
             self.log_message(f"RCS数据形状: {self.rcs_data.shape}")
+
+            # 验证频率配置匹配性（如果已加载模型）
+            if hasattr(self, 'ae_system') and self.ae_system is not None:
+                config_info = self.ae_system.get('config_info', {})
+                model_num_freq = config_info.get('num_frequencies', None)
+                model_freq_labels = config_info.get('frequency_labels', [])
+                data_num_freq = self.rcs_data.shape[-1]
+
+                if model_num_freq is not None:
+                    self.log_message(f"检查频率配置: 模型={model_num_freq}频, 数据={data_num_freq}频")
+                    if model_num_freq != data_num_freq:
+                        warning_msg = (
+                            f"⚠️ 频率配置不匹配！\n\n"
+                            f"已加载模型: {model_num_freq}频 {model_freq_labels}\n"
+                            f"当前数据: {data_num_freq}频\n\n"
+                            f"建议重新加载匹配的模型或数据！"
+                        )
+                        self.log_message(f"❌ {warning_msg}")
+                        messagebox.showwarning("频率配置不匹配", warning_msg)
+                    else:
+                        self.log_message(f"✅ 频率配置匹配：{data_num_freq}频")
 
             # 更新AutoEncoder扩展界面的模型选择列表
             if hasattr(self, 'ae_extension') and self.ae_extension is not None:
@@ -4912,6 +4954,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 self.ae_log(f"  🔧 模式: {mode}")
                 self.ae_log(f"  🏗️ 架构: {architecture.upper()}")
                 self.ae_log(f"  🎯 隐空间维度: {latent_dim}")
+                self.ae_log(f"  📊 频率信息: {self.ae_system['config_info'].get('num_frequencies')}频 {self.ae_system['config_info'].get('frequency_labels', [])}")
                 self.ae_log(f"  📈 模型参数量: {self.ae_system['autoencoder'].get_parameter_count()['total']:,}")
 
                 # 更新状态
@@ -5034,7 +5077,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 torch.save(model_state, filename)
                 self.ae_log(f"💾 模型保存成功: {filename}")
                 self.ae_log(f"  保存配置: mode={complete_config['mode']}, arch={complete_config['architecture']}")
-                messagebox.showinfo("成功", f"模型已保存到: {filename}")
+                self.ae_log(f"  频率配置: {complete_config.get('num_frequencies', 'N/A')}频 {complete_config.get('frequency_labels', [])}")
+                messagebox.showinfo("成功",
+                    f"模型已保存到: {filename}\n\n"
+                    f"频率配置: {complete_config.get('num_frequencies')}频 {complete_config.get('frequency_labels', [])}")
 
         except Exception as e:
             error_msg = f"保存模型失败: {e}"
@@ -5142,7 +5188,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
                     self.ae_system['rcs_data'] = self.rcs_data
                 if hasattr(self, 'param_data') and self.param_data is not None:
-                    self.ae_system['param_data'] = self.param_data
+                    self.ae_system['parameter_data'] = self.param_data
 
                 if 'training_history' in checkpoint:
                     self.ae_training_history = checkpoint['training_history']
@@ -5152,9 +5198,39 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 session_ts = self.get_ae_session_timestamp()
 
                 self.ae_trained = True
+
+                # 验证频率配置匹配性
+                model_num_freq = self.ae_system['config_info'].get('num_frequencies', 'unknown')
+                model_freq_labels = self.ae_system['config_info'].get('frequency_labels', [])
+
                 self.ae_log(f"✅ 模型加载成功: {filename}")
                 self.ae_log(f"  系统已自动重建，无需手动创建")
+                self.ae_log(f"  模型频率配置: {model_num_freq}频 {model_freq_labels}")
                 self.ae_log(f"🕐 新会话时间戳: {session_ts}")
+
+                # 检查是否已加载数据
+                if hasattr(self, 'rcs_data') and self.rcs_data is not None:
+                    data_num_freq = self.rcs_data.shape[-1]
+                    self.ae_log(f"  当前数据频率数: {data_num_freq}")
+
+                    # 频率不匹配警告
+                    if model_num_freq != data_num_freq:
+                        warning_msg = (
+                            f"⚠️ 频率配置不匹配！\n\n"
+                            f"模型频率: {model_num_freq}频 {model_freq_labels}\n"
+                            f"数据频率: {data_num_freq}频\n\n"
+                            f"请重新加载匹配的数据！\n"
+                            f"数据管理页面 → 加载RCS数据 → 选择{model_num_freq}频数据"
+                        )
+                        self.ae_log(f"❌ {warning_msg}")
+                        messagebox.showwarning("频率配置不匹配", warning_msg)
+                else:
+                    self.ae_log(f"  尚未加载数据，请在数据管理页面加载{model_num_freq}频数据")
+                    messagebox.showinfo("提示",
+                        f"模型已加载！\n\n"
+                        f"模型频率配置: {model_num_freq}频 {model_freq_labels}\n\n"
+                        f"请前往数据管理页面加载匹配的{model_num_freq}频数据")
+
                 self.update_ae_status()
 
                 messagebox.showinfo("成功",
@@ -5162,7 +5238,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     f"文件: {filename}\n"
                     f"模式: {mode}\n"
                     f"架构: {architecture}\n"
-                    f"频率: {freq_config}")
+                    f"频率: {freq_config} ({model_num_freq}频)")
 
         except Exception as e:
             error_msg = f"加载模型失败: {e}"
@@ -7129,6 +7205,19 @@ GPU峰值: {gpu_peak:.2f}GB"""
         print(f"模型频率数: {model_num_freq}")
         print(f"模型频率标签: {model_freq_labels}")
         print(f"数据形状: rcs_data={self.ae_system['rcs_data'].shape}, param_data={param_data.shape}")
+
+        # 验证频率配置匹配
+        data_num_freq = self.ae_system['rcs_data'].shape[-1]
+        if model_num_freq != data_num_freq:
+            error_msg = (
+                f"频率配置不匹配！无法生成对比图。\n\n"
+                f"模型频率: {model_num_freq}频 {model_freq_labels}\n"
+                f"数据频率: {data_num_freq}频\n\n"
+                f"请重新加载匹配的数据或模型！"
+            )
+            print(f"❌ {error_msg}")
+            messagebox.showerror("频率配置不匹配", error_msg)
+            return
 
         # 设置设备和评估模式
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
