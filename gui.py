@@ -5020,6 +5020,19 @@ GPU峰值: {gpu_peak:.2f}GB"""
             self.ae_log(f"  RCS数据: {rcs_data.shape}")
             self.ae_log(f"  参数数据: {param_data.shape}")
 
+            # 输出实际使用的模型信息（便于回溯）
+            import inspect
+            import os
+            autoencoder = self.ae_system['autoencoder']
+            ae_class = autoencoder.__class__
+            ae_module_file = inspect.getfile(ae_class)
+            ae_module_rel = os.path.relpath(ae_module_file, os.getcwd())
+            self.ae_log(f"🔍 使用的模型:")
+            self.ae_log(f"  模型类: {ae_class.__name__}")
+            self.ae_log(f"  模型文件: {ae_module_rel}")
+            self.ae_log(f"  模式: {self.ae_system.get('mode', 'wavelet')}")
+            self.ae_log(f"  架构: {self.ae_system.get('architecture', 'cnn')}")
+
             # 启动训练过程（使用统一配置）
             if training_mode == "三阶段训练":
                 self.ae_log("📊 开始三阶段训练流程")

@@ -24,7 +24,11 @@ except ImportError:
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from models.cnn_autoencoder import WaveletAutoEncoder, ParameterMapper
-from utils.wavelet_transform import WaveletTransform
+from models.direct_autoencoder import DirectAutoEncoder
+from models.mlp_autoencoder import WaveletMLPAutoEncoder, DirectMLPAutoEncoder
+from models.enhanced_cnn_autoencoder import EnhancedWaveletAutoEncoder, EnhancedDirectAutoEncoder
+from models.deep_autoencoder import DeepWaveletAutoEncoder, DeepDirectAutoEncoder
+from utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 from utils.data_adapters import RCS_DataAdapter
 
 
@@ -89,7 +93,8 @@ class FrequencyConfig:
             latent_dim=latent_dim,
             num_frequencies=self.config['num_frequencies'],
             wavelet_bands=self.config['wavelet_bands'],
-            dropout_rate=dropout_rate
+            dropout_rate=dropout_rate,
+            input_size=49  # db4小波变换后的尺寸
         )
 
         print(f"创建{self.config_name}配置的AutoEncoder:")
@@ -189,7 +194,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                             dropout_rate: float = 0.2,
                             wavelet: str = 'db4',
                             normalize: bool = True,
-                            mode: str = 'wavelet') -> Dict[str, Any]:
+                            mode: str = 'wavelet',
+                            architecture: str = 'cnn') -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -200,31 +206,111 @@ def create_autoencoder_system(config_name: str = '2freq',
         wavelet: 小波类型
         normalize: 是否标准化数据
         mode: 'wavelet' 或 'direct' 模式
+        architecture: 'cnn' 或 'mlp' 架构
 
     Returns:
         包含所有组件的字典
     """
     mode_desc = "小波增强" if mode == 'wavelet' else "直接处理"
-    print(f"=== 创建{config_name}配置的AutoEncoder系统 ({mode_desc}模式) ===")
+    arch_desc = architecture.upper()
+    print(f"=== 创建{config_name}配置的AutoEncoder系统 ({mode_desc}模式, {arch_desc}架构) ===")
 
     # 创建配置
     freq_config = FrequencyConfig(config_name)
 
-    # 创建所有组件
+    # 根据mode和architecture组合创建对应的AutoEncoder
     if mode == 'wavelet':
-        autoencoder = freq_config.create_autoencoder(latent_dim, dropout_rate)
+        # 小波模式
         wavelet_transform = freq_config.create_wavelet_transform(wavelet)
+
+        if architecture.lower() == 'mlp':
+            # 小波 + MLP
+            autoencoder = WaveletMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                input_size=49  # db4小波变换后的尺寸
+            )
+            print(f"使用 WaveletMLPAutoEncoder")
+        elif architecture.lower() == 'enhanced_cnn':
+            # 小波 + Enhanced CNN
+            autoencoder = EnhancedWaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                input_size=49
+            )
+            print(f"使用 EnhancedWaveletAutoEncoder (增强感受野CNN)")
+        elif architecture.lower() == 'deep_cnn':
+            # 小波 + Deep CNN
+            autoencoder = DeepWaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                use_attention=True,
+                input_size=49
+            )
+            print(f"使用 DeepWaveletAutoEncoder (深度CNN, 双卷积+通道注意力)")
+        else:
+            # 小波 + CNN (默认)
+            autoencoder = WaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                input_size=49
+            )
+            print(f"使用 WaveletAutoEncoder (标准CNN)")
     else:
         # 直接模式
-        from ..models.direct_autoencoder import create_direct_autoencoder
-        autoencoder = create_direct_autoencoder(
-            latent_dim=latent_dim,
-            num_frequencies=freq_config.config['num_frequencies'],
-            dropout_rate=dropout_rate
-        )
         wavelet_transform = None
+
+        if architecture.lower() == 'mlp':
+            # 直接 + MLP
+            autoencoder = DirectMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate
+            )
+            print(f"使用 DirectMLPAutoEncoder")
+        elif architecture.lower() == 'enhanced_cnn':
+            # 直接 + Enhanced CNN
+            autoencoder = EnhancedDirectAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate
+            )
+            print(f"使用 EnhancedDirectAutoEncoder (增强感受野CNN)")
+        elif architecture.lower() == 'deep_cnn':
+            # 直接 + Deep CNN
+            autoencoder = DeepDirectAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                use_attention=True,
+                input_size=91
+            )
+            print(f"使用 DeepDirectAutoEncoder (深度CNN, 双卷积+通道注意力)")
+        else:
+            # 直接 + CNN (默认)
+            autoencoder = DirectAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate
+            )
+            print(f"使用 DirectAutoEncoder (标准CNN)")
+
     data_adapter = freq_config.create_data_adapter(normalize)
     parameter_mapper = freq_config.create_parameter_mapper(latent_dim=latent_dim)
+
+    # 打印模型参数信息
+    ae_params = autoencoder.get_parameter_count()
+    print(f"  - AutoEncoder参数量: {ae_params['total']:,}")
+    print(f"  - 隐空间维度: {latent_dim}")
+    print(f"  - 输入通道数: {freq_config.config['input_channels']}")
 
     system = {
         'config': freq_config,
@@ -233,7 +319,8 @@ def create_autoencoder_system(config_name: str = '2freq',
         'data_adapter': data_adapter,
         'parameter_mapper': parameter_mapper,
         'config_info': freq_config.get_info(),
-        'mode': mode
+        'mode': mode,
+        'architecture': architecture
     }
 
     print("✅ AutoEncoder系统创建完成!")
