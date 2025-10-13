@@ -7121,6 +7121,15 @@ GPU峰值: {gpu_peak:.2f}GB"""
         wavelet_transform = self.ae_system.get('wavelet_transform', None)
         param_data = self.ae_system['param_data']
 
+        # 检查模型配置
+        config_info = self.ae_system.get('config_info', {})
+        model_num_freq = config_info.get('num_frequencies', 'unknown')
+        model_freq_labels = config_info.get('frequency_labels', 'unknown')
+        print(f"\n【模型配置检查】")
+        print(f"模型频率数: {model_num_freq}")
+        print(f"模型频率标签: {model_freq_labels}")
+        print(f"数据形状: rcs_data={self.ae_system['rcs_data'].shape}, param_data={param_data.shape}")
+
         # 设置设备和评估模式
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         autoencoder.to(device).eval()
