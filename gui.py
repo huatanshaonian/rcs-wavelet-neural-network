@@ -6051,7 +6051,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 训练
                 autoencoder.train()
                 train_loss = 0.0
-                num_train_batches = 0
+                train_samples = 0
 
                 for batch_coeffs, in train_loader:
                     batch_coeffs = batch_coeffs.to(device)
@@ -6062,25 +6062,30 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     loss.backward()
                     optimizer.step()
 
-                    train_loss += loss.item()
-                    num_train_batches += 1
+                    # 按样本数加权累加（而不是按batch数）
+                    batch_size = batch_coeffs.size(0)
+                    train_loss += loss.item() * batch_size
+                    train_samples += batch_size
 
-                avg_train_loss = train_loss / num_train_batches
+                avg_train_loss = train_loss / train_samples
 
                 # 验证
                 autoencoder.eval()
                 val_loss = 0.0
-                num_val_batches = 0
+                val_samples = 0
 
                 with torch.no_grad():
                     for batch_coeffs, in val_loader:
                         batch_coeffs = batch_coeffs.to(device)
                         reconstructed, latent = autoencoder(batch_coeffs)
                         loss = criterion(reconstructed, batch_coeffs)
-                        val_loss += loss.item()
-                        num_val_batches += 1
 
-                avg_val_loss = val_loss / num_val_batches
+                        # 按样本数加权累加（而不是按batch数）
+                        batch_size = batch_coeffs.size(0)
+                        val_loss += loss.item() * batch_size
+                        val_samples += batch_size
+
+                avg_val_loss = val_loss / val_samples
 
                 # 保存历史
                 train_losses.append(avg_train_loss)
@@ -6207,7 +6212,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 训练
                 parameter_mapper.train()
                 train_loss = 0.0
-                num_train_batches = 0
+                train_samples = 0
 
                 for batch_params, batch_latents in train_loader:
                     batch_params = batch_params.to(device)
@@ -6220,15 +6225,17 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     loss.backward()
                     optimizer.step()
 
-                    train_loss += loss.item()
-                    num_train_batches += 1
+                    # 按样本数加权累加
+                    batch_size = batch_params.size(0)
+                    train_loss += loss.item() * batch_size
+                    train_samples += batch_size
 
-                avg_train_loss = train_loss / num_train_batches
+                avg_train_loss = train_loss / train_samples
 
                 # 验证
                 parameter_mapper.eval()
                 val_loss = 0.0
-                num_val_batches = 0
+                val_samples = 0
 
                 with torch.no_grad():
                     for batch_params, batch_latents in val_loader:
@@ -6236,10 +6243,13 @@ GPU峰值: {gpu_peak:.2f}GB"""
                         batch_latents = batch_latents.to(device)
                         predicted_latents = parameter_mapper(batch_params)
                         loss = criterion(predicted_latents, batch_latents)
-                        val_loss += loss.item()
-                        num_val_batches += 1
 
-                avg_val_loss = val_loss / num_val_batches
+                        # 按样本数加权累加
+                        batch_size = batch_params.size(0)
+                        val_loss += loss.item() * batch_size
+                        val_samples += batch_size
+
+                avg_val_loss = val_loss / val_samples
 
                 # 记录训练历史
                 train_losses.append(avg_train_loss)
@@ -6365,7 +6375,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 autoencoder.train()
                 parameter_mapper.train()
                 train_loss = 0.0
-                num_train_batches = 0
+                train_samples = 0
 
                 for batch_params, batch_target_coeffs in train_loader:
                     batch_params = batch_params.to(device)
@@ -6384,16 +6394,18 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     loss.backward()
                     optimizer.step()
 
-                    train_loss += loss.item()
-                    num_train_batches += 1
+                    # 按样本数加权累加
+                    batch_size = batch_params.size(0)
+                    train_loss += loss.item() * batch_size
+                    train_samples += batch_size
 
-                avg_train_loss = train_loss / num_train_batches
+                avg_train_loss = train_loss / train_samples
 
                 # 验证
                 autoencoder.eval()
                 parameter_mapper.eval()
                 val_loss = 0.0
-                num_val_batches = 0
+                val_samples = 0
 
                 with torch.no_grad():
                     for batch_params, batch_target_coeffs in val_loader:
@@ -6402,10 +6414,13 @@ GPU峰值: {gpu_peak:.2f}GB"""
                         predicted_latents = parameter_mapper(batch_params)
                         reconstructed_coeffs = autoencoder.decode(predicted_latents)
                         loss = criterion(reconstructed_coeffs, batch_target_coeffs)
-                        val_loss += loss.item()
-                        num_val_batches += 1
 
-                avg_val_loss = val_loss / num_val_batches
+                        # 按样本数加权累加
+                        batch_size = batch_params.size(0)
+                        val_loss += loss.item() * batch_size
+                        val_samples += batch_size
+
+                avg_val_loss = val_loss / val_samples
 
                 # 记录训练历史
                 train_losses.append(avg_train_loss)
