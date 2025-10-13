@@ -96,18 +96,18 @@ class AutoEncoderExtension:
         mode_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 模式选择单选按钮
-        ttk.Radiobutton(mode_frame, text="🌊 小波增强模式 (推荐)",
+        ttk.Radiobutton(mode_frame, text="🌊 小波增强模式 (Wavelet)",
                        variable=self.main_gui.ae_mode, value="wavelet").pack(anchor=tk.W)
-        ttk.Label(mode_frame, text="   • 特点：小波预处理 + CNN-AE",
+        ttk.Label(mode_frame, text="   • 输入：RCS [91×91×2] → 小波变换 → [49×49×8] → AutoEncoder",
                  font=self.main_gui.font_small).pack(anchor=tk.W)
-        ttk.Label(mode_frame, text="   • 优势：更好精度、特征分离、训练稳定",
+        ttk.Label(mode_frame, text="   • 优势：特征分离、数据量小、训练快、精度高",
                  font=self.main_gui.font_small).pack(anchor=tk.W)
 
-        ttk.Radiobutton(mode_frame, text="🔄 直接模式 (高速)",
+        ttk.Radiobutton(mode_frame, text="🔄 直接模式 (Direct)",
                        variable=self.main_gui.ae_mode, value="direct").pack(anchor=tk.W, pady=(10, 0))
-        ttk.Label(mode_frame, text="   • 特点：直接CNN端到端处理",
+        ttk.Label(mode_frame, text="   • 输入：RCS [91×91×2] → 直接输入AutoEncoder (无小波变换)",
                  font=self.main_gui.font_small).pack(anchor=tk.W)
-        ttk.Label(mode_frame, text="   • 优势：更快速度、更少参数、简单部署",
+        ttk.Label(mode_frame, text="   • 优势：端到端处理、无额外变换、部署简单",
                  font=self.main_gui.font_small).pack(anchor=tk.W)
 
         # 2. 模型架构配置组
@@ -123,11 +123,16 @@ class AutoEncoderExtension:
         ttk.Label(model_frame, text="Dropout率:").grid(row=0, column=2, sticky="w", padx=(0, 5))
         ttk.Entry(model_frame, textvariable=self.main_gui.ae_dropout_rate, width=8).grid(row=0, column=3, sticky="w")
 
-        # 第二行（小波设置，仅在小波模式下启用）
-        ttk.Label(model_frame, text="小波类型:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        # 第二行（架构和小波设置）
+        ttk.Label(model_frame, text="架构类型:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        architecture_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_architecture_type,
+                                         values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP"], state="readonly", width=15)
+        architecture_combo.grid(row=1, column=1, sticky="w", pady=(5, 0))
+
+        ttk.Label(model_frame, text="小波类型:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
         self.wavelet_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_wavelet_type,
                                          values=["db4", "db8", "haar", "bior2.2"], state="readonly", width=8)
-        self.wavelet_combo.grid(row=1, column=1, sticky="w", pady=(5, 0))
+        self.wavelet_combo.grid(row=1, column=3, sticky="w", pady=(5, 0))
 
         # 绑定模式变化事件
         self.main_gui.ae_mode.trace('w', self._on_mode_change)
@@ -229,7 +234,9 @@ class AutoEncoderExtension:
         ttk.Button(button_frame, text="开始训练", command=self.main_gui.start_ae_training).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="停止训练", command=self.main_gui.stop_ae_training).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="保存模型", command=self.main_gui.save_ae_model).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="加载模型", command=self.main_gui.load_ae_model).pack(side=tk.LEFT)
+        ttk.Button(button_frame, text="加载模型", command=self.main_gui.load_ae_model).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="保存参数", command=self.main_gui.save_ae_params).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="加载参数", command=self.main_gui.load_ae_params).pack(side=tk.LEFT)
 
         # 9. 系统操作组（扩展功能）
         ops_group = ttk.LabelFrame(parent, text="🔧 系统操作（扩展功能）")
@@ -282,6 +289,16 @@ class AutoEncoderExtension:
                        value="dB").pack(side=tk.LEFT, padx=(5, 10))
         ttk.Radiobutton(data_type_frame, text="原始数据", variable=self.wavelet_data_type,
                        value="linear").pack(side=tk.LEFT)
+
+        # 小波类型选择
+        wavelet_type_frame = ttk.Frame(wavelet_frame)
+        wavelet_type_frame.pack(fill=tk.X, pady=(0, 5))
+
+        ttk.Label(wavelet_type_frame, text="小波类型:").pack(side=tk.LEFT)
+        wavelet_combo = ttk.Combobox(wavelet_type_frame, textvariable=self.wavelet_analysis_wavelet,
+                                     values=["db1", "db2", "db4", "db6", "db8", "sym4", "sym8", "coif1", "coif2"],
+                                     state="readonly", width=10)
+        wavelet_combo.pack(side=tk.LEFT, padx=(5, 0))
 
         # 分析选项
         ttk.Checkbutton(wavelet_frame, text="显示小波系数",
@@ -429,6 +446,7 @@ class AutoEncoderExtension:
             latent_dim = int(self.main_gui.ae_latent_dim.get())
             dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
+            architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = True
 
             # 创建系统
@@ -438,7 +456,8 @@ class AutoEncoderExtension:
                 dropout_rate=dropout_rate,
                 wavelet=wavelet_type,
                 normalize=normalize,
-                mode=mode
+                mode=mode,
+                architecture=architecture_type
             )
 
             # 添加数据
@@ -477,6 +496,7 @@ class AutoEncoderExtension:
             latent_dim = int(self.main_gui.ae_latent_dim.get())
             dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
+            architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = True
 
             # 创建小波增强系统
@@ -487,7 +507,8 @@ class AutoEncoderExtension:
                 dropout_rate=dropout_rate,
                 wavelet=wavelet_type,
                 normalize=normalize,
-                mode='wavelet'
+                mode='wavelet',
+                architecture=architecture_type
             )
 
             # 创建直接系统
@@ -498,7 +519,8 @@ class AutoEncoderExtension:
                 dropout_rate=dropout_rate,
                 wavelet=wavelet_type,
                 normalize=normalize,
-                mode='direct'
+                mode='direct',
+                architecture=architecture_type
             )
 
             # 添加数据到两个系统
