@@ -6026,6 +6026,13 @@ GPU峰值: {gpu_peak:.2f}GB"""
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
 
+            # 调试：计算实际使用的样本数
+            actual_train_samples = len(train_loader) * batch_size
+            actual_val_samples = sum(len(batch[0]) for batch in val_loader)
+            if actual_train_samples < train_size:
+                self.ae_log(f"⚠️ 警告: drop_last=True导致训练集丢弃了 {train_size - actual_train_samples} 个样本")
+            self.ae_log(f"📊 实际使用: 训练集 {actual_train_samples} 样本, 验证集 {actual_val_samples} 样本")
+
             # 创建优化器和调度器 (复用项目标准)
             optimizer, scheduler = self._create_ae_optimizer_and_scheduler(autoencoder.parameters(), training_config)
 
@@ -6675,12 +6682,16 @@ GPU峰值: {gpu_peak:.2f}GB"""
         return optimizer, scheduler
 
     def _create_ae_loss_function(self, training_config):
-        """创建AutoEncoder损失函数 (用于阶段1小波系数重建)"""
+        """创建AutoEncoder损失函数 (用于阶段1重建任务)"""
         import torch.nn as nn
 
-        # 阶段1专用：小波系数重建，使用简单MSE损失
-        # 小波系数的物理约束应该由小波变换本身保证
-        self.ae_log("阶段1使用MSE损失函数 (小波系数重建)")
+        # 阶段1专用：根据模式决定重建目标
+        mode = self.ae_system.get('mode', 'wavelet')
+        if mode == 'wavelet':
+            self.ae_log("阶段1使用MSE损失函数 (小波系数重建)")
+        else:
+            self.ae_log("阶段1使用MSE损失函数 (RCS数据重建)")
+
         return nn.MSELoss()
 
     def _create_end_to_end_loss_function(self, training_config):
