@@ -16,7 +16,7 @@
 
 ## 📋 核心架构
 
-### 1. AutoEncoder网络（6个核心网络）
+### 1. AutoEncoder网络（8个核心网络）
 
 **命名规范**: `<Mode><Architecture>AutoEncoder`
 
@@ -25,18 +25,21 @@
 | Wavelet | 标准CNN (默认) | `WaveletAutoEncoder` | `cnn_autoencoder.py` |
 | Wavelet | MLP | `WaveletMLPAutoEncoder` | `mlp_autoencoder.py` |
 | Wavelet | Enhanced CNN | `EnhancedWaveletAutoEncoder` | `enhanced_cnn_autoencoder.py` |
+| Wavelet | Deep CNN | `DeepWaveletAutoEncoder` | `deep_autoencoder.py` |
 | Direct | 标准CNN (默认) | `DirectAutoEncoder` | `direct_autoencoder.py` |
 | Direct | MLP | `DirectMLPAutoEncoder` | `mlp_autoencoder.py` |
 | Direct | Enhanced CNN | `EnhancedDirectAutoEncoder` | `enhanced_cnn_autoencoder.py` |
+| Direct | Deep CNN | `DeepDirectAutoEncoder` | `deep_autoencoder.py` |
 
 **模式说明**:
 - **Wavelet模式**: RCS → 小波变换 → [49×49×8] 小波系数 → AutoEncoder
 - **Direct模式**: RCS [91×91×2] → 直接输入AutoEncoder（无小波变换）
 
 **架构说明**:
-- **标准CNN**: 4层encoder + 4层decoder，平衡性能和速度
+- **标准CNN**: 4层encoder + 4层decoder，平衡性能和速度（推荐默认）
 - **MLP**: 5层全连接，适合参数敏感性分析
-- **Enhanced CNN**: 多尺度卷积 + 更大感受野，捕捉复杂模式
+- **Enhanced CNN**: 多尺度卷积 + 空洞残差 + 通道注意力，更大感受野
+- **Deep CNN**: 4层深度卷积 + 双卷积块 + 通道注意力，最强表达力
 
 ### 2. 频率配置
 
@@ -152,11 +155,78 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ### 代码规范
 
-1. **不使用softplus/clip机制**
+1. **AutoEncoder模型必须提供统一接口**
+   - **所有新模型必须提供 `encoder` 和 `decoder` 属性**
+   - 用于训练时的冻结/解冻操作
+
+   ```python
+   # ✅ 正确：模型有encoder/decoder属性
+   class MyAutoEncoder(nn.Module):
+       def __init__(self):
+           super().__init__()
+           # 方式1: 使用nn.Sequential（推荐CNN/MLP）
+           self.encoder = nn.Sequential(...)
+           self.decoder = nn.Sequential(...)
+
+           # 方式2: 使用nn.ModuleList（推荐Complex架构）
+           self.encoder = nn.ModuleList([self.conv1, self.conv2, ...])
+           self.decoder = nn.ModuleList([self.deconv1, self.deconv2, ...])
+
+       def encode(self, x):
+           # 编码逻辑
+           pass
+
+       def decode(self, latent):
+           # 解码逻辑
+           pass
+   ```
+
+   - **必需方法**: `encode(x)`, `decode(latent)`, `forward(x)`
+   - **统一接口原因**:
+     - 阶段2训练需要冻结encoder: `for param in model.encoder.parameters(): param.requires_grad = False`
+     - 阶段2结束需要解冻encoder
+     - 如果缺少统一接口会导致训练失败
+
+2. **不使用softplus/clip机制**
    - 原因: 让错误数据及时暴露，而不是隐藏
    - 如果数据完全错误应该能立即分辨
 
-2. **损失计算必须sample-weighted**
+3. **⚠️ 数据预处理顺序至关重要！**
+   - **所有训练阶段必须使用data_adapter进行数据预处理**
+   - **关键**: 小波变换必须在原始线性数据上运行，不能在标准化后的数据上！
+   - 保证标准化/对数变换的一致性
+
+   ```python
+   # ✅ 正确：小波模式先变换再标准化
+   data_adapter = self.ae_system['data_adapter']
+
+   if mode == 'wavelet':
+       # Step 1: 在原始RCS数据上做小波变换
+       wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
+       # Step 2: 对小波系数进行标准化
+       input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+   else:
+       # Direct模式: 直接标准化RCS
+       input_data = data_adapter.adapt_rcs_data(rcs_data)
+
+   # ❌ 错误1：先标准化再小波变换（破坏小波基正交性！）
+   adapted_data = data_adapter.adapt_rcs_data(rcs_data)  # ❌
+   wavelet_coeffs = wavelet_transform.forward_transform(adapted_data)  # ❌
+
+   # ❌ 错误2：完全不使用标准化
+   rcs_tensor = torch.FloatTensor(rcs_data)  # ❌
+   ```
+
+   - **为什么重要**:
+     - RCS数据范围通常很大（-50~50 dBsm）
+     - 不标准化会导致训练不稳定、收敛慢
+     - 不同频率可能有不同的数值范围，需要独立标准化
+
+   - **数据预处理选项**（GUI中可配置）:
+     - **标准化 (normalize)**: Z-score标准化，每个频率独立进行（强烈推荐）
+     - **对数变换 (log_transform)**: sign(x)*log(|x|)，压缩动态范围（可选）
+
+4. **损失计算必须sample-weighted**
    ```python
    # ❌ 错误：batch averaging
    train_loss += loss.item()
@@ -308,8 +378,10 @@ GUI会自动可视化三阶段训练曲线，保存在`ae_checkpoints/`目录。
 | DirectAutoEncoder | ~2.5M | 中等 | 无小波开销场景 |
 | WaveletMLPAutoEncoder | ~3M | 慢 | 参数敏感性分析 |
 | DirectMLPAutoEncoder | ~5M | 很慢 | 实验性 |
-| EnhancedWaveletAutoEncoder | ~2M | 中等 | 复杂模式，需要更大感受野 |
-| EnhancedDirectAutoEncoder | ~4M | 慢 | 最强表达力 |
+| EnhancedWaveletAutoEncoder | ~11M | 中等 | 复杂模式，更大感受野 |
+| EnhancedDirectAutoEncoder | ~25M | 慢 | Direct模式最强表达力 |
+| DeepWaveletAutoEncoder | ~29M | 慢 | Wavelet模式最强表达力 |
+| DeepDirectAutoEncoder | ~79M | 很慢 | 最强表达力，计算密集 |
 
 ---
 
@@ -323,8 +395,28 @@ GUI会自动可视化三阶段训练曲线，保存在`ae_checkpoints/`目录。
    ```python
    # DeepWaveletAutoEncoder + DeepDirectAutoEncoder
    class DeepWaveletAutoEncoder(nn.Module):
-       # 5层深度CNN for wavelet coefficients
-       pass
+       def __init__(self, latent_dim=256, ...):
+           super().__init__()
+           # 定义网络层...
+           self.conv1 = ...
+           self.conv2 = ...
+
+           # ⚠️ 必须：提供统一的encoder/decoder接口
+           self.encoder = nn.ModuleList([self.conv1, self.conv2, ...])
+           self.decoder = nn.ModuleList([self.deconv1, self.deconv2, ...])
+
+       def encode(self, x):
+           # 编码逻辑
+           pass
+
+       def decode(self, latent):
+           # 解码逻辑
+           pass
+
+       def forward(self, x):
+           latent = self.encode(x)
+           recon = self.decode(latent)
+           return recon, latent
    ```
 
 2. **修改frequency_config.py**
@@ -389,7 +481,46 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 
 ### 2025-01-14
 
-1. **网络注册优化** (commit: efba50f)
+0. **🚨 数据处理顺序Bug修复** (本次更新 - 严重Bug⚠️⚠️⚠️)
+   - **问题**: 所有三个训练阶段都在**标准化后再做小波变换**！这完全错误！
+   - **影响**: 破坏了小波基的正交性，导致小波系数失去物理意义
+   - **修复内容**:
+     - Stage 1/2/3全部修改为正确顺序: `原始RCS → 小波变换 → 标准化`
+     - 添加详细日志输出，清晰显示数据处理步骤
+     - 创建DATA_PIPELINE.md完整文档说明数据流程
+   - **影响文件**:
+     - `gui.py`: 修复_train_autoencoder_stage1_v2 (line 6053-6074)
+     - `gui.py`: 修复_train_parameter_mapping_stage2_v2 (line 6231-6251)
+     - `gui.py`: 修复_train_end_to_end_stage3_v2 (line 6408-6421)
+     - `CLAUDE.md`: 更新代码规范#3，强调数据处理顺序
+     - `DATA_PIPELINE.md`: 新建完整数据流程文档
+   - **预期效果**: 小波模式性能显著提升，训练更稳定
+   - **用户反馈**: "小波变换要在线性的原始数据上运行，请注意不要错误地在小波变换前（如果选择了）进行标准化等操作"
+
+1. **数据标准化集成** (重要修复⚠️)
+   - **问题**: 之前的训练**完全没有使用数据标准化**！
+   - 修复内容：
+     - GUI添加数据预处理配置（标准化+对数变换选项）
+     - Stage 1/2/3训练全部集成`RCS_DataAdapter`
+     - 保存/加载模型时保存adapter统计信息（mean/std）
+     - 默认启用标准化（强烈推荐）
+   - 影响文件：
+     - `gui_autoencoder_extension.py`: 添加预处理控制器
+     - `gui.py`: 三个训练阶段全部使用data_adapter
+     - `gui.py`: 保存/加载模型包含adapter统计信息
+   - **预期效果**: 训练收敛更快、更稳定、性能明显提升
+
+2. **模型统一接口规范**
+   - 为所有模型添加统一的`encoder`/`decoder`属性
+   - 修复Enhanced_CNN和Deep_CNN训练时的"no attribute 'encoder'"错误
+   - 更新开发规范：所有新模型必须提供统一接口
+   - 影响文件：
+     - `enhanced_cnn_autoencoder.py`: 添加encoder/decoder ModuleList
+     - `deep_autoencoder.py`: 添加encoder/decoder ModuleList
+     - `gui.py`: 简化冻结/解冻逻辑
+     - `CLAUDE.md`: 添加模型接口规范
+
+2. **网络注册优化** (commit: efba50f)
    - 静默跳过已注册网络，加快启动速度
 
 2. **损失计算修复** (commit: 919f18d)

@@ -5075,15 +5075,28 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     'latent_dim': int(self.ae_latent_dim.get()),
                     'dropout_rate': float(self.ae_dropout_rate.get()),
                     'wavelet': self.ae_wavelet_type.get(),
-                    'normalize': True,  # 数据管理页面已标准化
+                    'normalize': self.ae_normalize.get(),  # 从GUI读取
+                    'log_transform': self.ae_log_transform.get(),  # 从GUI读取
                     'mode': self.ae_system.get('mode', 'wavelet'),  # 从系统字典获取
                     'architecture': self.ae_system.get('architecture', 'cnn')  # 从系统字典获取
                 })
+
+                # 保存data_adapter统计信息（用于inverse_adapt还原数据）
+                data_adapter = self.ae_system.get('data_adapter', None)
+                adapter_stats = {}
+                if data_adapter and hasattr(data_adapter, 'data_stats'):
+                    adapter_stats = data_adapter.data_stats.copy()
+                    # 将numpy数组转换为列表以便保存
+                    if 'mean' in adapter_stats:
+                        adapter_stats['mean'] = adapter_stats['mean'].tolist()
+                    if 'std' in adapter_stats:
+                        adapter_stats['std'] = adapter_stats['std'].tolist()
 
                 model_state = {
                     'autoencoder': self.ae_system['autoencoder'].state_dict(),
                     'parameter_mapper': self.ae_system['parameter_mapper'].state_dict(),
                     'config': complete_config,
+                    'adapter_stats': adapter_stats,  # 保存统计信息
                     'training_history': self.ae_training_history
                 }
 
@@ -5196,6 +5209,28 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 加载模型权重
                 self.ae_system['autoencoder'].load_state_dict(checkpoint['autoencoder'])
                 self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
+
+                # 恢复data_adapter统计信息
+                if 'adapter_stats' in checkpoint and checkpoint['adapter_stats']:
+                    import numpy as np
+                    adapter_stats = checkpoint['adapter_stats'].copy()
+                    # 将列表转换回numpy数组
+                    if 'mean' in adapter_stats:
+                        adapter_stats['mean'] = np.array(adapter_stats['mean'])
+                    if 'std' in adapter_stats:
+                        adapter_stats['std'] = np.array(adapter_stats['std'])
+                    self.ae_system['data_adapter'].data_stats = adapter_stats
+                    self.ae_log(f"✅ 已恢复data_adapter统计信息")
+                else:
+                    self.ae_log(f"⚠️ 模型文件不包含adapter统计信息（可能是旧版模型）")
+
+                # 更新GUI中的预处理选项
+                log_transform = config.get('log_transform', False)
+                self.ae_normalize.set(normalize)
+                self.ae_log_transform.set(log_transform)
+                self.ae_system['data_adapter'].normalize = normalize
+                self.ae_system['data_adapter'].log_transform = log_transform
+                self.ae_log(f"🔧 数据预处理: 标准化={normalize}, 对数变换={log_transform}")
 
                 # 如果有数据，也加载到系统中
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
@@ -6007,16 +6042,36 @@ GPU峰值: {gpu_peak:.2f}GB"""
             self.ae_log(f"🖥️ 使用设备: {device}")
             self.ae_log(f"🔧 训练模式: {mode}")
 
-            # 准备数据和划分
-            rcs_tensor = torch.FloatTensor(rcs_data)
+            # 获取data_adapter并应用数据预处理
+            data_adapter = self.ae_system.get('data_adapter', None)
+            if data_adapter is None:
+                # 如果没有adapter，创建默认的（不应该发生）
+                from autoencoder.utils.data_adapters import RCS_DataAdapter
+                data_adapter = RCS_DataAdapter(normalize=True, log_transform=False)
+                self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
+
+            # ⚠️ 关键: 数据处理顺序
+            # Wavelet模式: 先小波变换(原始数据) → 再标准化(小波系数)
+            # Direct模式: 直接标准化(原始RCS)
+            self.ae_log(f"🔧 数据预处理配置: 标准化={data_adapter.normalize}, 对数变换={data_adapter.log_transform}")
+            self.ae_log(f"🔧 原始RCS数据范围: [{rcs_data.min():.4f}, {rcs_data.max():.4f}]")
 
             # 根据模式决定输入数据
             if mode == 'wavelet':
-                # 小波增强模式：使用小波系数
-                input_data = wavelet_transform.forward_transform(rcs_tensor)
+                # 小波增强模式: 先在原始线性数据上做小波变换
+                self.ae_log("📊 Step 1: 在原始RCS数据上执行小波变换...")
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
+                self.ae_log(f"📊 小波系数范围: [{wavelet_coeffs.min():.4f}, {wavelet_coeffs.max():.4f}]")
+
+                # 再对小波系数进行预处理
+                self.ae_log("📊 Step 2: 对小波系数应用预处理...")
+                input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                self.ae_log(f"📊 预处理后小波系数范围: [{input_data.min():.4f}, {input_data.max():.4f}]")
             else:
-                # 直接处理模式：直接使用RCS数据
-                input_data = rcs_tensor
+                # 直接处理模式: 直接对RCS数据进行预处理
+                self.ae_log("📊 Direct模式: 直接对RCS数据应用预处理...")
+                input_data = data_adapter.adapt_rcs_data(rcs_data)
+                self.ae_log(f"📊 预处理后RCS数据范围: [{input_data.min():.4f}, {input_data.max():.4f}]")
 
             # 数据划分: 80%训练，20%验证
             dataset = TensorDataset(input_data)
@@ -6166,22 +6221,34 @@ GPU峰值: {gpu_peak:.2f}GB"""
             for param in autoencoder.encoder.parameters():
                 param.requires_grad = False
 
-            # 准备数据
-            rcs_tensor = torch.FloatTensor(rcs_data)
+            # 获取data_adapter并应用数据预处理
+            data_adapter = self.ae_system.get('data_adapter', None)
+            if data_adapter is None:
+                from autoencoder.utils.data_adapters import RCS_DataAdapter
+                data_adapter = RCS_DataAdapter(normalize=True, log_transform=False)
+                self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
+
+            # 应用数据预处理（必须与Stage 1保持一致）
             param_tensor = torch.FloatTensor(param_data)
 
             # 获取目标隐空间表示
             autoencoder.eval()
             mode = self.ae_system.get('mode', 'wavelet')
+            self.ae_log(f"🔧 获取隐空间表示 (mode={mode})...")
+
             with torch.no_grad():
-                # 根据模式决定输入数据
+                # ⚠️ 关键: 数据处理顺序必须与Stage 1一致
                 if mode == 'wavelet':
-                    input_data = wavelet_transform.forward_transform(rcs_tensor)
+                    # 先小波变换，再预处理
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
+                    input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
                 else:
-                    input_data = rcs_tensor
+                    # 直接预处理RCS
+                    input_data = data_adapter.adapt_rcs_data(rcs_data)
 
                 _, target_latents = autoencoder(input_data.to(device))
                 target_latents = target_latents.cpu()
+                self.ae_log(f"📊 隐空间维度: {target_latents.shape}")
 
             # 数据划分
             dataset = TensorDataset(param_tensor, target_latents)
@@ -6331,15 +6398,27 @@ GPU峰值: {gpu_peak:.2f}GB"""
             autoencoder.to(device)
             parameter_mapper.to(device)
 
-            # 准备数据
-            rcs_tensor = torch.FloatTensor(rcs_data)
+            # 获取data_adapter并应用数据预处理
+            data_adapter = self.ae_system.get('data_adapter', None)
+            if data_adapter is None:
+                from autoencoder.utils.data_adapters import RCS_DataAdapter
+                data_adapter = RCS_DataAdapter(normalize=True, log_transform=False)
+                self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
+
+            # 应用数据预处理（必须与Stage 1和Stage 2保持一致）
             param_tensor = torch.FloatTensor(param_data)
 
-            # 根据模式准备目标数据
+            # ⚠️ 关键: 数据处理顺序必须与Stage 1和Stage 2一致
+            self.ae_log(f"🔧 准备目标数据 (mode={mode})...")
             if mode == 'wavelet':
-                target_data = wavelet_transform.forward_transform(rcs_tensor)
+                # 先小波变换，再预处理
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
+                target_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                self.ae_log(f"📊 小波系数 → 预处理后范围: [{target_data.min():.4f}, {target_data.max():.4f}]")
             else:
-                target_data = rcs_tensor
+                # 直接预处理RCS
+                target_data = data_adapter.adapt_rcs_data(rcs_data)
+                self.ae_log(f"📊 RCS → 预处理后范围: [{target_data.min():.4f}, {target_data.max():.4f}]")
 
             # 数据划分
             dataset = TensorDataset(param_tensor, target_data)
