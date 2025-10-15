@@ -496,12 +496,18 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
      - `gui.py`: _run_three_stage_training_v2支持两种训练模式
      - `gui.py`: save_ae_model/load_ae_model保存/加载training_mode
      - `gui.py`: _evaluate_autoencoder_model适配两种评估方式
+     - `gui.py`: 主GUI添加"仅Stage 1"选项和中英文映射 (本次更新)
    - **使用场景**:
      - AutoEncoder架构对比研究
      - 重建性能调参优化
      - 快速验证模型重建能力
      - 不需要参数映射器的应用场景
-   - **Commits**: 2f470a8 (训练流程), 当前 (评估适配)
+   - **用户体验改进** (commit: 0cf33fb):
+     - 主GUI训练模式下拉框添加"仅Stage 1"选项
+     - 实现中文选项→英文标识符的自动映射
+     - 用户无需打开训练配置对话框即可选择Stage 1 Only模式
+     - 训练信息输出添加Stage 1 Only模式说明
+   - **Commits**: 2f470a8 (训练流程), fa1e7f2 (评估适配), 0cf33fb (主GUI集成)
 
 1. **🚨 数据处理顺序Bug修复** (严重Bug⚠️⚠️⚠️)
    - **问题**: 所有三个训练阶段都在**标准化后再做小波变换**！这完全错误！
