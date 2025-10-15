@@ -255,7 +255,7 @@ class RCSWaveletGUI:
         # 预处理选项已移至数据管理页面，此处不再需要相关变量
 
         # 训练模式
-        self.ae_training_mode = tk.StringVar(value="三阶段训练")  # 三阶段训练 或 端到端训练
+        self.ae_training_mode = tk.StringVar(value="三阶段训练")  # 三阶段训练 / 端到端训练 / 仅Stage 1
 
         # 损失函数配置复用
         self.ae_use_custom_loss = tk.BooleanVar(value=False)  # 是否使用自定义损失函数
@@ -695,7 +695,7 @@ class RCSWaveletGUI:
         # 训练模式选择
         ttk.Label(control_frame, text="训练模式:").grid(row=0, column=0, sticky="w", padx=(0, 5))
         mode_combo = ttk.Combobox(control_frame, textvariable=self.ae_training_mode,
-                                values=["三阶段训练", "端到端训练"], state="readonly", width=12)
+                                values=["三阶段训练", "端到端训练", "仅Stage 1"], state="readonly", width=12)
         mode_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
 
         # 按钮组
@@ -5055,6 +5055,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 self.ae_log(f"  🚀 阶段1(AE预训练): {training_config['epochs']['stage1']} epochs (耐心: {training_config['patience']['stage1']})")
                 self.ae_log(f"  🎯 阶段2(参数映射): {training_config['epochs']['stage2']} epochs (耐心: {training_config['patience']['stage2']})")
                 self.ae_log(f"  ⚡ 阶段3(端到端): {training_config['epochs']['stage3']} epochs (耐心: {training_config['patience']['stage3']})")
+            elif training_mode == "仅Stage 1":
+                self.ae_log(f"  🎯 Stage 1重建训练: {training_config['epochs']['stage1']} epochs (耐心: {training_config['patience']['stage1']})")
+                self.ae_log(f"  💡 专注于AutoEncoder重建性能，不训练参数映射器")
             else:
                 total_epochs = sum(training_config['epochs'].values())
                 self.ae_log(f"  🔄 端到端训练: {total_epochs} epochs (耐心: {training_config['patience']['e2e']})")
@@ -5088,6 +5091,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
             # 启动训练过程（使用统一配置）
             if training_mode == "三阶段训练":
                 self.ae_log("📊 开始三阶段训练流程")
+                self._run_three_stage_training_v2(rcs_data, param_data, training_config)
+            elif training_mode == "仅Stage 1":
+                self.ae_log("📊 开始AutoEncoder重建训练 (Stage 1 Only)")
                 self._run_three_stage_training_v2(rcs_data, param_data, training_config)
             else:
                 self.ae_log("📊 开始端到端训练流程")
@@ -6808,12 +6814,21 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
     def _create_ae_training_config(self):
         """创建AutoEncoder训练配置 (复用项目配置管理器)"""
-        # 从训练配置对话框获取training_mode (如果有的话)
-        training_mode = 'three_stage'  # 默认
+        # 训练模式映射：中文→英文
+        mode_mapping = {
+            "三阶段训练": "three_stage",
+            "端到端训练": "end_to_end",
+            "仅Stage 1": "stage1_only"
+        }
+
+        # 优先从训练配置对话框获取training_mode (英文标识符)
         if hasattr(self, 'training_config_gui') and self.training_config_gui:
-            gui_training_mode = self.training_config_gui.ae_training_mode.get()
-            if gui_training_mode == 'stage1_only':
-                training_mode = 'stage1_only'
+            # 配置对话框使用英文标识符
+            training_mode = self.training_config_gui.ae_training_mode.get()
+        else:
+            # 从主GUI获取（中文选项），需要映射
+            gui_mode_chinese = self.ae_training_mode.get()
+            training_mode = mode_mapping.get(gui_mode_chinese, 'three_stage')
 
         config = {
             'batch_size': int(self.ae_batch_size.get()),
