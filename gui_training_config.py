@@ -70,6 +70,7 @@ class UnifiedTrainingConfigGUI:
         self.ae_dropout_rate = tk.StringVar(value="0.2")
         self.ae_mode = tk.StringVar(value="wavelet")  # wavelet 或 direct
         self.ae_freq_config = tk.StringVar(value="2freq")  # 2freq 或 3freq
+        self.ae_training_mode = tk.StringVar(value="three_stage")  # three_stage 或 stage1_only
 
         # 数据增强
         self.use_data_augmentation = tk.BooleanVar(value=False)
@@ -273,7 +274,18 @@ class UnifiedTrainingConfigGUI:
         arch_row2.pack(fill=tk.X, pady=2)
 
         ttk.Label(arch_row2, text="Dropout率:").pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Entry(arch_row2, textvariable=self.ae_dropout_rate, width=8).pack(side=tk.LEFT)
+        ttk.Entry(arch_row2, textvariable=self.ae_dropout_rate, width=8).pack(side=tk.LEFT, padx=(0, 20))
+
+        ttk.Label(arch_row2, text="训练模式:").pack(side=tk.LEFT, padx=(0, 5))
+        training_mode_combo = ttk.Combobox(arch_row2, textvariable=self.ae_training_mode,
+                                values=['three_stage', 'stage1_only'], state='readonly', width=15)
+        training_mode_combo.pack(side=tk.LEFT)
+
+        # 添加训练模式提示
+        from tkinter import font as tkfont
+        tooltip_font = tkfont.Font(size=8)
+        training_mode_tip = ttk.Label(arch_row2, text="(专注AE重建)", font=tooltip_font, foreground="gray")
+        training_mode_tip.pack(side=tk.LEFT, padx=(5, 0))
 
         # 模式说明
         info_group = ttk.LabelFrame(main_ae_frame, text="模式说明")
@@ -282,15 +294,15 @@ class UnifiedTrainingConfigGUI:
         info_text = tk.Text(info_group, height=6, width=80, wrap=tk.WORD)
         info_text.pack(fill=tk.X, padx=5, pady=5)
 
-        mode_info = """小波增强模式 (wavelet):
-• 使用小波变换预处理，98.9%能量集中在低频分量
-• 训练稳定性更好，特征分离效果佳
-• 推荐用于高精度要求的应用
+        mode_info = """数据处理模式:
+• 小波增强模式 (wavelet): 使用小波变换预处理，训练稳定性好，特征分离效果佳
+• 直接模式 (direct): 直接处理原始数据，推理速度快，部署简单
 
-直接模式 (direct):
-• 直接处理原始数据，推理速度快56.4%
-• 模型参数少28%，部署简单
-• 推荐用于实时应用和生产环境"""
+训练模式:
+• 完整三阶段 (three_stage): Stage1(AE预训练) → Stage2(参数映射) → Stage3(端到端微调)
+  适用于从参数预测RCS的完整任务
+• 仅Stage 1 (stage1_only): 只训练AutoEncoder的重建能力，排除参数映射器干扰
+  适用于专注研究AutoEncoder重建性能、调参和模型对比"""
 
         info_text.insert(tk.END, mode_info)
         info_text.config(state=tk.DISABLED)
@@ -750,7 +762,8 @@ class UnifiedTrainingConfigGUI:
                 "mode": self.ae_mode.get(),
                 "freq_config": self.ae_freq_config.get(),
                 "latent_dim": int(self.ae_latent_dim.get()),
-                "dropout_rate": float(self.ae_dropout_rate.get())
+                "dropout_rate": float(self.ae_dropout_rate.get()),
+                "training_mode": self.ae_training_mode.get()
             },
             "evaluation": {
                 "test_split": float(self.test_split.get())
@@ -826,6 +839,8 @@ class UnifiedTrainingConfigGUI:
                 self.ae_latent_dim.set(str(ae_config["latent_dim"]))
             if "dropout_rate" in ae_config:
                 self.ae_dropout_rate.set(str(ae_config["dropout_rate"]))
+            if "training_mode" in ae_config:
+                self.ae_training_mode.set(ae_config["training_mode"])
 
             # 评估配置
             eval_config = config_data.get("evaluation", {})

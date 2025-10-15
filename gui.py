@@ -5979,31 +5979,58 @@ GPU峰值: {gpu_peak:.2f}GB"""
     def _run_three_stage_training_v2(self, rcs_data, param_data, training_config):
         """执行三阶段训练 v2 (使用统一配置管理器)"""
         try:
-            self.ae_log("🚀 开始三阶段训练流程 (v2统一配置):")
+            # 获取训练模式
+            training_mode = training_config.get('training_mode', 'three_stage')
 
-            # 初始化训练历史
-            self.ae_training_history = {'stage_histories': {}}
+            if training_mode == 'stage1_only':
+                # 仅Stage 1模式：只训练AutoEncoder重建能力
+                self.ae_log("🚀 开始AutoEncoder重建训练 (Stage 1 Only):")
+                self.ae_log("📌 模式说明: 专注于AutoEncoder的重建性能研究，不训练参数映射器")
 
-            # 阶段1: AutoEncoder预训练
-            self.ae_log("📊 开始阶段1: AutoEncoder预训练...")
-            stage1_history = self._train_autoencoder_stage1_v2(rcs_data, training_config)
-            self.ae_training_history['stage_histories']['stage1'] = stage1_history
+                # 初始化训练历史
+                self.ae_training_history = {
+                    'training_mode': 'stage1_only',
+                    'stage_histories': {}
+                }
 
-            # 阶段2: 参数映射训练
-            self.ae_log("🎯 开始阶段2: 参数映射训练...")
-            stage2_history = self._train_parameter_mapping_stage2_v2(rcs_data, param_data, training_config)
-            self.ae_training_history['stage_histories']['stage2'] = stage2_history
+                # 阶段1: AutoEncoder预训练
+                self.ae_log("📊 开始阶段1: AutoEncoder预训练...")
+                stage1_history = self._train_autoencoder_stage1_v2(rcs_data, training_config)
+                self.ae_training_history['stage_histories']['stage1'] = stage1_history
 
-            # 阶段3: 端到端微调
-            self.ae_log("⚡ 开始阶段3: 端到端微调...")
-            stage3_history = self._train_end_to_end_stage3_v2(rcs_data, param_data, training_config)
-            self.ae_training_history['stage_histories']['stage3'] = stage3_history
+                self.ae_log("🎉 AutoEncoder重建训练完成!")
+                self.ae_log("💡 提示: 该模型只能进行RCS重建评估，不能从参数预测RCS")
+                messagebox.showinfo("成功", "AutoEncoder重建训练完成！\n\n该模型专注于重建性能，适合调参和模型对比研究。")
+            else:
+                # 完整三阶段模式
+                self.ae_log("🚀 开始三阶段训练流程 (v2统一配置):")
 
-            self.ae_log("🎉 三阶段训练完成!")
-            messagebox.showinfo("成功", "三阶段训练完成!")
+                # 初始化训练历史
+                self.ae_training_history = {
+                    'training_mode': 'three_stage',
+                    'stage_histories': {}
+                }
+
+                # 阶段1: AutoEncoder预训练
+                self.ae_log("📊 开始阶段1: AutoEncoder预训练...")
+                stage1_history = self._train_autoencoder_stage1_v2(rcs_data, training_config)
+                self.ae_training_history['stage_histories']['stage1'] = stage1_history
+
+                # 阶段2: 参数映射训练
+                self.ae_log("🎯 开始阶段2: 参数映射训练...")
+                stage2_history = self._train_parameter_mapping_stage2_v2(rcs_data, param_data, training_config)
+                self.ae_training_history['stage_histories']['stage2'] = stage2_history
+
+                # 阶段3: 端到端微调
+                self.ae_log("⚡ 开始阶段3: 端到端微调...")
+                stage3_history = self._train_end_to_end_stage3_v2(rcs_data, param_data, training_config)
+                self.ae_training_history['stage_histories']['stage3'] = stage3_history
+
+                self.ae_log("🎉 三阶段训练完成!")
+                messagebox.showinfo("成功", "三阶段训练完成!")
 
         except Exception as e:
-            error_msg = f"三阶段训练失败: {e}"
+            error_msg = f"训练失败: {e}"
             self.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
@@ -6705,6 +6732,13 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
     def _create_ae_training_config(self):
         """创建AutoEncoder训练配置 (复用项目配置管理器)"""
+        # 从训练配置对话框获取training_mode (如果有的话)
+        training_mode = 'three_stage'  # 默认
+        if hasattr(self, 'training_config_gui') and self.training_config_gui:
+            gui_training_mode = self.training_config_gui.ae_training_mode.get()
+            if gui_training_mode == 'stage1_only':
+                training_mode = 'stage1_only'
+
         config = {
             'batch_size': int(self.ae_batch_size.get()),
             'learning_rate': float(self.ae_learning_rate.get()),
@@ -6722,7 +6756,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 'stage2': int(self.ae_epochs_stage2.get()),
                 'stage3': int(self.ae_epochs_stage3.get()),
             },
-            'use_custom_loss': self.ae_use_custom_loss.get()
+            'use_custom_loss': self.ae_use_custom_loss.get(),
+            'training_mode': training_mode  # 添加训练模式
         }
 
         # 如果使用自定义损失函数，复用项目的损失函数配置
