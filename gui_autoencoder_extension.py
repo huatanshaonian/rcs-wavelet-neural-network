@@ -41,6 +41,10 @@ class AutoEncoderExtension:
         # 模式选择
         self.main_gui.ae_mode = tk.StringVar(value="wavelet")
 
+        # 数据预处理设置
+        self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
+        self.main_gui.ae_log_transform = tk.BooleanVar(value=False)  # 默认关闭对数变换
+
         # 对比分析设置
         self.comparison_batch_size = tk.IntVar(value=20)
         self.comparison_enable_visual = tk.BooleanVar(value=True)
@@ -137,6 +141,53 @@ class AutoEncoderExtension:
         # 绑定模式变化事件
         self.main_gui.ae_mode.trace('w', self._on_mode_change)
 
+        # 3. 数据预处理配置组
+        preprocess_group = ttk.LabelFrame(parent, text="🔧 数据预处理配置")
+        preprocess_group.pack(fill=tk.X, pady=(0, 10))
+
+        preprocess_frame = ttk.Frame(preprocess_group)
+        preprocess_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 标准化选项
+        normalize_check = ttk.Checkbutton(
+            preprocess_frame,
+            text="✅ 数据标准化 (Normalize)",
+            variable=self.main_gui.ae_normalize
+        )
+        normalize_check.pack(anchor=tk.W, pady=(0, 5))
+
+        # 说明文字
+        ttk.Label(
+            preprocess_frame,
+            text="   • 对每个频率独立进行 Z-score 标准化 (mean=0, std=1)",
+            font=self.main_gui.font_small,
+            foreground="gray"
+        ).pack(anchor=tk.W, pady=(0, 5))
+
+        # 对数变换选项
+        log_check = ttk.Checkbutton(
+            preprocess_frame,
+            text="📊 对数变换 (Log Transform)",
+            variable=self.main_gui.ae_log_transform
+        )
+        log_check.pack(anchor=tk.W, pady=(5, 5))
+
+        # 说明文字
+        ttk.Label(
+            preprocess_frame,
+            text="   • 对数据进行 sign(x)*log(|x|) 变换，压缩动态范围",
+            font=self.main_gui.font_small,
+            foreground="gray"
+        ).pack(anchor=tk.W, pady=(0, 5))
+
+        # 警告提示
+        ttk.Label(
+            preprocess_frame,
+            text="⚠️ 标准化强烈推荐开启，对数变换视数据分布选用",
+            font=self.main_gui.font_small,
+            foreground="orange"
+        ).pack(anchor=tk.W, pady=(5, 0))
+
         # 4. 训练配置组
         training_group = ttk.LabelFrame(parent, text="🎯 训练配置")
         training_group.pack(fill=tk.X, pady=(0, 10))
@@ -223,7 +274,7 @@ class AutoEncoderExtension:
         # 训练模式选择
         ttk.Label(training_control_frame, text="训练模式:").grid(row=0, column=0, sticky="w", padx=(0, 5))
         mode_combo = ttk.Combobox(training_control_frame, textvariable=self.main_gui.ae_training_mode,
-                                values=["三阶段训练", "端到端训练"], state="readonly", width=12)
+                                values=["三阶段训练", "端到端训练", "仅Stage 1"], state="readonly", width=12)
         mode_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
 
         # 按钮组
@@ -447,9 +498,10 @@ class AutoEncoderExtension:
             dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
-            normalize = True
+            normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
+            log_transform = self.main_gui.ae_log_transform.get()  # 从GUI读取
 
-            # 创建系统
+            # 创建系统（使用frequency_config的扩展参数）
             self.main_gui.ae_system = create_autoencoder_system(
                 config_name=freq_config,
                 latent_dim=latent_dim,
@@ -459,6 +511,10 @@ class AutoEncoderExtension:
                 mode=mode,
                 architecture=architecture_type
             )
+
+            # 手动更新data_adapter配置
+            self.main_gui.ae_system['data_adapter'].normalize = normalize
+            self.main_gui.ae_system['data_adapter'].log_transform = log_transform
 
             # 添加数据
             self.main_gui.ae_system['rcs_data'] = self.main_gui.rcs_data
@@ -497,7 +553,8 @@ class AutoEncoderExtension:
             dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
-            normalize = True
+            normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
+            log_transform = self.main_gui.ae_log_transform.get()  # 从GUI读取
 
             # 创建小波增强系统
             self.main_gui.ae_log("🌊 创建小波增强系统...")
@@ -510,6 +567,8 @@ class AutoEncoderExtension:
                 mode='wavelet',
                 architecture=architecture_type
             )
+            # 更新data_adapter配置
+            self.wavelet_system['data_adapter'].log_transform = log_transform
 
             # 创建直接系统
             self.main_gui.ae_log("🔄 创建直接系统...")
@@ -522,6 +581,8 @@ class AutoEncoderExtension:
                 mode='direct',
                 architecture=architecture_type
             )
+            # 更新data_adapter配置
+            self.direct_system['data_adapter'].log_transform = log_transform
 
             # 添加数据到两个系统
             for system in [self.wavelet_system, self.direct_system]:

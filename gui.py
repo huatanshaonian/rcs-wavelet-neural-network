@@ -562,7 +562,22 @@ class RCSWaveletGUI:
         self.data_info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
     def create_autoencoder_tab(self):
-        """创建AutoEncoder配置标签页"""
+        """创建AutoEncoder配置标签页
+
+        ⚠️ 注意：此方法已废弃！
+        ==========================================
+        实际使用的AutoEncoder界面在 gui_autoencoder_extension.py 中实现
+        该扩展界面会在初始化时覆盖此处创建的内容
+
+        保留此方法的原因：
+        1. 向后兼容（某些配置可能依赖此方法）
+        2. 作为备份实现
+        3. 独立测试场景
+
+        如需修改AutoEncoder界面，请修改：
+        - gui_autoencoder_extension.py: AutoEncoderExtension类
+        ==========================================
+        """
 
         # 主框架
         main_frame = ttk.Frame(self.autoencoder_frame)
