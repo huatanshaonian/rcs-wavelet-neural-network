@@ -481,7 +481,29 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 
 ### 2025-01-14
 
-0. **🚨 数据处理顺序Bug修复** (本次更新 - 严重Bug⚠️⚠️⚠️)
+0. **🆕 Stage 1 Only训练模式** (新功能 - 专注重建性能研究)
+   - **需求**: 用户要求排除参数映射器干扰，专注研究AutoEncoder重建性能
+   - **功能**: 添加仅Stage 1训练模式（stage1_only）
+   - **实现内容**:
+     - 训练配置界面添加训练模式选择（three_stage / stage1_only）
+     - 训练流程自动识别模式，stage1_only只执行AutoEncoder预训练
+     - 模型保存/加载包含training_mode标记
+     - 评估功能自动适配：
+       - stage1_only: 直接测试RCS重建（RCS → Encoder → Decoder → 重建RCS）
+       - three_stage: 从参数预测RCS（参数 → ParameterMapper → Decoder → RCS）
+   - **影响文件**:
+     - `gui_training_config.py`: 添加训练模式UI和配置管理
+     - `gui.py`: _run_three_stage_training_v2支持两种训练模式
+     - `gui.py`: save_ae_model/load_ae_model保存/加载training_mode
+     - `gui.py`: _evaluate_autoencoder_model适配两种评估方式
+   - **使用场景**:
+     - AutoEncoder架构对比研究
+     - 重建性能调参优化
+     - 快速验证模型重建能力
+     - 不需要参数映射器的应用场景
+   - **Commits**: 2f470a8 (训练流程), 当前 (评估适配)
+
+1. **🚨 数据处理顺序Bug修复** (严重Bug⚠️⚠️⚠️)
    - **问题**: 所有三个训练阶段都在**标准化后再做小波变换**！这完全错误！
    - **影响**: 破坏了小波基的正交性，导致小波系数失去物理意义
    - **修复内容**:

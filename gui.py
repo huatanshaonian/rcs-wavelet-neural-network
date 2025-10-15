@@ -2831,6 +2831,7 @@ class RCSWaveletGUI:
             parameter_mapper = self.ae_system['parameter_mapper']
             wavelet_transform = self.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             mode = self.ae_system.get('mode', 'wavelet')
+            training_mode = self.ae_system.get('training_mode', 'three_stage')  # 获取训练模式
 
             # 获取测试数据
             rcs_data = self.ae_system['rcs_data']
@@ -2842,23 +2843,32 @@ class RCSWaveletGUI:
             test_params = param_data[-test_size:]
 
             self.log_message(f"📊 AutoEncoder评估配置:")
+            self.log_message(f"  训练模式: {training_mode}")
             self.log_message(f"  测试样本数: {test_size}")
             self.log_message(f"  RCS数据: {test_rcs.shape}")
-            self.log_message(f"  参数数据: {test_params.shape}")
+            if training_mode == 'three_stage':
+                self.log_message(f"  参数数据: {test_params.shape}")
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             autoencoder.to(device)
-            parameter_mapper.to(device)
+            if training_mode == 'three_stage':
+                parameter_mapper.to(device)
 
             # 设置评估模式
             autoencoder.eval()
-            parameter_mapper.eval()
+            if training_mode == 'three_stage':
+                parameter_mapper.eval()
 
-            # 创建数据加载器
-            test_params_tensor = torch.FloatTensor(test_params)
+            # 准备数据加载器
             test_rcs_tensor = torch.FloatTensor(test_rcs)
-            test_dataset = TensorDataset(test_params_tensor, test_rcs_tensor)
+            if training_mode == 'three_stage':
+                test_params_tensor = torch.FloatTensor(test_params)
+                test_dataset = TensorDataset(test_params_tensor, test_rcs_tensor)
+            else:
+                # Stage 1 Only: 只需要RCS数据
+                test_dataset = TensorDataset(test_rcs_tensor, test_rcs_tensor)  # 输入和目标都是RCS
+
             test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False)
 
             # 执行评估
@@ -2867,31 +2877,73 @@ class RCSWaveletGUI:
             predictions = []
             targets = []
 
-            self.log_message("📈 开始AutoEncoder评估...")
+            if training_mode == 'stage1_only':
+                self.log_message("📈 开始AutoEncoder重建评估（Stage 1 Only）...")
+                self.log_message("  评估方式: RCS → Encoder → Latent → Decoder → 重建RCS")
+            else:
+                self.log_message("📈 开始AutoEncoder端到端评估（Three Stage）...")
+                self.log_message("  评估方式: 参数 → ParameterMapper → Latent → Decoder → RCS")
+
+            # 获取data_adapter用于预处理
+            data_adapter = self.ae_system.get('data_adapter', None)
 
             with torch.no_grad():
-                for batch_idx, (batch_params, batch_rcs) in enumerate(test_loader):
-                    batch_params = batch_params.to(device)
+                for batch_idx, (batch_input, batch_rcs) in enumerate(test_loader):
+                    batch_input = batch_input.to(device)
                     batch_rcs = batch_rcs.to(device)
 
-                    # 端到端预测
-                    predicted_latents = parameter_mapper(batch_params)
-                    predicted_output = autoencoder.decode(predicted_latents)
+                    if training_mode == 'stage1_only':
+                        # Stage 1 Only: 直接重建RCS
+                        # 需要预处理RCS数据
+                        if data_adapter:
+                            adapted_rcs = data_adapter.adapt_rcs_data(batch_rcs.cpu().numpy())
+                            adapted_rcs = torch.FloatTensor(adapted_rcs).to(device)
+                        else:
+                            adapted_rcs = batch_rcs
 
-                    # 根据模式处理输出
-                    if mode == 'wavelet':
-                        # 小波模式：小波系数 → RCS
-                        predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
-                        # 确保在正确的设备上
-                        predicted_rcs = predicted_rcs.to(device)
+                        # 根据模式处理输入
+                        if mode == 'wavelet':
+                            # 小波变换
+                            wavelet_coeffs = wavelet_transform.forward_transform(adapted_rcs)
+                            reconstructed_coeffs, _ = autoencoder(wavelet_coeffs)
+                            # 逆预处理
+                            if data_adapter:
+                                reconstructed_coeffs_np = reconstructed_coeffs.cpu().numpy()
+                                reconstructed_adapted = data_adapter.inverse_adapt(reconstructed_coeffs_np)
+                                reconstructed_adapted = torch.FloatTensor(reconstructed_adapted).to(device)
+                            else:
+                                reconstructed_adapted = reconstructed_coeffs
+                            # 逆小波变换
+                            predicted_rcs = wavelet_transform.inverse_transform(reconstructed_adapted)
+                        else:
+                            # Direct模式
+                            reconstructed, _ = autoencoder(adapted_rcs)
+                            # 逆预处理
+                            if data_adapter:
+                                reconstructed_np = reconstructed.cpu().numpy()
+                                predicted_rcs = data_adapter.inverse_adapt(reconstructed_np)
+                                predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+                            else:
+                                predicted_rcs = reconstructed
                     else:
-                        # 直接模式：直接输出RCS
-                        predicted_rcs = predicted_output
+                        # Three Stage: 从参数预测RCS
+                        batch_params = batch_input
+                        predicted_latents = parameter_mapper(batch_params)
+                        predicted_output = autoencoder.decode(predicted_latents)
+
+                        # 根据模式处理输出
+                        if mode == 'wavelet':
+                            # 小波模式：小波系数 → RCS
+                            predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                            predicted_rcs = predicted_rcs.to(device)
+                        else:
+                            # 直接模式：直接输出RCS
+                            predicted_rcs = predicted_output
 
                     # 计算损失
                     loss = torch.nn.functional.mse_loss(predicted_rcs, batch_rcs)
-                    total_loss += loss.item() * batch_params.size(0)
-                    total_samples += batch_params.size(0)
+                    total_loss += loss.item() * batch_input.size(0)
+                    total_samples += batch_input.size(0)
 
                     # 收集预测结果
                     predictions.append(predicted_rcs.cpu().numpy())
@@ -5092,12 +5144,18 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     if 'std' in adapter_stats:
                         adapter_stats['std'] = adapter_stats['std'].tolist()
 
+                # 保存训练模式信息
+                training_mode = 'three_stage'  # 默认
+                if self.ae_training_history and 'training_mode' in self.ae_training_history:
+                    training_mode = self.ae_training_history['training_mode']
+
                 model_state = {
                     'autoencoder': self.ae_system['autoencoder'].state_dict(),
                     'parameter_mapper': self.ae_system['parameter_mapper'].state_dict(),
                     'config': complete_config,
                     'adapter_stats': adapter_stats,  # 保存统计信息
-                    'training_history': self.ae_training_history
+                    'training_history': self.ae_training_history,
+                    'training_mode': training_mode  # 保存训练模式
                 }
 
                 torch.save(model_state, filename)
@@ -5241,6 +5299,13 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 if 'training_history' in checkpoint:
                     self.ae_training_history = checkpoint['training_history']
 
+                # 识别训练模式
+                training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
+                training_mode_display = {
+                    'stage1_only': 'Stage 1 Only (仅重建)',
+                    'three_stage': '完整三阶段'
+                }.get(training_mode, training_mode)
+
                 # 重置会话时间戳（加载模型算作新会话）
                 self.ae_session_timestamp = None
                 session_ts = self.get_ae_session_timestamp()
@@ -5254,7 +5319,18 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 self.ae_log(f"✅ 模型加载成功: {filename}")
                 self.ae_log(f"  系统已自动重建，无需手动创建")
                 self.ae_log(f"  模型频率配置: {model_num_freq}频 {model_freq_labels}")
+                self.ae_log(f"  训练模式: {training_mode_display}")
                 self.ae_log(f"🕐 新会话时间戳: {session_ts}")
+
+                # 如果是Stage 1 Only模式，给出提示
+                if training_mode == 'stage1_only':
+                    self.ae_log(f"💡 提示: 该模型仅训练了AutoEncoder重建，不能从参数预测RCS")
+                    self.ae_log(f"  评估方式: 直接从RCS数据测试重建能力")
+                else:
+                    self.ae_log(f"  评估方式: 从参数预测RCS")
+
+                # 存储training_mode到系统中供评估使用
+                self.ae_system['training_mode'] = training_mode
 
                 # 检查是否已加载数据
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
