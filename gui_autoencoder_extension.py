@@ -289,7 +289,9 @@ class AutoEncoderExtension:
         # 创建双系统用于对比分析
         ttk.Button(ops_frame, text="创建双系统 (对比)", command=self.create_dual_systems).pack(fill=tk.X, pady=(0, 3))
         # 运行性能对比分析
-        ttk.Button(ops_frame, text="运行性能对比", command=self.run_performance_comparison).pack(fill=tk.X)
+        ttk.Button(ops_frame, text="运行性能对比", command=self.run_performance_comparison).pack(fill=tk.X, pady=(0, 3))
+        # 打开训练配置窗口
+        ttk.Button(ops_frame, text="训练配置管理", command=self.open_training_config).pack(fill=tk.X)
 
         # 10. 小波分析组
         wavelet_group = ttk.LabelFrame(right_column, text="🌊 小波变换分析")
@@ -560,6 +562,17 @@ class AutoEncoderExtension:
 
         except Exception as e:
             error_msg = f"创建双系统失败: {e}"
+            self.main_gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def open_training_config(self):
+        """打开训练配置管理窗口"""
+        try:
+            from gui_training_config import create_training_config_window
+            config_window, config_gui = create_training_config_window(self.main_gui)
+            self.main_gui.ae_log("⚙️ 打开训练配置管理窗口")
+        except Exception as e:
+            error_msg = f"打开训练配置窗口失败: {e}"
             self.main_gui.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
