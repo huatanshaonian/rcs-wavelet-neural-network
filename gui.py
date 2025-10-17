@@ -4169,13 +4169,28 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                         predicted_output = autoencoder.decode(predicted_latents)
 
+                        # ⚠️ 关键修复：decoder输出在标准化空间，必须逆变换回原始RCS空间
+                        # 获取data_adapter用于逆标准化
+                        data_adapter = self.ae_system.get('data_adapter', None)
+
                         # 根据模式处理输出
                         if wavelet_transform is not None:
-                            # 小波模式：需要逆变换
-                            predicted_batch = wavelet_transform.inverse_transform(predicted_output).cpu().numpy()
+                            # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                            if data_adapter:
+                                predicted_output_np = predicted_output.cpu().numpy()
+                                predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
+                                predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                            else:
+                                predicted_coeffs = predicted_output
+
+                            predicted_batch = wavelet_transform.inverse_transform(predicted_coeffs).cpu().numpy()
                         else:
-                            # 直接模式：直接使用输出
-                            predicted_batch = predicted_output.cpu().numpy()
+                            # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
+                            if data_adapter:
+                                predicted_output_np = predicted_output.cpu().numpy()
+                                predicted_batch = data_adapter.inverse_adapt(predicted_output_np)
+                            else:
+                                predicted_batch = predicted_output.cpu().numpy()
 
                         # 调试：检查预测输出的多样性
                         print(f"预测输出形状: {predicted_batch.shape}")
@@ -7389,13 +7404,29 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 predicted_latents = parameter_mapper(param_tensor)
                 predicted_output = autoencoder.decode(predicted_latents)
 
+                # ⚠️ 关键修复：decoder输出在标准化空间，必须逆变换回原始RCS空间
+                # 获取data_adapter用于逆标准化
+                data_adapter = self.ae_system.get('data_adapter', None)
+
                 # 根据模式处理输出
                 if wavelet_transform is not None:
-                    # 小波模式：需要逆变换
-                    predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                    # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                    if data_adapter:
+                        predicted_output_np = predicted_output.cpu().numpy()
+                        predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
+                        predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                    else:
+                        predicted_coeffs = predicted_output
+
+                    predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
                 else:
-                    # 直接模式：直接使用输出
-                    predicted_rcs = predicted_output
+                    # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
+                    if data_adapter:
+                        predicted_output_np = predicted_output.cpu().numpy()
+                        predicted_rcs = data_adapter.inverse_adapt(predicted_output_np)
+                        predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+                    else:
+                        predicted_rcs = predicted_output
 
                 predicted_rcs = predicted_rcs.cpu().numpy()[0]
 
@@ -7565,18 +7596,39 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 predicted_output = autoencoder.decode(predicted_latents)
                 print(f"Decoder输出形状: {predicted_output.shape}")
-                print(f"Decoder输出范围: [{predicted_output.min():.6e}, {predicted_output.max():.6e}]")
+                print(f"Decoder输出范围（标准化空间）: [{predicted_output.min():.6e}, {predicted_output.max():.6e}]")
                 print(f"Decoder输出统计: 负值数={(predicted_output < 0).sum().item()}, 零值数={(predicted_output == 0).sum().item()}")
+
+                # ⚠️ 关键修复：decoder输出在标准化空间，必须逆变换回原始RCS空间
+                # 获取data_adapter用于逆标准化
+                data_adapter = self.ae_system.get('data_adapter', None)
 
                 # 根据模式处理输出
                 if wavelet_transform is not None:
-                    # 小波模式：需要逆变换
-                    predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
-                    print(f"逆变换后形状: {predicted_rcs.shape}")
+                    # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                    if data_adapter:
+                        # Step 1: 逆标准化（逆dB + 逆Z-score）
+                        predicted_output_np = predicted_output.cpu().numpy()
+                        predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
+                        predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                        print(f"逆标准化后小波系数范围: [{predicted_coeffs.min():.6e}, {predicted_coeffs.max():.6e}]")
+                    else:
+                        predicted_coeffs = predicted_output
+                        print(f"⚠️ 未找到data_adapter，跳过逆标准化")
+
+                    # Step 2: 逆小波变换
+                    predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+                    print(f"逆小波变换后RCS形状: {predicted_rcs.shape}")
                 else:
-                    # 直接模式：直接使用输出
-                    predicted_rcs = predicted_output
-                    print(f"直接模式，无需逆变换")
+                    # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
+                    if data_adapter:
+                        predicted_output_np = predicted_output.cpu().numpy()
+                        predicted_rcs = data_adapter.inverse_adapt(predicted_output_np)
+                        predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+                        print(f"逆标准化后RCS范围（线性域）: [{predicted_rcs.min():.6e}, {predicted_rcs.max():.6e}]")
+                    else:
+                        predicted_rcs = predicted_output
+                        print(f"⚠️ 未找到data_adapter，跳过逆标准化（直接模式）")
 
                 predicted_rcs = predicted_rcs.cpu().numpy()[0]
                 print(f"转为numpy后形状: {predicted_rcs.shape}")
