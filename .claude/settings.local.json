@@ -34,7 +34,11 @@
       "Bash(set TK_LIBRARY=G:anacondaenvsRCS_OP1tcltk8.6)",
       "Bash(attrib:*)",
       "Bash(del improvement_analysis.md)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(cd:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git log:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

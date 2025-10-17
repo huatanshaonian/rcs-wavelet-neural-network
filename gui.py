@@ -5149,7 +5149,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     'dropout_rate': float(self.ae_dropout_rate.get()),
                     'wavelet': self.ae_wavelet_type.get(),
                     'normalize': self.ae_normalize.get(),  # 从GUI读取
-                    'log_transform': self.ae_log_transform.get(),  # 从GUI读取
+                    'db_transform': self.ae_db_transform.get(),  # 从GUI读取
                     'mode': self.ae_system.get('mode', 'wavelet'),  # 从系统字典获取
                     'architecture': self.ae_system.get('architecture', 'cnn')  # 从系统字典获取
                 })
@@ -5304,12 +5304,12 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     self.ae_log(f"⚠️ 模型文件不包含adapter统计信息（可能是旧版模型）")
 
                 # 更新GUI中的预处理选项
-                log_transform = config.get('log_transform', False)
+                db_transform = config.get('db_transform', False)
                 self.ae_normalize.set(normalize)
-                self.ae_log_transform.set(log_transform)
+                self.ae_db_transform.set(db_transform)
                 self.ae_system['data_adapter'].normalize = normalize
-                self.ae_system['data_adapter'].log_transform = log_transform
-                self.ae_log(f"🔧 数据预处理: 标准化={normalize}, 对数变换={log_transform}")
+                self.ae_system['data_adapter'].db_transform = db_transform
+                self.ae_log(f"🔧 数据预处理: 标准化={normalize}, dB变换={db_transform}")
 
                 # 如果有数据，也加载到系统中
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
@@ -6171,29 +6171,29 @@ GPU峰值: {gpu_peak:.2f}GB"""
             if data_adapter is None:
                 # 如果没有adapter，创建默认的（不应该发生）
                 from autoencoder.utils.data_adapters import RCS_DataAdapter
-                data_adapter = RCS_DataAdapter(normalize=True, log_transform=False)
+                data_adapter = RCS_DataAdapter(normalize=True, db_transform=False)
                 self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
 
             # ⚠️ 关键: 数据处理顺序
-            # Wavelet模式: 先小波变换(原始数据) → 再标准化(小波系数)
-            # Direct模式: 直接标准化(原始RCS)
-            self.ae_log(f"🔧 数据预处理配置: 标准化={data_adapter.normalize}, 对数变换={data_adapter.log_transform}")
+            # Wavelet模式: 原始RCS(线性) → 小波变换(线性域) → dB变换 → Z-score标准化
+            # Direct模式: 原始RCS(线性) → dB变换 → Z-score标准化
+            self.ae_log(f"🔧 数据预处理配置: 标准化={data_adapter.normalize}, dB变换={data_adapter.db_transform}")
             self.ae_log(f"🔧 原始RCS数据范围: [{rcs_data.min():.4f}, {rcs_data.max():.4f}]")
 
             # 根据模式决定输入数据
             if mode == 'wavelet':
-                # 小波增强模式: 先在原始线性数据上做小波变换
-                self.ae_log("📊 Step 1: 在原始RCS数据上执行小波变换...")
+                # Wavelet模式: Step 1 - 小波变换（必须在线性域进行）
+                self.ae_log("📊 Step 1: 在原始RCS线性域数据上执行小波变换...")
                 wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
-                self.ae_log(f"📊 小波系数范围: [{wavelet_coeffs.min():.4f}, {wavelet_coeffs.max():.4f}]")
+                self.ae_log(f"📊 小波系数范围（线性域）: [{wavelet_coeffs.min():.4f}, {wavelet_coeffs.max():.4f}]")
 
-                # 再对小波系数进行预处理
-                self.ae_log("📊 Step 2: 对小波系数应用预处理...")
+                # Step 2 - 预处理（dB变换 + Z-score标准化）
+                self.ae_log("📊 Step 2: 对小波系数应用预处理（dB变换 + 标准化）...")
                 input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
                 self.ae_log(f"📊 预处理后小波系数范围: [{input_data.min():.4f}, {input_data.max():.4f}]")
             else:
-                # 直接处理模式: 直接对RCS数据进行预处理
-                self.ae_log("📊 Direct模式: 直接对RCS数据应用预处理...")
+                # Direct模式: 直接预处理（dB变换 + Z-score标准化）
+                self.ae_log("📊 Direct模式: 对RCS数据应用预处理（dB变换 + 标准化）...")
                 input_data = data_adapter.adapt_rcs_data(rcs_data)
                 self.ae_log(f"📊 预处理后RCS数据范围: [{input_data.min():.4f}, {input_data.max():.4f}]")
 
@@ -6349,7 +6349,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             data_adapter = self.ae_system.get('data_adapter', None)
             if data_adapter is None:
                 from autoencoder.utils.data_adapters import RCS_DataAdapter
-                data_adapter = RCS_DataAdapter(normalize=True, log_transform=False)
+                data_adapter = RCS_DataAdapter(normalize=True, db_transform=False)
                 self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
 
             # 应用数据预处理（必须与Stage 1保持一致）
@@ -6526,7 +6526,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             data_adapter = self.ae_system.get('data_adapter', None)
             if data_adapter is None:
                 from autoencoder.utils.data_adapters import RCS_DataAdapter
-                data_adapter = RCS_DataAdapter(normalize=True, log_transform=False)
+                data_adapter = RCS_DataAdapter(normalize=True, db_transform=False)
                 self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
 
             # 应用数据预处理（必须与Stage 1和Stage 2保持一致）

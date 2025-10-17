@@ -18,7 +18,7 @@ import seaborn as sns
 from ..models.cnn_autoencoder import WaveletAutoEncoder
 from ..models.direct_autoencoder import DirectAutoEncoder
 from ..models.cnn_autoencoder import ParameterMapper
-from .wavelet_transform import WaveletTransform
+from .correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 
 
 class AutoEncoderComparator:

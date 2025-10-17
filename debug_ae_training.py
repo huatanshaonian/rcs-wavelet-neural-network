@@ -1,109 +1,149 @@
 """
-调试AutoEncoder训练的脚本
-验证小波变换时间和loss计算准确性
+测试MLP架构集成 - 验证4种组合的创建和前向传播
 """
-
 import torch
-import torch.nn as nn
-import time
-import numpy as np
+import sys
+import os
+
+# 添加路径
+sys.path.append(os.path.join(os.path.dirname(__file__), 'autoencoder'))
+
 from autoencoder.utils.frequency_config import create_autoencoder_system
 
-def debug_ae_training():
-    """调试AutoEncoder训练过程"""
-    print("=== AutoEncoder训练调试 ===")
+def test_architecture_combination(mode, architecture, config_name='2freq'):
+    """测试特定的架构组合"""
+    print(f"\n{'='*60}")
+    print(f"测试组合: {mode.upper()} + {architecture.upper()} ({config_name})")
+    print(f"{'='*60}")
 
-    # 创建测试数据
-    batch_size = 16
-    rcs_data = torch.randn(100, 91, 91, 2) * 0.1  # 模拟真实RCS数据范围
-    print(f"模拟RCS数据: {rcs_data.shape}, 范围: [{rcs_data.min():.4f}, {rcs_data.max():.4f}]")
+    try:
+        # 创建系统
+        system = create_autoencoder_system(
+            config_name=config_name,
+            latent_dim=256,
+            dropout_rate=0.2,
+            wavelet='db4',
+            normalize=True,
+            mode=mode,
+            architecture=architecture
+        )
 
-    # 创建AutoEncoder系统
-    system = create_autoencoder_system('2freq', latent_dim=256)
-    autoencoder = system['autoencoder']
-    wavelet_transform = system['wavelet_transform']
+        autoencoder = system['autoencoder']
+        wavelet_transform = system['wavelet_transform']
 
-    # 测试小波变换时间
-    print("\n=== 小波变换性能测试 ===")
-    start_time = time.time()
-    wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
-    transform_time = time.time() - start_time
+        # 打印模型信息
+        param_count = autoencoder.get_parameter_count()
+        print(f"\n模型参数量: {param_count['total']:,}")
 
-    print(f"小波变换时间: {transform_time:.3f}s")
-    print(f"变换后形状: {wavelet_coeffs.shape}")
-    print(f"小波系数范围: [{wavelet_coeffs.min():.4f}, {wavelet_coeffs.max():.4f}]")
+        # 创建测试数据
+        batch_size = 2
+        num_freq = 2 if config_name == '2freq' else 3
+        rcs_data = torch.randn(batch_size, 91, 91, num_freq)
 
-    # 测试AutoEncoder重建
-    print("\n=== AutoEncoder重建测试 ===")
-    autoencoder.eval()
-    with torch.no_grad():
-        reconstructed, latent = autoencoder(wavelet_coeffs[:16])  # 取前16个样本
-        print(f"隐空间形状: {latent.shape}")
-        print(f"重建系数形状: {reconstructed.shape}")
+        # 测试前向传播
+        if mode == 'wavelet':
+            # 小波模式: RCS → 小波系数 → AutoEncoder → 重建
+            wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
+            print(f"小波系数形状: {wavelet_coeffs.shape}")
 
-        # 计算重建损失
-        mse_loss = nn.MSELoss()
-        recon_loss = mse_loss(reconstructed, wavelet_coeffs[:16])
-        print(f"重建MSE损失: {recon_loss.item():.6f}")
+            recon_coeffs, latent = autoencoder(wavelet_coeffs)
+            print(f"隐空间形状: {latent.shape}")
+            print(f"重建小波系数形状: {recon_coeffs.shape}")
 
-        # 测试逆变换
-        reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed)
-        print(f"重建RCS形状: {reconstructed_rcs.shape}")
+            recon_rcs = wavelet_transform.inverse_transform(recon_coeffs)
+            print(f"重建RCS形状: {recon_rcs.shape}")
 
-        # 端到端损失
-        end_to_end_loss = mse_loss(reconstructed_rcs, rcs_data[:16])
-        print(f"端到端MSE损失: {end_to_end_loss.item():.6f}")
+            # 计算重建误差
+            mse = torch.nn.functional.mse_loss(recon_rcs, rcs_data)
+            print(f"重建MSE: {mse.item():.6f}")
 
-    # 模拟训练过程
-    print("\n=== 模拟训练过程 ===")
-    autoencoder.train()
-    optimizer = torch.optim.Adam(autoencoder.parameters(), lr=0.001)
-    criterion = nn.MSELoss()
+        else:
+            # 直接模式: RCS → AutoEncoder → 重建
+            recon_rcs, latent = autoencoder(rcs_data)
+            print(f"隐空间形状: {latent.shape}")
+            print(f"重建RCS形状: {recon_rcs.shape}")
 
-    # 创建数据加载器
-    from torch.utils.data import TensorDataset, DataLoader
-    dataset = TensorDataset(wavelet_coeffs)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+            # 计算重建误差
+            mse = torch.nn.functional.mse_loss(recon_rcs, rcs_data)
+            print(f"重建MSE: {mse.item():.6f}")
 
-    total_loss = 0
-    num_batches = 0
+        # 测试编码器和解码器单独调用
+        if mode == 'wavelet':
+            input_data = wavelet_coeffs
+        else:
+            input_data = rcs_data
 
-    for batch_idx, (batch_coeffs,) in enumerate(train_loader):
-        if batch_idx >= 5:  # 只测试前5个批次
-            break
+        latent_only = autoencoder.encode(input_data)
+        recon_only = autoencoder.decode(latent_only)
+        print(f"\n编码器输出形状: {latent_only.shape}")
+        print(f"解码器输出形状: {recon_only.shape}")
 
-        start_time = time.time()
+        print(f"\n✅ {mode.upper()} + {architecture.upper()} 测试通过!")
+        return True
 
-        # 前向传播
-        reconstructed, latent = autoencoder(batch_coeffs)
-        loss = criterion(reconstructed, batch_coeffs)
+    except Exception as e:
+        print(f"\n❌ {mode.upper()} + {architecture.upper()} 测试失败!")
+        print(f"错误信息: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
-        # 反向传播
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
 
-        batch_time = time.time() - start_time
-        total_loss += loss.item()
-        num_batches += 1
+def main():
+    """测试所有4种组合"""
+    print("="*60)
+    print("MLP架构集成测试 - 测试所有架构组合")
+    print("="*60)
 
-        print(f"批次 {batch_idx+1}: Loss={loss.item():.6f}, 时间={batch_time:.3f}s")
+    # 定义测试组合
+    test_cases = [
+        ('wavelet', 'cnn'),   # 小波 + CNN
+        ('wavelet', 'mlp'),   # 小波 + MLP
+        ('direct', 'cnn'),    # 直接 + CNN
+        ('direct', 'mlp'),    # 直接 + MLP
+    ]
 
-    avg_loss = total_loss / num_batches
-    print(f"平均训练损失: {avg_loss:.6f}")
+    results = {}
 
-    # 验证数据流程正确性
-    print("\n=== 数据流程验证 ===")
-    test_batch = wavelet_coeffs[:4]
-    print(f"输入小波系数: {test_batch.shape}, 范围: [{test_batch.min():.4f}, {test_batch.max():.4f}]")
+    # 测试2频率配置
+    print("\n\n" + "="*60)
+    print("第一阶段: 2频率配置测试")
+    print("="*60)
+    for mode, arch in test_cases:
+        key = f"{mode}+{arch} (2freq)"
+        results[key] = test_architecture_combination(mode, arch, '2freq')
 
-    with torch.no_grad():
-        recon_coeffs, _ = autoencoder(test_batch)
-        print(f"重建小波系数: {recon_coeffs.shape}, 范围: [{recon_coeffs.min():.4f}, {recon_coeffs.max():.4f}]")
+    # 测试3频率配置
+    print("\n\n" + "="*60)
+    print("第二阶段: 3频率配置测试")
+    print("="*60)
+    for mode, arch in test_cases:
+        key = f"{mode}+{arch} (3freq)"
+        results[key] = test_architecture_combination(mode, arch, '3freq')
 
-        # 检查数值稳定性
-        diff = torch.abs(recon_coeffs - test_batch)
-        print(f"重建误差统计: 均值={diff.mean():.6f}, 最大={diff.max():.6f}")
+    # 汇总结果
+    print("\n\n" + "="*60)
+    print("测试结果汇总")
+    print("="*60)
+    for key, success in results.items():
+        status = "✅ 通过" if success else "❌ 失败"
+        print(f"{key:30s} : {status}")
+
+    # 统计
+    total = len(results)
+    passed = sum(results.values())
+    print(f"\n总测试数: {total}")
+    print(f"通过: {passed}")
+    print(f"失败: {total - passed}")
+
+    if passed == total:
+        print("\n🎉 所有测试通过! MLP架构集成成功!")
+    else:
+        print("\n⚠️ 部分测试失败，请检查错误信息")
+
+    return passed == total
+
 
 if __name__ == "__main__":
-    debug_ae_training()
+    success = main()
+    sys.exit(0 if success else 1)

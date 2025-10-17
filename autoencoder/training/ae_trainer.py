@@ -19,7 +19,7 @@ from collections import defaultdict
 
 from ..models.cnn_autoencoder import WaveletAutoEncoder
 from ..models.parameter_mapper import ParameterMapperFactory
-from ..utils.wavelet_transform import WaveletTransform
+from ..utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 
 
 class AE_Trainer:
@@ -601,7 +601,7 @@ def test_ae_trainer():
     print(f"模拟数据: RCS {rcs_data.shape}, 参数 {params_data.shape}")
 
     # 创建模型和组件
-    ae = WaveletAutoEncoder(latent_dim=128)  # 较小的隐空间便于测试
+    ae = WaveletAutoEncoder(latent_dim=128, input_size=49)  # 较小的隐空间便于测试
     wt = WaveletTransform(wavelet='db4')
 
     # 创建训练器

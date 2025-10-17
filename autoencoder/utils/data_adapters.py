@@ -17,18 +17,18 @@ class RCS_DataAdapter:
 
     def __init__(self,
                  normalize: bool = True,
-                 log_transform: bool = False,
+                 db_transform: bool = False,
                  expected_frequencies: int = 2):
         """
         初始化数据适配器
 
         Args:
             normalize: 是否标准化数据
-            log_transform: 是否进行对数变换
+            db_transform: 是否进行dB变换 (10*log10)
             expected_frequencies: 预期频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
         """
         self.normalize = normalize
-        self.log_transform = log_transform
+        self.db_transform = db_transform
         self.expected_frequencies = expected_frequencies
 
         # 数据统计信息
@@ -37,46 +37,46 @@ class RCS_DataAdapter:
     def adapt_rcs_data(self,
                       rcs_data: np.ndarray) -> torch.Tensor:
         """
-        适配RCS数据
+        适配RCS数据（或小波系数）
+
+        ⚠️ 重要：输入必须是线性域数据
+        - 对于Wavelet模式：输入是小波变换后的系数（线性域）
+        - 对于Direct模式：输入是原始RCS数据（线性域）
 
         Args:
-            rcs_data: [N, 91, 91, num_freq] 原始RCS数据
+            rcs_data: [N, H, W, C] 线性域数据
+                     Wavelet模式: [N, 49, 49, 8] 小波系数
+                     Direct模式: [N, 91, 91, 2] 原始RCS
 
         Returns:
-            adapted_data: [N, 91, 91, num_freq] 适配后的数据
+            adapted_data: [N, H, W, C] 处理后的数据（dB变换+标准化）
         """
-        # 确保数据格式正确并检测频率数量
+        # 确保数据格式正确
         if len(rcs_data.shape) != 4:
-            raise ValueError(f"RCS数据应为4维，实际为{len(rcs_data.shape)}维")
-
-        actual_frequencies = rcs_data.shape[3]
-        if actual_frequencies != self.expected_frequencies:
-            print(f"⚠️ 检测到{actual_frequencies}个频率，预期{self.expected_frequencies}个")
-            self.expected_frequencies = actual_frequencies  # 自动适配
-
-        expected_shape = (91, 91, self.expected_frequencies)
-        if rcs_data.shape[1:] != expected_shape:
-            raise ValueError(f"RCS数据形状应为 [N, {expected_shape[0]}, {expected_shape[1]}, {expected_shape[2]}]，实际为 {rcs_data.shape}")
+            raise ValueError(f"数据应为4维，实际为{len(rcs_data.shape)}维")
 
         data = rcs_data.copy()
 
-        # 对数变换
-        if self.log_transform:
-            # 避免对负值取对数
-            data = np.sign(data) * np.log(np.abs(data) + 1e-8)
+        # Step 1: dB变换（在线性域数据上）
+        if self.db_transform:
+            # ⚠️ 重要假设：RCS线性数据总是正值（0.000001~1范围）
+            # 小波系数可能有小部分负值，需要保留符号信息
+            # 策略：保存符号，对绝对值取dB
+            self._sign_mask = (data < 0)  # 保存负值掩码
+            data = 10 * np.log10(np.clip(np.abs(data), 1e-10, None))
 
-        # 标准化
+        # Step 2: Z-score标准化
         if self.normalize:
-            # 计算统计信息
+            # 计算统计信息（每个通道独立）
             mean = np.mean(data, axis=(0, 1, 2), keepdims=True)
             std = np.std(data, axis=(0, 1, 2), keepdims=True)
             std = np.where(std == 0, 1, std)  # 避免除零
 
-            # 保存统计信息
+            # 保存统计信息（用于逆变换）
             self.data_stats = {
                 'mean': mean,
                 'std': std,
-                'log_transform': self.log_transform
+                'db_transform': self.db_transform
             }
 
             # 标准化
@@ -87,25 +87,31 @@ class RCS_DataAdapter:
     def inverse_adapt(self,
                      adapted_data: torch.Tensor) -> np.ndarray:
         """
-        逆适配：将处理后的数据转回原始格式
+        逆适配：将处理后的数据转回线性域格式
+
+        执行顺序：Z-score逆标准化 → dB逆变换
 
         Args:
-            adapted_data: [N, 91, 91, num_freq] 适配后的数据
+            adapted_data: [N, H, W, C] 处理后的数据
 
         Returns:
-            original_data: [N, 91, 91, num_freq] 原始格式数据
+            original_data: [N, H, W, C] 线性域数据
         """
         data = adapted_data.detach().cpu().numpy()
 
-        # 逆标准化
+        # Step 1: 逆Z-score标准化
         if self.normalize and 'mean' in self.data_stats:
             mean = self.data_stats['mean']
             std = self.data_stats['std']
             data = data * std + mean
 
-        # 逆对数变换
-        if self.log_transform:
-            data = np.sign(data) * (np.exp(np.abs(data)) - 1e-8)
+        # Step 2: 逆dB变换
+        if self.db_transform:
+            # 逆dB：10^(dB/10) 恢复绝对值
+            data = 10 ** (data / 10)
+            # 恢复符号（如果保存了负值掩码）
+            if hasattr(self, '_sign_mask') and self._sign_mask is not None:
+                data[self._sign_mask] = -data[self._sign_mask]
 
         return data
 
@@ -221,7 +227,7 @@ def test_data_adapters():
 
     print(f"2频率原始数据: RCS {rcs_data_2freq.shape}, 参数 {params_data.shape}")
 
-    adapter_2freq = RCS_DataAdapter(normalize=True, log_transform=False, expected_frequencies=2)
+    adapter_2freq = RCS_DataAdapter(normalize=True, db_transform=False, expected_frequencies=2)
 
     # 适配2频率数据
     adapted_rcs_2freq = adapter_2freq.adapt_rcs_data(rcs_data_2freq)
@@ -241,7 +247,7 @@ def test_data_adapters():
     rcs_data_3freq = np.random.randn(n_samples, 91, 91, 3) * 10
     print(f"3频率原始数据: RCS {rcs_data_3freq.shape}")
 
-    adapter_3freq = RCS_DataAdapter(normalize=True, log_transform=False, expected_frequencies=3)
+    adapter_3freq = RCS_DataAdapter(normalize=True, db_transform=False, expected_frequencies=3)
     adapted_rcs_3freq = adapter_3freq.adapt_rcs_data(rcs_data_3freq)
     print(f"3频率适配后RCS形状: {adapted_rcs_3freq.shape}")
 

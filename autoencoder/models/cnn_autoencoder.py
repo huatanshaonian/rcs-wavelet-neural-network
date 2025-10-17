@@ -76,12 +76,18 @@ class WaveletAutoEncoder(nn.Module):
         self.flattened_size = 256 * 4 * 4  # 4096
 
         # 编码器的最后几层
+        # TODO: latent_dim优化点 - 待实验验证
+        # 当前架构: 4096 → 1024 → latent_dim (单步压缩)
+        # - latent_dim=256: 1024→256 (4:1) ✅ 温和，无问题
+        # - latent_dim=128: 1024→128 (8:1) ⚠️ 中等，需验证Stage 1重建误差
+        # - latent_dim=64:  1024→64 (16:1) ❌ 激进，建议增加512过渡层
+        # 如果Stage 1 val_loss > 0.05，考虑多级压缩: 4096→1024→512→256→latent_dim
         self.encoder_fc = nn.Sequential(
             nn.Flatten(),
             nn.Linear(self.flattened_size, 1024),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
-            nn.Linear(1024, latent_dim)
+            nn.Linear(1024, latent_dim)  # 压缩瓶颈
         )
 
         # ===== Decoder: 隐空间 → 小波系数 =====
@@ -121,6 +127,12 @@ class WaveletAutoEncoder(nn.Module):
 
         # 权重初始化
         self._initialize_weights()
+
+        # ===== 统一接口：encoder/decoder属性 =====
+        # 注意：encoder已经是nn.Sequential，这里只需要添加decoder
+        self.decoder = nn.ModuleList([
+            self.decoder_fc, self.decoder_conv, self.final_conv
+        ])
 
     def _initialize_weights(self):
         """Xavier权重初始化"""

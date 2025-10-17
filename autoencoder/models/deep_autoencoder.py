@@ -110,6 +110,12 @@ class DeepWaveletAutoEncoder(nn.Module):
 
         # 编码器FC层: [256, 7, 7] → latent_dim
         self.final_conv_size = 256 * 7 * 7  # 12544
+        # TODO: latent_dim优化点 - 待实验验证
+        # 当前架构: 12544 → 1024 → 512 → latent_dim (三级渐进式压缩)
+        # - latent_dim=256: 512→256 (2:1) ✅ 非常温和
+        # - latent_dim=128: 512→128 (4:1) ✅ 温和
+        # - latent_dim=64:  512→64 (8:1) ⚠️ 可接受，需验证Stage 1重建误差
+        # 注: Deep架构已采用多级压缩，对小latent_dim支持较好
         self.encoder_fc = nn.Sequential(
             nn.Flatten(),
             nn.Linear(self.final_conv_size, 1024),
@@ -118,7 +124,7 @@ class DeepWaveletAutoEncoder(nn.Module):
             nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
-            nn.Linear(512, latent_dim)
+            nn.Linear(512, latent_dim)  # 压缩瓶颈
         )
 
         # ===== 深度Decoder架构 =====
@@ -175,6 +181,17 @@ class DeepWaveletAutoEncoder(nn.Module):
         )
 
         self._initialize_weights()
+
+        # ===== 统一接口：encoder/decoder属性 =====
+        # 为了兼容训练代码中的冻结/解冻操作，提供统一的encoder/decoder接口
+        encoder_modules = [self.conv1, self.conv2, self.conv3, self.conv4, self.encoder_fc]
+        if self.use_attention:
+            encoder_modules.insert(-1, self.attention)  # 在encoder_fc之前插入attention
+        self.encoder = nn.ModuleList(encoder_modules)
+
+        self.decoder = nn.ModuleList([
+            self.decoder_fc, self.deconv4, self.deconv3, self.deconv2, self.deconv1
+        ])
 
     def _initialize_weights(self):
         """Kaiming权重初始化（针对ReLU优化）"""
@@ -389,6 +406,12 @@ class DeepDirectAutoEncoder(nn.Module):
 
         # 编码器FC层（减少参数量）
         self.final_conv_size = 256 * 12 * 12  # 36864
+        # TODO: latent_dim优化点 - 待实验验证
+        # 当前架构: 36864 → 1024 → 512 → latent_dim (三级渐进式压缩)
+        # - latent_dim=256: 512→256 (2:1) ✅ 非常温和
+        # - latent_dim=128: 512→128 (4:1) ✅ 温和
+        # - latent_dim=64:  512→64 (8:1) ⚠️ 可接受，需验证Stage 1重建误差
+        # 注: Deep架构已采用多级压缩，对小latent_dim支持较好
         self.encoder_fc = nn.Sequential(
             nn.Flatten(),
             nn.Linear(self.final_conv_size, 1024),  # 减少从2048到1024
@@ -397,7 +420,7 @@ class DeepDirectAutoEncoder(nn.Module):
             nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
-            nn.Linear(512, latent_dim)
+            nn.Linear(512, latent_dim)  # 压缩瓶颈
         )
 
         # ===== 深度Decoder架构 =====
@@ -449,6 +472,17 @@ class DeepDirectAutoEncoder(nn.Module):
         )
 
         self._initialize_weights()
+
+        # ===== 统一接口：encoder/decoder属性 =====
+        # 为了兼容训练代码中的冻结/解冻操作，提供统一的encoder/decoder接口
+        encoder_modules = [self.conv1, self.conv2, self.conv3, self.conv4, self.encoder_fc]
+        if self.use_attention:
+            encoder_modules.insert(-1, self.attention)  # 在encoder_fc之前插入attention
+        self.encoder = nn.ModuleList(encoder_modules)
+
+        self.decoder = nn.ModuleList([
+            self.decoder_fc, self.deconv4, self.deconv3, self.deconv2, self.deconv1
+        ])
 
     def _initialize_weights(self):
         """Kaiming权重初始化"""

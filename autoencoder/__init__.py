@@ -8,7 +8,7 @@ __author__ = "RCS Neural Network Team"
 
 # 导入主要组件
 from .models.cnn_autoencoder import WaveletAutoEncoder
-from .utils.wavelet_transform import WaveletTransform
+from .utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 from .training.ae_trainer import AE_Trainer
 
 __all__ = [

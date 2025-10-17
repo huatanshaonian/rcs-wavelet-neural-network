@@ -43,7 +43,7 @@ class AutoEncoderExtension:
 
         # 数据预处理设置
         self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
-        self.main_gui.ae_log_transform = tk.BooleanVar(value=False)  # 默认关闭对数变换
+        self.main_gui.ae_db_transform = tk.BooleanVar(value=False)  # 默认关闭dB变换
 
         # 对比分析设置
         self.comparison_batch_size = tk.IntVar(value=20)
@@ -165,10 +165,10 @@ class AutoEncoderExtension:
         ttk.Label(preprocess_frame, text="   • Z-score标准化，每个频率独立",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
-        # 对数变换选项
-        ttk.Checkbutton(preprocess_frame, text="📊 对数变换 (Log Transform)",
-                       variable=self.main_gui.ae_log_transform).pack(anchor=tk.W)
-        ttk.Label(preprocess_frame, text="   • sign(x)*log(|x|)，压缩动态范围",
+        # dB变换选项
+        ttk.Checkbutton(preprocess_frame, text="📊 dB变换 (10*log10)",
+                       variable=self.main_gui.ae_db_transform).pack(anchor=tk.W)
+        ttk.Label(preprocess_frame, text="   • 适用于RCS数据，压缩6个数量级",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
         # 警告提示
@@ -456,7 +456,7 @@ class AutoEncoderExtension:
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
-            log_transform = self.main_gui.ae_log_transform.get()  # 从GUI读取
+            db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取
 
             # 创建系统（使用frequency_config的扩展参数）
             self.main_gui.ae_system = create_autoencoder_system(
@@ -471,7 +471,7 @@ class AutoEncoderExtension:
 
             # 手动更新data_adapter配置
             self.main_gui.ae_system['data_adapter'].normalize = normalize
-            self.main_gui.ae_system['data_adapter'].log_transform = log_transform
+            self.main_gui.ae_system['data_adapter'].db_transform = db_transform
 
             # 添加数据
             self.main_gui.ae_system['rcs_data'] = self.main_gui.rcs_data
@@ -511,7 +511,7 @@ class AutoEncoderExtension:
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
-            log_transform = self.main_gui.ae_log_transform.get()  # 从GUI读取
+            db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取
 
             # 创建小波增强系统
             self.main_gui.ae_log("🌊 创建小波增强系统...")
@@ -525,7 +525,7 @@ class AutoEncoderExtension:
                 architecture=architecture_type
             )
             # 更新data_adapter配置
-            self.wavelet_system['data_adapter'].log_transform = log_transform
+            self.wavelet_system['data_adapter'].db_transform = db_transform
 
             # 创建直接系统
             self.main_gui.ae_log("🔄 创建直接系统...")
@@ -539,7 +539,7 @@ class AutoEncoderExtension:
                 architecture=architecture_type
             )
             # 更新data_adapter配置
-            self.direct_system['data_adapter'].log_transform = log_transform
+            self.direct_system['data_adapter'].db_transform = db_transform
 
             # 添加数据到两个系统
             for system in [self.wavelet_system, self.direct_system]:
