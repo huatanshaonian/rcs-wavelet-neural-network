@@ -2946,14 +2946,29 @@ class RCSWaveletGUI:
                         predicted_latents = parameter_mapper(batch_params)
                         predicted_output = autoencoder.decode(predicted_latents)
 
+                        # ⚠️ 关键修复：decoder输出在标准化空间，必须逆变换回原始RCS空间
                         # 根据模式处理输出
                         if mode == 'wavelet':
-                            # 小波模式：小波系数 → RCS
-                            predicted_rcs = wavelet_transform.inverse_transform(predicted_output)
+                            # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                            if data_adapter:
+                                # Step 1: 逆标准化（逆dB + 逆Z-score）
+                                predicted_output_np = predicted_output.cpu().numpy()
+                                predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
+                                predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                            else:
+                                predicted_coeffs = predicted_output
+
+                            # Step 2: 逆小波变换
+                            predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
                             predicted_rcs = predicted_rcs.to(device)
                         else:
-                            # 直接模式：直接输出RCS
-                            predicted_rcs = predicted_output
+                            # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
+                            if data_adapter:
+                                predicted_output_np = predicted_output.cpu().numpy()
+                                predicted_rcs = data_adapter.inverse_adapt(predicted_output_np)
+                                predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+                            else:
+                                predicted_rcs = predicted_output
 
                     # 计算损失
                     loss = torch.nn.functional.mse_loss(predicted_rcs, batch_rcs)
