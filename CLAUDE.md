@@ -1,6 +1,6 @@
 # Claude项目上下文文档
 
-> **最后更新**: 2025-01-14
+> **最后更新**: 2025-01-18
 > **项目**: RCS预测AutoEncoder系统
 > **核心技术**: PyTorch + 小波变换 + AutoEncoder
 
@@ -153,6 +153,12 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - `perf`: 性能优化
 - `test`: 测试相关
 
+**描述规范** (重要！)：
+- ✅ 简短且具体描述出错原因："decoder输出缺少逆标准化"
+- ✅ 清晰说明技术细节："预测RCS值停留在标准化空间"
+- ❌ 避免模糊描述："修复XXX的严重Bug"
+- ❌ 避免情绪化用词："严重"、"重大"等
+
 ### 代码规范
 
 1. **AutoEncoder模型必须提供统一接口**
@@ -226,7 +232,52 @@ Co-Authored-By: Claude <noreply@anthropic.com>
      - **标准化 (normalize)**: Z-score标准化，每个频率独立进行（强烈推荐）
      - **对数变换 (log_transform)**: sign(x)*log(|x|)，压缩动态范围（可选）
 
-4. **损失计算必须sample-weighted**
+4. **⚠️ decoder输出必须正确逆变换！**
+   - **关键原则**: decoder输出在**标准化空间**，任何评估/可视化前必须逆变换到原始RCS空间
+   - **训练时**: 损失在标准化空间计算（正确✅）
+   - **推理时**: decoder输出必须逆变换（容易漏！❌）
+
+   ```python
+   # ✅ 正确：Three Stage评估/可视化
+   predicted_latents = parameter_mapper(params)
+   predicted_output = autoencoder.decode(predicted_latents)  # 标准化空间
+
+   # 获取data_adapter
+   data_adapter = self.ae_system.get('data_adapter', None)
+
+   if mode == 'wavelet':
+       # Wavelet: 标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+       if data_adapter:
+           predicted_output_np = predicted_output.cpu().numpy()
+           predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
+           predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+       predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+   else:
+       # Direct: 标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
+       if data_adapter:
+           predicted_output_np = predicted_output.cpu().numpy()
+           predicted_rcs = data_adapter.inverse_adapt(predicted_output_np)
+           predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+
+   # ❌ 错误1：Wavelet模式只做逆小波，忘记逆标准化
+   predicted_rcs = wavelet_transform.inverse_transform(predicted_output)  # ❌
+
+   # ❌ 错误2：Direct模式直接使用decoder输出
+   predicted_rcs = predicted_output  # ❌ 停留在标准化空间！
+   ```
+
+   - **为什么容易出错**:
+     - 训练代码不需要逆变换，容易形成思维定势
+     - 小波模式的逆小波变换容易让人误以为已经完成全部逆变换
+     - Direct模式更容易忘记，因为没有逆小波这个提示
+
+   - **检查清单**:
+     - [ ] 评估函数调用了`data_adapter.inverse_adapt()`？
+     - [ ] 可视化函数调用了`data_adapter.inverse_adapt()`？
+     - [ ] 统计对比函数调用了`data_adapter.inverse_adapt()`？
+     - [ ] 任何显示/保存RCS预测值的地方都逆变换了？
+
+5. **损失计算必须sample-weighted**
    ```python
    # ❌ 错误：batch averaging
    train_loss += loss.item()
@@ -241,7 +292,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
    - 原因: 训练集用`drop_last=True`，验证集用`drop_last=False`
    - 最后一个batch可能更小，不能给予相同权重
 
-3. **小波变换统一使用CorrectWaveletTransform**
+6. **小波变换统一使用CorrectWaveletTransform**
    - 所有小波操作必须通过`correct_wavelet_transform.py`
    - 不要直接调用pywt（确保一致性）
 
@@ -478,6 +529,38 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 ---
 
 ## 🔄 最近更新记录
+
+### 2025-01-18
+
+1. **decoder输出缺少逆标准化步骤** (数据后处理Bug修复)
+   - **问题**: Three Stage评估和可视化函数中，decoder输出在标准化空间未逆变换
+   - **影响**:
+     - 评估指标不准确（基于错误的数据空间）
+     - 所有可视化图形显示错误的数值范围（-3~+3而非0.00000009~0.5）
+     - 残差图、MSE/RMSE/MAE指标无法反映真实误差
+   - **根本原因**:
+     - 训练时损失在标准化空间计算（正确）
+     - 推理时decoder输出直接使用，忘记逆变换回原始RCS空间
+     - Wavelet模式只做了逆小波变换，缺少逆标准化
+     - Direct模式完全缺少逆dB和逆Z-score变换
+   - **修复内容**:
+     - `gui.py:2949-2971` - 修复`_evaluate_autoencoder_model`评估函数
+     - `gui.py:7571-7602` - 修复`_plot_ae_comparison`对比图函数
+     - `gui.py:7392-7416` - 修复`_plot_ae_2d_heatmap` 2D热图函数
+     - `gui.py:4172-4193` - 修复`_plot_global_statistics_comparison`统计对比函数
+   - **修复方案**:
+     ```python
+     # Wavelet: decoder输出 → 逆标准化 → 逆小波变换 → RCS
+     # Direct: decoder输出 → 逆标准化（逆dB + 逆Z-score） → RCS
+     ```
+   - **预期效果**:
+     - 评估指标准确反映模型性能
+     - 可视化显示正确的RCS值范围
+     - 残差图真实展示预测误差
+   - **代码规范更新**:
+     - 添加"decoder输出必须正确逆变换"规范（代码规范#4）
+     - 添加检查清单防止类似错误
+   - **Commits**: 832ddd8 (评估函数), b39e8a8 (3个可视化函数)
 
 ### 2025-01-14
 
