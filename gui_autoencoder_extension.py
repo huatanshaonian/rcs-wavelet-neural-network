@@ -151,6 +151,8 @@ class AutoEncoderExtension:
 
         # 绑定模式变化事件（根据模式启用/禁用小波设置）
         self.main_gui.ae_mode.trace('w', self._on_mode_change)
+        # 绑定标准化选项变化事件（影响dB变换）
+        self.main_gui.ae_normalize.trace('w', self._on_mode_change)
 
         # 3. 数据预处理配置组
         preprocess_group = ttk.LabelFrame(left_column, text="🔧 数据预处理")
@@ -165,10 +167,11 @@ class AutoEncoderExtension:
         ttk.Label(preprocess_frame, text="   • Z-score标准化，每个频率独立",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
-        # dB变换选项
-        ttk.Checkbutton(preprocess_frame, text="📊 dB变换 (10*log10)",
-                       variable=self.main_gui.ae_db_transform).pack(anchor=tk.W)
-        ttk.Label(preprocess_frame, text="   • 适用于RCS数据，压缩6个数量级",
+        # dB变换选项（只读显示，由系统根据模式自动决定）
+        self.db_checkbox = ttk.Checkbutton(preprocess_frame, text="📊 dB变换 (10*log10)",
+                       variable=self.main_gui.ae_db_transform, state='disabled')
+        self.db_checkbox.pack(anchor=tk.W)
+        ttk.Label(preprocess_frame, text="   • 系统根据模式自动决定 (Direct模式自动启用)",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
         # 警告提示
@@ -385,6 +388,15 @@ class AutoEncoderExtension:
         else:
             self.wavelet_combo.configure(state="disabled")
 
+        # 根据模式和标准化选项自动更新dB变换复选框
+        normalize = self.main_gui.ae_normalize.get()
+        if mode == "direct" and normalize:
+            # Direct模式 + 标准化 → 自动启用dB
+            self.main_gui.ae_db_transform.set(True)
+        else:
+            # Wavelet模式或未启用标准化 → 不使用dB
+            self.main_gui.ae_db_transform.set(False)
+
         # 更新状态显示
         self._update_status_display()
 
@@ -456,9 +468,9 @@ class AutoEncoderExtension:
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
-            db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取
 
             # 创建系统（使用frequency_config的扩展参数）
+            # 注意：db_transform由mode自动决定，不需要手动设置
             self.main_gui.ae_system = create_autoencoder_system(
                 config_name=freq_config,
                 latent_dim=latent_dim,
@@ -469,9 +481,7 @@ class AutoEncoderExtension:
                 architecture=architecture_type
             )
 
-            # 手动更新data_adapter配置
-            self.main_gui.ae_system['data_adapter'].normalize = normalize
-            self.main_gui.ae_system['data_adapter'].db_transform = db_transform
+            # data_adapter的normalize和db_transform已由系统自动设置，无需手动覆盖
 
             # 添加数据
             self.main_gui.ae_system['rcs_data'] = self.main_gui.rcs_data
@@ -511,9 +521,9 @@ class AutoEncoderExtension:
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
-            db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取
 
             # 创建小波增强系统
+            # 注意：Wavelet模式自动不使用dB变换
             self.main_gui.ae_log("🌊 创建小波增强系统...")
             self.wavelet_system = create_autoencoder_system(
                 config_name=freq_config,
@@ -524,10 +534,9 @@ class AutoEncoderExtension:
                 mode='wavelet',
                 architecture=architecture_type
             )
-            # 更新data_adapter配置
-            self.wavelet_system['data_adapter'].db_transform = db_transform
 
             # 创建直接系统
+            # 注意：Direct模式自动使用dB变换（如果normalize=True）
             self.main_gui.ae_log("🔄 创建直接系统...")
             self.direct_system = create_autoencoder_system(
                 config_name=freq_config,
@@ -538,8 +547,6 @@ class AutoEncoderExtension:
                 mode='direct',
                 architecture=architecture_type
             )
-            # 更新data_adapter配置
-            self.direct_system['data_adapter'].db_transform = db_transform
 
             # 添加数据到两个系统
             for system in [self.wavelet_system, self.direct_system]:
