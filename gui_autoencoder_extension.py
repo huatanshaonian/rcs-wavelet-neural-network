@@ -91,274 +91,215 @@ class AutoEncoderExtension:
         self._create_right_panel(right_panel)
 
     def _create_left_panel(self, parent):
-        """创建左侧配置面板"""
+        """创建左侧配置面板（两列布局）"""
+        # 创建两列容器
+        columns_frame = ttk.Frame(parent)
+        columns_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 左列
+        left_column = ttk.Frame(columns_frame)
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+
+        # 右列
+        right_column = ttk.Frame(columns_frame)
+        right_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0))
+
+        # === 左列配置组 ===
+
         # 1. 模式选择组
-        mode_group = ttk.LabelFrame(parent, text="🔄 AutoEncoder模式选择")
+        mode_group = ttk.LabelFrame(left_column, text="🔄 AutoEncoder模式")
         mode_group.pack(fill=tk.X, pady=(0, 10))
 
         mode_frame = ttk.Frame(mode_group)
         mode_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 模式选择单选按钮
-        ttk.Radiobutton(mode_frame, text="🌊 小波增强模式 (Wavelet)",
+        # 模式选择单选按钮（精简版）
+        ttk.Radiobutton(mode_frame, text="🌊 小波增强 (Wavelet)",
                        variable=self.main_gui.ae_mode, value="wavelet").pack(anchor=tk.W)
-        ttk.Label(mode_frame, text="   • 输入：RCS [91×91×2] → 小波变换 → [49×49×8] → AutoEncoder",
-                 font=self.main_gui.font_small).pack(anchor=tk.W)
-        ttk.Label(mode_frame, text="   • 优势：特征分离、数据量小、训练快、精度高",
-                 font=self.main_gui.font_small).pack(anchor=tk.W)
-
         ttk.Radiobutton(mode_frame, text="🔄 直接模式 (Direct)",
-                       variable=self.main_gui.ae_mode, value="direct").pack(anchor=tk.W, pady=(10, 0))
-        ttk.Label(mode_frame, text="   • 输入：RCS [91×91×2] → 直接输入AutoEncoder (无小波变换)",
-                 font=self.main_gui.font_small).pack(anchor=tk.W)
-        ttk.Label(mode_frame, text="   • 优势：端到端处理、无额外变换、部署简单",
-                 font=self.main_gui.font_small).pack(anchor=tk.W)
+                       variable=self.main_gui.ae_mode, value="direct").pack(anchor=tk.W, pady=(5, 0))
 
         # 2. 模型架构配置组
-        model_group = ttk.LabelFrame(parent, text="🏗️ 模型架构配置")
+        model_group = ttk.LabelFrame(left_column, text="🏗️ 模型架构")
         model_group.pack(fill=tk.X, pady=(0, 10))
 
         model_frame = ttk.Frame(model_group)
         model_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 第一行
-        ttk.Label(model_frame, text="隐空间维度:").grid(row=0, column=0, sticky="w", padx=(0, 5))
-        ttk.Entry(model_frame, textvariable=self.main_gui.ae_latent_dim, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
-        ttk.Label(model_frame, text="Dropout率:").grid(row=0, column=2, sticky="w", padx=(0, 5))
+        ttk.Label(model_frame, text="隐空间:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(model_frame, textvariable=self.main_gui.ae_latent_dim, width=8).grid(row=0, column=1, sticky="w")
+        ttk.Label(model_frame, text="Dropout:").grid(row=0, column=2, sticky="w", padx=(10, 0))
         ttk.Entry(model_frame, textvariable=self.main_gui.ae_dropout_rate, width=8).grid(row=0, column=3, sticky="w")
 
-        # 第二行（架构和小波设置）
-        ttk.Label(model_frame, text="架构类型:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        # 第二行
+        ttk.Label(model_frame, text="架构:").grid(row=1, column=0, sticky="w", pady=(5, 0))
         architecture_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_architecture_type,
-                                         values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP"], state="readonly", width=15)
-        architecture_combo.grid(row=1, column=1, sticky="w", pady=(5, 0))
+                                         values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP"], state="readonly", width=12)
+        architecture_combo.grid(row=1, column=1, columnspan=3, sticky="ew", pady=(5, 0))
 
-        ttk.Label(model_frame, text="小波类型:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
+        # 第三行
+        ttk.Label(model_frame, text="小波:").grid(row=2, column=0, sticky="w", pady=(5, 0))
         self.wavelet_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_wavelet_type,
-                                         values=["db4", "db8", "haar", "bior2.2"], state="readonly", width=8)
-        self.wavelet_combo.grid(row=1, column=3, sticky="w", pady=(5, 0))
+                                         values=["db4", "db8", "haar", "bior2.2"], state="readonly", width=12)
+        self.wavelet_combo.grid(row=2, column=1, columnspan=3, sticky="ew", pady=(5, 0))
 
         # 绑定模式变化事件
         self.main_gui.ae_mode.trace('w', self._on_mode_change)
 
         # 3. 数据预处理配置组
-        preprocess_group = ttk.LabelFrame(parent, text="🔧 数据预处理配置")
+        preprocess_group = ttk.LabelFrame(left_column, text="🔧 数据预处理")
         preprocess_group.pack(fill=tk.X, pady=(0, 10))
 
         preprocess_frame = ttk.Frame(preprocess_group)
         preprocess_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 标准化选项
-        normalize_check = ttk.Checkbutton(
-            preprocess_frame,
-            text="✅ 数据标准化 (Normalize)",
-            variable=self.main_gui.ae_normalize
-        )
-        normalize_check.pack(anchor=tk.W, pady=(0, 5))
-
-        # 说明文字
-        ttk.Label(
-            preprocess_frame,
-            text="   • 对每个频率独立进行 Z-score 标准化 (mean=0, std=1)",
-            font=self.main_gui.font_small,
-            foreground="gray"
-        ).pack(anchor=tk.W, pady=(0, 5))
+        ttk.Checkbutton(preprocess_frame, text="✅ 标准化",
+                       variable=self.main_gui.ae_normalize).pack(anchor=tk.W)
 
         # 对数变换选项
-        log_check = ttk.Checkbutton(
-            preprocess_frame,
-            text="📊 对数变换 (Log Transform)",
-            variable=self.main_gui.ae_log_transform
-        )
-        log_check.pack(anchor=tk.W, pady=(5, 5))
-
-        # 说明文字
-        ttk.Label(
-            preprocess_frame,
-            text="   • 对数据进行 sign(x)*log(|x|) 变换，压缩动态范围",
-            font=self.main_gui.font_small,
-            foreground="gray"
-        ).pack(anchor=tk.W, pady=(0, 5))
-
-        # 警告提示
-        ttk.Label(
-            preprocess_frame,
-            text="⚠️ 标准化强烈推荐开启，对数变换视数据分布选用",
-            font=self.main_gui.font_small,
-            foreground="orange"
-        ).pack(anchor=tk.W, pady=(5, 0))
+        ttk.Checkbutton(preprocess_frame, text="📊 对数变换",
+                       variable=self.main_gui.ae_log_transform).pack(anchor=tk.W, pady=(5, 0))
 
         # 4. 训练配置组
-        training_group = ttk.LabelFrame(parent, text="🎯 训练配置")
+        training_group = ttk.LabelFrame(left_column, text="🎯 训练配置")
         training_group.pack(fill=tk.X, pady=(0, 10))
 
         training_frame = ttk.Frame(training_group)
         training_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 第一行
-        ttk.Label(training_frame, text="批次大小:").grid(row=0, column=0, sticky="w", padx=(0, 5))
-        ttk.Entry(training_frame, textvariable=self.main_gui.ae_batch_size, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
+        ttk.Label(training_frame, text="批次:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_batch_size, width=8).grid(row=0, column=1, sticky="w")
+        ttk.Label(training_frame, text="阶段1:").grid(row=0, column=2, sticky="w", padx=(10, 0))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage1, width=8).grid(row=0, column=3, sticky="w")
 
-        # 第二行：训练轮数
-        ttk.Label(training_frame, text="阶段1(AE预训练):").grid(row=0, column=2, sticky="w", padx=(10, 5))
-        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage1, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+        # 第二行
+        ttk.Label(training_frame, text="阶段2:").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage2, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(training_frame, text="阶段3:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage3, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
-        ttk.Label(training_frame, text="阶段2(参数映射):").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage2, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
-
-        ttk.Label(training_frame, text="阶段3(端到端):").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage3, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+        # === 右列配置组 ===
 
         # 5. 学习率调度配置组
-        lr_group = ttk.LabelFrame(parent, text="📈 学习率调度配置")
+        lr_group = ttk.LabelFrame(right_column, text="📈 学习率调度")
         lr_group.pack(fill=tk.X, pady=(0, 10))
 
         lr_frame = ttk.Frame(lr_group)
         lr_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 第一行：调度策略和初始学习率
-        ttk.Label(lr_frame, text="调度策略:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        # 第一行
+        ttk.Label(lr_frame, text="策略:").grid(row=0, column=0, sticky="w")
         lr_scheduler_combo = ttk.Combobox(lr_frame, textvariable=self.main_gui.ae_lr_scheduler,
                                         values=['constant', 'cosine_restart', 'cosine_simple', 'adaptive'],
                                         state="readonly", width=12)
-        lr_scheduler_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+        lr_scheduler_combo.grid(row=0, column=1, columnspan=3, sticky="ew")
 
-        ttk.Label(lr_frame, text="初始学习率:").grid(row=0, column=2, sticky="w", padx=(10, 5))
-        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_learning_rate, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
+        # 第二行
+        ttk.Label(lr_frame, text="初始LR:").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_learning_rate, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(lr_frame, text="最小LR:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_min_lr, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
-        # 第二行：最小学习率和重启周期
-        ttk.Label(lr_frame, text="最小学习率:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
-        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_min_lr, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
-
-        ttk.Label(lr_frame, text="重启周期:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
-        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_restart_period, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+        # 第三行
+        ttk.Label(lr_frame, text="重启:").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_restart_period, width=8).grid(row=2, column=1, sticky="w", pady=(5, 0))
 
         # 6. 早停配置组
-        patience_group = ttk.LabelFrame(parent, text="⏹️ 早停配置")
+        patience_group = ttk.LabelFrame(right_column, text="⏹️ 早停配置")
         patience_group.pack(fill=tk.X, pady=(0, 10))
 
         patience_frame = ttk.Frame(patience_group)
         patience_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 第一行：阶段1和2早停耐心值
-        ttk.Label(patience_frame, text="阶段1耐心:").grid(row=0, column=0, sticky="w", padx=(0, 5))
-        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage1, width=8).grid(row=0, column=1, sticky="w", padx=(0, 10))
+        # 第一行
+        ttk.Label(patience_frame, text="阶段1:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage1, width=8).grid(row=0, column=1, sticky="w")
+        ttk.Label(patience_frame, text="阶段2:").grid(row=0, column=2, sticky="w", padx=(10, 0))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage2, width=8).grid(row=0, column=3, sticky="w")
 
-        ttk.Label(patience_frame, text="阶段2耐心:").grid(row=0, column=2, sticky="w", padx=(10, 5))
-        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage2, width=8).grid(row=0, column=3, sticky="w", padx=(0, 10))
-
-        # 第二行：阶段3和端到端早停耐心值
-        ttk.Label(patience_frame, text="阶段3耐心:").grid(row=1, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
-        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage3, width=8).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=(5, 0))
-
-        ttk.Label(patience_frame, text="端到端耐心:").grid(row=1, column=2, sticky="w", padx=(10, 5), pady=(5, 0))
-        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_e2e, width=8).grid(row=1, column=3, sticky="w", padx=(0, 10), pady=(5, 0))
+        # 第二行
+        ttk.Label(patience_frame, text="阶段3:").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_stage3, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(patience_frame, text="E2E:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_e2e, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
         # 7. 损失函数配置组
-        loss_group = ttk.LabelFrame(parent, text="🔧 损失函数配置")
+        loss_group = ttk.LabelFrame(right_column, text="🔧 损失函数")
         loss_group.pack(fill=tk.X, pady=(0, 10))
 
         loss_frame = ttk.Frame(loss_group)
         loss_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Checkbutton(loss_frame, text="使用自定义损失函数", variable=self.main_gui.ae_use_custom_loss).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(loss_frame, text="配置损失函数", command=self.main_gui._open_loss_config_for_ae).pack(side=tk.LEFT)
+        ttk.Checkbutton(loss_frame, text="自定义损失", variable=self.main_gui.ae_use_custom_loss).pack(anchor=tk.W)
+        ttk.Button(loss_frame, text="配置", command=self.main_gui._open_loss_config_for_ae).pack(fill=tk.X, pady=(5, 0))
 
         # 8. 训练控制组
-        training_control_group = ttk.LabelFrame(parent, text="⚙️ 训练控制")
+        training_control_group = ttk.LabelFrame(right_column, text="⚙️ 训练控制")
         training_control_group.pack(fill=tk.X, pady=(0, 10))
 
         training_control_frame = ttk.Frame(training_control_group)
         training_control_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 训练模式选择
-        ttk.Label(training_control_frame, text="训练模式:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        ttk.Label(training_control_frame, text="模式:").grid(row=0, column=0, sticky="w")
         mode_combo = ttk.Combobox(training_control_frame, textvariable=self.main_gui.ae_training_mode,
                                 values=["三阶段训练", "端到端训练", "仅Stage 1"], state="readonly", width=12)
-        mode_combo.grid(row=0, column=1, sticky="w", padx=(0, 10))
+        mode_combo.grid(row=0, column=1, columnspan=3, sticky="ew")
 
-        # 按钮组
+        # 按钮组（紧凑排列）
         button_frame = ttk.Frame(training_control_frame)
-        button_frame.grid(row=1, column=0, columnspan=4, sticky="w", pady=(10, 0))
+        button_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(5, 0))
 
-        # 注意：创建系统按钮已移至下方"系统操作"区域的"创建当前模式系统"
-        ttk.Button(button_frame, text="开始训练", command=self.main_gui.start_ae_training).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="停止训练", command=self.main_gui.stop_ae_training).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="保存模型", command=self.main_gui.save_ae_model).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="加载模型", command=self.main_gui.load_ae_model).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="保存参数", command=self.main_gui.save_ae_params).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="加载参数", command=self.main_gui.load_ae_params).pack(side=tk.LEFT)
+        ttk.Button(button_frame, text="开始", command=self.main_gui.start_ae_training, width=6).pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(button_frame, text="停止", command=self.main_gui.stop_ae_training, width=6).pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(button_frame, text="保存", command=self.main_gui.save_ae_model, width=6).pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(button_frame, text="加载", command=self.main_gui.load_ae_model, width=6).pack(side=tk.LEFT)
 
-        # 9. 系统操作组（扩展功能）
-        ops_group = ttk.LabelFrame(parent, text="🔧 系统操作（扩展功能）")
+        # 9. 系统操作组
+        ops_group = ttk.LabelFrame(right_column, text="🔧 系统操作")
         ops_group.pack(fill=tk.X, pady=(0, 10))
 
         ops_frame = ttk.Frame(ops_group)
         ops_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 单个系统创建
-        ttk.Button(ops_frame, text="创建当前模式系统",
-                  command=self.create_current_system).pack(fill=tk.X, pady=(0, 5))
-
-        # 双系统创建和对比
-        ttk.Button(ops_frame, text="🔄 创建双系统 (对比分析)",
-                  command=self.create_dual_systems).pack(fill=tk.X, pady=(0, 5))
-
-        ttk.Button(ops_frame, text="📊 性能对比分析",
-                  command=self.run_performance_comparison).pack(fill=tk.X, pady=(0, 5))
+        ttk.Button(ops_frame, text="创建系统", command=self.create_current_system).pack(fill=tk.X, pady=(0, 3))
+        ttk.Button(ops_frame, text="创建双系统", command=self.create_dual_systems).pack(fill=tk.X, pady=(0, 3))
+        ttk.Button(ops_frame, text="性能对比", command=self.run_performance_comparison).pack(fill=tk.X)
 
         # 10. 小波分析组
-        wavelet_group = ttk.LabelFrame(parent, text="🌊 小波变换分析")
+        wavelet_group = ttk.LabelFrame(right_column, text="🌊 小波分析")
         wavelet_group.pack(fill=tk.X, pady=(0, 10))
 
         wavelet_frame = ttk.Frame(wavelet_group)
         wavelet_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 模型和频率选择
-        model_select_frame = ttk.Frame(wavelet_frame)
-        model_select_frame.pack(fill=tk.X, pady=(0, 5))
-
-        ttk.Label(model_select_frame, text="分析模型:").pack(side=tk.LEFT)
-        self.wavelet_model_selection = ttk.Combobox(model_select_frame,
-                                                   values=["001"], width=10, state="readonly")
+        # 第一行：模型和频率
+        sel_frame1 = ttk.Frame(wavelet_frame)
+        sel_frame1.pack(fill=tk.X, pady=(0, 3))
+        ttk.Label(sel_frame1, text="模型:").pack(side=tk.LEFT)
+        self.wavelet_model_selection = ttk.Combobox(sel_frame1, values=["001"], width=6, state="readonly")
         self.wavelet_model_selection.pack(side=tk.LEFT, padx=(5, 10))
         self.wavelet_model_selection.set("001")
-
-        ttk.Label(model_select_frame, text="频率:").pack(side=tk.LEFT)
-        self.wavelet_freq_selection = ttk.Combobox(model_select_frame,
-                                                   values=["1.5G", "3G", "6G"], width=8, state="readonly")
-        self.wavelet_freq_selection.pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Label(sel_frame1, text="频率:").pack(side=tk.LEFT)
+        self.wavelet_freq_selection = ttk.Combobox(sel_frame1, values=["1.5G", "3G", "6G"], width=6, state="readonly")
+        self.wavelet_freq_selection.pack(side=tk.LEFT, padx=5)
         self.wavelet_freq_selection.set("1.5G")
 
-        # 数据类型选择
-        data_type_frame = ttk.Frame(wavelet_frame)
-        data_type_frame.pack(fill=tk.X, pady=(0, 5))
-
-        ttk.Label(data_type_frame, text="数据类型:").pack(side=tk.LEFT)
+        # 第二行：数据类型和小波类型
+        sel_frame2 = ttk.Frame(wavelet_frame)
+        sel_frame2.pack(fill=tk.X, pady=(0, 3))
         self.wavelet_data_type = tk.StringVar(value="dB")
-        ttk.Radiobutton(data_type_frame, text="分贝(dB)", variable=self.wavelet_data_type,
-                       value="dB").pack(side=tk.LEFT, padx=(5, 10))
-        ttk.Radiobutton(data_type_frame, text="原始数据", variable=self.wavelet_data_type,
-                       value="linear").pack(side=tk.LEFT)
+        ttk.Radiobutton(sel_frame2, text="dB", variable=self.wavelet_data_type, value="dB").pack(side=tk.LEFT)
+        ttk.Radiobutton(sel_frame2, text="线性", variable=self.wavelet_data_type, value="linear").pack(side=tk.LEFT, padx=(5, 10))
+        ttk.Label(sel_frame2, text="小波:").pack(side=tk.LEFT)
+        wavelet_combo = ttk.Combobox(sel_frame2, textvariable=self.wavelet_analysis_wavelet,
+                                     values=["db4", "db8", "haar"], state="readonly", width=6)
+        wavelet_combo.pack(side=tk.LEFT, padx=5)
 
-        # 小波类型选择
-        wavelet_type_frame = ttk.Frame(wavelet_frame)
-        wavelet_type_frame.pack(fill=tk.X, pady=(0, 5))
-
-        ttk.Label(wavelet_type_frame, text="小波类型:").pack(side=tk.LEFT)
-        wavelet_combo = ttk.Combobox(wavelet_type_frame, textvariable=self.wavelet_analysis_wavelet,
-                                     values=["db1", "db2", "db4", "db6", "db8", "sym4", "sym8", "coif1", "coif2"],
-                                     state="readonly", width=10)
-        wavelet_combo.pack(side=tk.LEFT, padx=(5, 0))
-
-        # 分析选项
-        ttk.Checkbutton(wavelet_frame, text="显示小波系数",
-                       variable=self.wavelet_show_coeffs).pack(anchor=tk.W)
-        ttk.Checkbutton(wavelet_frame, text="显示统计分析",
-                       variable=self.wavelet_show_stats).pack(anchor=tk.W)
-
-        ttk.Button(wavelet_frame, text="🔬 运行小波分析",
-                  command=self.run_wavelet_analysis).pack(fill=tk.X, pady=(5, 0))
+        ttk.Button(wavelet_frame, text="运行分析", command=self.run_wavelet_analysis).pack(fill=tk.X)
 
 
     def _create_right_panel(self, parent):
@@ -367,17 +308,30 @@ class AutoEncoderExtension:
         self.result_notebook = ttk.Notebook(parent)
         self.result_notebook.pack(fill=tk.BOTH, expand=True)
 
-        # 1. 系统状态标签页
-        status_frame = ttk.Frame(self.result_notebook)
-        self.result_notebook.add(status_frame, text="系统状态")
+        # 1. 日志和状态标签页 (默认显示)
+        log_frame = ttk.Frame(self.result_notebook)
+        self.result_notebook.add(log_frame, text="日志与状态")
 
-        # 状态文本
-        self.status_text = tk.Text(status_frame, wrap=tk.WORD, height=15, font=self.main_gui.font_small)
-        status_scrollbar = ttk.Scrollbar(status_frame, orient=tk.VERTICAL, command=self.status_text.yview)
+        # 顶部：系统状态显示区域 (精简版)
+        status_group = ttk.LabelFrame(log_frame, text="系统状态")
+        status_group.pack(fill=tk.X, padx=5, pady=5)
+
+        # 状态文本（精简，只显示5行）
+        self.status_text = tk.Text(status_group, wrap=tk.WORD, height=5, font=self.main_gui.font_small)
+        status_scrollbar = ttk.Scrollbar(status_group, orient=tk.VERTICAL, command=self.status_text.yview)
         self.status_text.configure(yscrollcommand=status_scrollbar.set)
 
-        self.status_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        status_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.status_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        status_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 5), pady=5)
+
+        # 底部：完整日志显示区域
+        log_group = ttk.LabelFrame(log_frame, text="完整日志")
+        log_group.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
+        # 重新创建ae_log_text组件 (显示所有输出)
+        import tkinter.scrolledtext as scrolledtext
+        self.main_gui.ae_log_text = scrolledtext.ScrolledText(log_group, wrap=tk.WORD, font=self.main_gui.font_small)
+        self.main_gui.ae_log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # 2. 对比分析标签页
         comparison_frame = ttk.Frame(self.result_notebook)
@@ -395,17 +349,8 @@ class AutoEncoderExtension:
         self.wavelet_canvas_frame = ttk.Frame(wavelet_frame)
         self.wavelet_canvas_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 4. 训练日志标签页 (重要: 重新创建ae_log_text组件)
-        log_frame = ttk.Frame(self.result_notebook)
-        self.result_notebook.add(log_frame, text="训练日志")
-
-        # 重新创建ae_log_text组件 (修复日志销毁问题)
-        import tkinter.scrolledtext as scrolledtext
-        self.main_gui.ae_log_text = scrolledtext.ScrolledText(log_frame, height=20, width=50, font=self.main_gui.font_small)
-        self.main_gui.ae_log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # 重新创建ae_status_text组件 (系统状态)
-        self.main_gui.ae_status_text = self.status_text  # 复用状态文本组件
+        # 重新创建ae_status_text组件 (系统状态) - 保持向后兼容
+        self.main_gui.ae_status_text = self.status_text
 
         # 初始状态更新
         self._update_status_display()
@@ -424,42 +369,34 @@ class AutoEncoderExtension:
         self._update_status_display()
 
     def _update_status_display(self):
-        """更新状态显示"""
+        """更新状态显示（精简版）"""
         self.status_text.delete(1.0, tk.END)
 
         # 更新模型选择列表
         self._update_model_selection()
 
+        # 精简状态信息
         status_info = []
-        status_info.append("=== AutoEncoder 扩展状态 ===")
-        status_info.append(f"当前模式: {self.main_gui.ae_mode.get()}")
-        status_info.append(f"频率配置: {self.main_gui.ae_freq_config.get()}")
-        status_info.append(f"隐空间维度: {self.main_gui.ae_latent_dim.get()}")
+        mode = self.main_gui.ae_mode.get()
+        freq_config = self.main_gui.ae_freq_config.get()
+        latent_dim = self.main_gui.ae_latent_dim.get()
 
-        if hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system:
-            status_info.append(f"主系统状态: 已创建")
-            mode = self.main_gui.ae_system.get('mode', '未知')
-            status_info.append(f"主系统模式: {mode}")
+        # 第一行：基本配置
+        status_info.append(f"模式: {mode} | 频率: {freq_config} | 隐空间: {latent_dim}")
 
-        status_info.append("")
-        status_info.append("=== 双系统状态 ===")
-        status_info.append(f"小波系统: {'已创建' if self.wavelet_system else '未创建'}")
-        status_info.append(f"直接系统: {'已创建' if self.direct_system else '未创建'}")
+        # 第二行：系统状态
+        main_sys = "✓" if (hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system) else "✗"
+        dual_sys = "✓" if (self.wavelet_system and self.direct_system) else "✗"
+        status_info.append(f"主系统: {main_sys} | 双系统: {dual_sys}")
 
+        # 第三行：对比结果（如果有）
         if self.comparison_results:
-            status_info.append("")
-            status_info.append("=== 对比分析结果 ===")
-            status_info.append(f"测试完成时间: {self.comparison_results.get('timestamp', '未知')}")
-            status_info.append(f"测试样本数: {self.comparison_results.get('sample_count', 0)}")
-
-        status_info.append("")
-        status_info.append("=== 操作提示 ===")
-        status_info.append("1. 选择模式并创建系统")
-        status_info.append("2. 加载数据后可运行对比分析")
-        status_info.append("3. 小波分析可独立运行")
+            timestamp = self.comparison_results.get('timestamp', '未知')
+            sample_count = self.comparison_results.get('sample_count', 0)
+            status_info.append(f"对比分析: {timestamp} ({sample_count}样本)")
 
         for line in status_info:
-            self.status_text.insert(tk.END, line + "\\n")
+            self.status_text.insert(tk.END, line + "\n")
 
     def _update_model_selection(self):
         """更新模型选择列表"""
