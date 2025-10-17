@@ -6171,8 +6171,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
             if data_adapter is None:
                 # 如果没有adapter，创建默认的（不应该发生）
                 from autoencoder.utils.data_adapters import RCS_DataAdapter
-                data_adapter = RCS_DataAdapter(normalize=True, db_transform=False)
-                self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
+                current_mode = self.ae_system.get('mode', 'direct')
+                data_adapter = RCS_DataAdapter(normalize=True, mode=current_mode)
+                self.ae_log(f"⚠️ 未找到data_adapter，使用默认配置 (mode={current_mode})")
 
             # ⚠️ 关键: 数据处理顺序
             # Wavelet模式: 原始RCS(线性) → 小波变换(线性域) → dB变换 → Z-score标准化
@@ -6349,8 +6350,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
             data_adapter = self.ae_system.get('data_adapter', None)
             if data_adapter is None:
                 from autoencoder.utils.data_adapters import RCS_DataAdapter
-                data_adapter = RCS_DataAdapter(normalize=True, db_transform=False)
-                self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
+                current_mode = self.ae_system.get('mode', 'direct')
+                data_adapter = RCS_DataAdapter(normalize=True, mode=current_mode)
+                self.ae_log(f"⚠️ 未找到data_adapter，使用默认配置 (mode={current_mode})")
 
             # 应用数据预处理（必须与Stage 1保持一致）
             param_tensor = torch.FloatTensor(param_data)
@@ -6526,8 +6528,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
             data_adapter = self.ae_system.get('data_adapter', None)
             if data_adapter is None:
                 from autoencoder.utils.data_adapters import RCS_DataAdapter
-                data_adapter = RCS_DataAdapter(normalize=True, db_transform=False)
-                self.ae_log("⚠️ 未找到data_adapter，使用默认配置")
+                current_mode = self.ae_system.get('mode', 'direct')
+                data_adapter = RCS_DataAdapter(normalize=True, mode=current_mode)
+                self.ae_log(f"⚠️ 未找到data_adapter，使用默认配置 (mode={current_mode})")
 
             # 应用数据预处理（必须与Stage 1和Stage 2保持一致）
             param_tensor = torch.FloatTensor(param_data)

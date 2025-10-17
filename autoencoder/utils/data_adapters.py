@@ -17,19 +17,28 @@ class RCS_DataAdapter:
 
     def __init__(self,
                  normalize: bool = True,
-                 db_transform: bool = False,
+                 mode: str = 'direct',
                  expected_frequencies: int = 2):
         """
         初始化数据适配器
 
+        ⚠️ 自动化策略（mode-aware）：
+        - Direct模式：normalize时自动应用dB变换（压缩541万倍动态范围）
+        - Wavelet模式：只用Z-score标准化（小波系数已压缩，且37%负值）
+
         Args:
             normalize: 是否标准化数据
-            db_transform: 是否进行dB变换 (10*log10)
+            mode: 数据模式 ('direct' or 'wavelet')
             expected_frequencies: 预期频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
         """
         self.normalize = normalize
-        self.db_transform = db_transform
+        self.mode = mode.lower()
         self.expected_frequencies = expected_frequencies
+
+        # 根据模式自动决定是否用dB变换
+        # Direct模式：RCS原始数据（541万倍动态范围）→ 需要dB压缩
+        # Wavelet模式：小波系数（已压缩，37%负值）→ 只用Z-score
+        self.db_transform = (self.mode == 'direct' and self.normalize)
 
         # 数据统计信息
         self.data_stats = {}
@@ -40,16 +49,18 @@ class RCS_DataAdapter:
         适配RCS数据（或小波系数）
 
         ⚠️ 重要：输入必须是线性域数据
-        - 对于Wavelet模式：输入是小波变换后的系数（线性域）
-        - 对于Direct模式：输入是原始RCS数据（线性域）
+
+        处理流程（自动化，mode-aware）：
+        - Direct模式：RCS原始数据 → dB变换 → Z-score标准化
+        - Wavelet模式：小波系数 → Z-score标准化（跳过dB）
 
         Args:
             rcs_data: [N, H, W, C] 线性域数据
-                     Wavelet模式: [N, 49, 49, 8] 小波系数
-                     Direct模式: [N, 91, 91, 2] 原始RCS
+                     Wavelet模式: [N, 49, 49, 8] 小波系数（已压缩）
+                     Direct模式: [N, 91, 91, 2] 原始RCS（需dB压缩）
 
         Returns:
-            adapted_data: [N, H, W, C] 处理后的数据（dB变换+标准化）
+            adapted_data: [N, H, W, C] 处理后的数据
         """
         # 确保数据格式正确
         if len(rcs_data.shape) != 4:
@@ -57,13 +68,12 @@ class RCS_DataAdapter:
 
         data = rcs_data.copy()
 
-        # Step 1: dB变换（在线性域数据上）
+        # Step 1: dB变换（仅Direct模式，自动应用）
         if self.db_transform:
-            # ⚠️ 重要假设：RCS线性数据总是正值（0.000001~1范围）
-            # 小波系数可能有小部分负值，需要保留符号信息
-            # 策略：保存符号，对绝对值取dB
-            self._sign_mask = (data < 0)  # 保存负值掩码
-            data = 10 * np.log10(np.clip(np.abs(data), 1e-10, None))
+            # Direct模式：RCS原始数据全为正值（0.00000009 ~ 0.5）
+            # dB变换：压缩541万倍动态范围 → 67dB范围
+            # 小值权重提升：0.00000009 → -70dB（获得合理表示）
+            data = 10 * np.log10(np.clip(data, 1e-10, None))
 
         # Step 2: Z-score标准化
         if self.normalize:
@@ -105,13 +115,10 @@ class RCS_DataAdapter:
             std = self.data_stats['std']
             data = data * std + mean
 
-        # Step 2: 逆dB变换
+        # Step 2: 逆dB变换（仅Direct模式）
         if self.db_transform:
-            # 逆dB：10^(dB/10) 恢复绝对值
+            # dB → 线性：10^(dB/10)
             data = 10 ** (data / 10)
-            # 恢复符号（如果保存了负值掩码）
-            if hasattr(self, '_sign_mask') and self._sign_mask is not None:
-                data[self._sign_mask] = -data[self._sign_mask]
 
         return data
 
@@ -227,7 +234,7 @@ def test_data_adapters():
 
     print(f"2频率原始数据: RCS {rcs_data_2freq.shape}, 参数 {params_data.shape}")
 
-    adapter_2freq = RCS_DataAdapter(normalize=True, db_transform=False, expected_frequencies=2)
+    adapter_2freq = RCS_DataAdapter(normalize=True, mode='wavelet', expected_frequencies=2)
 
     # 适配2频率数据
     adapted_rcs_2freq = adapter_2freq.adapt_rcs_data(rcs_data_2freq)
@@ -247,7 +254,7 @@ def test_data_adapters():
     rcs_data_3freq = np.random.randn(n_samples, 91, 91, 3) * 10
     print(f"3频率原始数据: RCS {rcs_data_3freq.shape}")
 
-    adapter_3freq = RCS_DataAdapter(normalize=True, db_transform=False, expected_frequencies=3)
+    adapter_3freq = RCS_DataAdapter(normalize=True, mode='wavelet', expected_frequencies=3)
     adapted_rcs_3freq = adapter_3freq.adapt_rcs_data(rcs_data_3freq)
     print(f"3频率适配后RCS形状: {adapted_rcs_3freq.shape}")
 

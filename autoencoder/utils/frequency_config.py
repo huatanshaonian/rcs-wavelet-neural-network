@@ -132,26 +132,30 @@ class FrequencyConfig:
 
     def create_data_adapter(self,
                           normalize: bool = True,
-                          log_transform: bool = False) -> RCS_DataAdapter:
+                          mode: str = 'direct') -> RCS_DataAdapter:
         """
         创建对应配置的数据适配器
 
+        自动化策略（mode-aware）：
+        - Direct模式：normalize时自动应用dB变换
+        - Wavelet模式：只用Z-score标准化
+
         Args:
             normalize: 是否标准化
-            log_transform: 是否对数变换
+            mode: 数据模式 ('direct' or 'wavelet')
 
         Returns:
             RCS_DataAdapter实例
         """
         adapter = RCS_DataAdapter(
             normalize=normalize,
-            log_transform=log_transform,
+            mode=mode,
             expected_frequencies=self.config['num_frequencies']
         )
 
         print(f"创建{self.config_name}配置的数据适配器:")
         print(f"  - 标准化: {normalize}")
-        print(f"  - 对数变换: {log_transform}")
+        print(f"  - 模式: {mode} ({'dB+Z-score' if mode=='direct' and normalize else 'Z-score' if normalize else '无预处理'})")
         print(f"  - 预期频率数: {self.config['num_frequencies']}")
 
         return adapter
@@ -303,7 +307,7 @@ def create_autoencoder_system(config_name: str = '2freq',
             )
             print(f"使用 DirectAutoEncoder (标准CNN)")
 
-    data_adapter = freq_config.create_data_adapter(normalize)
+    data_adapter = freq_config.create_data_adapter(normalize, mode=mode)
     parameter_mapper = freq_config.create_parameter_mapper(latent_dim=latent_dim)
 
     # 打印模型参数信息
