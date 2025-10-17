@@ -38,7 +38,8 @@
       "Bash(cd:*)",
       "Bash(git rev-list:*)",
       "Bash(git log:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(del test_db_auto_toggle.py)"
     ],
     "deny": [],
     "ask": []
