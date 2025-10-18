@@ -240,6 +240,14 @@ class RCSWaveletGUI:
         self.ae_epochs_stage2 = tk.StringVar(value="50")   # 参数映射训练轮数
         self.ae_epochs_stage3 = tk.StringVar(value="20")   # 端到端微调轮数
 
+        # 优化器配置
+        self.ae_optimizer_type = tk.StringVar(value="adam")  # adam/adamw/sgd - 优化算法选择
+        self.ae_weight_decay = tk.StringVar(value="1e-4")    # L2正则化，防止过拟合
+        self.ae_momentum = tk.StringVar(value="0.9")         # SGD动量参数，加速收敛
+
+        # 数据划分
+        self.ae_validation_split = tk.StringVar(value="0.2")  # 验证集比例，用于早停和模型选择
+
         # 学习率调度配置 (复用项目标准配置)
         self.ae_lr_scheduler = tk.StringVar(value="constant")
         self.ae_min_lr = tk.StringVar(value="1e-5")

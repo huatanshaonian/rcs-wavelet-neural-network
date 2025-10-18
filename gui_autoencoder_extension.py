@@ -197,6 +197,31 @@ class AutoEncoderExtension:
         ttk.Label(training_frame, text="阶段3(E2E):").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
         ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage3, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
+        # 5. 优化器配置组
+        optimizer_group = ttk.LabelFrame(left_column, text="⚙️ 优化器配置")
+        optimizer_group.pack(fill=tk.X, pady=(0, 10))
+
+        optimizer_frame = ttk.Frame(optimizer_group)
+        optimizer_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：优化器类型和权重衰减
+        ttk.Label(optimizer_frame, text="优化器:").grid(row=0, column=0, sticky="w")
+        optimizer_combo = ttk.Combobox(optimizer_frame, textvariable=self.main_gui.ae_optimizer_type,
+                                      values=["adam", "adamw", "sgd"], state="readonly", width=8)
+        optimizer_combo.grid(row=0, column=1, sticky="w")
+        ttk.Label(optimizer_frame, text="权重衰减:").grid(row=0, column=2, sticky="w", padx=(10, 0))
+        ttk.Entry(optimizer_frame, textvariable=self.main_gui.ae_weight_decay, width=8).grid(row=0, column=3, sticky="w")
+
+        # 第二行：动量和验证集比例
+        ttk.Label(optimizer_frame, text="动量(SGD):").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(optimizer_frame, textvariable=self.main_gui.ae_momentum, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(optimizer_frame, text="验证集比例:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(optimizer_frame, textvariable=self.main_gui.ae_validation_split, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
+
+        # 参数说明（简短注释）
+        ttk.Label(optimizer_frame, text="提示: 权重衰减=L2正则化，防止过拟合；验证集用于早停和模型选择",
+                 font=self.main_gui.font_small, foreground="gray", wraplength=280).grid(row=2, column=0, columnspan=4, sticky="w", pady=(5, 0))
+
         # === 右列配置组 ===
 
         # 5. 学习率调度配置组
@@ -290,8 +315,12 @@ class AutoEncoderExtension:
         ttk.Button(ops_frame, text="创建双系统 (对比)", command=self.create_dual_systems).pack(fill=tk.X, pady=(0, 3))
         # 运行性能对比分析
         ttk.Button(ops_frame, text="运行性能对比", command=self.run_performance_comparison).pack(fill=tk.X, pady=(0, 3))
-        # 打开训练配置窗口
-        ttk.Button(ops_frame, text="训练配置管理", command=self.open_training_config).pack(fill=tk.X)
+
+        # 配置文件管理（两按钮并排）
+        config_button_frame = ttk.Frame(ops_frame)
+        config_button_frame.pack(fill=tk.X, pady=(3, 0))
+        ttk.Button(config_button_frame, text="💾 保存配置", command=self.save_ae_config, width=11).pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(config_button_frame, text="📂 加载配置", command=self.load_ae_config, width=11).pack(side=tk.LEFT)
 
         # 10. 小波分析组
         wavelet_group = ttk.LabelFrame(right_column, text="🌊 小波变换分析")
@@ -565,16 +594,191 @@ class AutoEncoderExtension:
             self.main_gui.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
-    def open_training_config(self):
-        """打开训练配置管理窗口"""
+    def save_ae_config(self):
+        """保存AE训练配置到JSON文件"""
         try:
-            from gui_training_config import create_training_config_window
-            config_window, config_gui = create_training_config_window(self.main_gui)
-            self.main_gui.ae_log("⚙️ 打开训练配置管理窗口")
+            import json
+            from datetime import datetime
+
+            # 收集所有AE配置参数
+            config_data = {
+                "metadata": {
+                    "saved_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "version": "1.0",
+                    "description": "AutoEncoder训练配置"
+                },
+                "model": {
+                    "mode": self.main_gui.ae_mode.get(),
+                    "freq_config": self.main_gui.ae_freq_config.get(),
+                    "latent_dim": int(self.main_gui.ae_latent_dim.get()),
+                    "dropout_rate": float(self.main_gui.ae_dropout_rate.get()),
+                    "wavelet_type": self.main_gui.ae_wavelet_type.get(),
+                    "architecture_type": self.main_gui.ae_architecture_type.get()
+                },
+                "preprocessing": {
+                    "normalize": self.main_gui.ae_normalize.get(),
+                    "db_transform": self.main_gui.ae_db_transform.get()
+                },
+                "training": {
+                    "batch_size": int(self.main_gui.ae_batch_size.get()),
+                    "learning_rate": float(self.main_gui.ae_learning_rate.get()),
+                    "epochs_stage1": int(self.main_gui.ae_epochs_stage1.get()),
+                    "epochs_stage2": int(self.main_gui.ae_epochs_stage2.get()),
+                    "epochs_stage3": int(self.main_gui.ae_epochs_stage3.get()),
+                    "training_mode": self.main_gui.ae_training_mode.get()
+                },
+                "optimizer": {
+                    "optimizer_type": self.main_gui.ae_optimizer_type.get(),
+                    "weight_decay": float(self.main_gui.ae_weight_decay.get()),
+                    "momentum": float(self.main_gui.ae_momentum.get())
+                },
+                "data_split": {
+                    "validation_split": float(self.main_gui.ae_validation_split.get())
+                },
+                "learning_rate_schedule": {
+                    "scheduler": self.main_gui.ae_lr_scheduler.get(),
+                    "min_lr": float(self.main_gui.ae_min_lr.get()),
+                    "restart_period": int(self.main_gui.ae_restart_period.get())
+                },
+                "early_stopping": {
+                    "patience_stage1": int(self.main_gui.ae_patience_stage1.get()),
+                    "patience_stage2": int(self.main_gui.ae_patience_stage2.get()),
+                    "patience_stage3": int(self.main_gui.ae_patience_stage3.get()),
+                    "patience_e2e": int(self.main_gui.ae_patience_e2e.get())
+                },
+                "loss": {
+                    "use_custom_loss": self.main_gui.ae_use_custom_loss.get()
+                }
+            }
+
+            # 弹出保存文件对话框
+            file_path = filedialog.asksaveasfilename(
+                title="保存AE配置",
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                initialfile=f"ae_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            )
+
+            if file_path:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, indent=2, ensure_ascii=False)
+                self.main_gui.ae_log(f"✅ 配置已保存到: {file_path}")
+                messagebox.showinfo("保存成功", f"配置已保存到:\n{file_path}")
+
         except Exception as e:
-            error_msg = f"打开训练配置窗口失败: {e}"
+            error_msg = f"保存配置失败: {e}"
             self.main_gui.ae_log(f"❌ {error_msg}")
-            messagebox.showerror("错误", error_msg)
+            messagebox.showerror("保存失败", error_msg)
+
+    def load_ae_config(self):
+        """从JSON文件加载AE训练配置"""
+        try:
+            import json
+
+            # 弹出打开文件对话框
+            file_path = filedialog.askopenfilename(
+                title="加载AE配置",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+
+            if not file_path:
+                return
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+
+            # 加载模型配置
+            model_config = config_data.get("model", {})
+            if "mode" in model_config:
+                self.main_gui.ae_mode.set(model_config["mode"])
+            if "freq_config" in model_config:
+                self.main_gui.ae_freq_config.set(model_config["freq_config"])
+            if "latent_dim" in model_config:
+                self.main_gui.ae_latent_dim.set(str(model_config["latent_dim"]))
+            if "dropout_rate" in model_config:
+                self.main_gui.ae_dropout_rate.set(str(model_config["dropout_rate"]))
+            if "wavelet_type" in model_config:
+                self.main_gui.ae_wavelet_type.set(model_config["wavelet_type"])
+            if "architecture_type" in model_config:
+                self.main_gui.ae_architecture_type.set(model_config["architecture_type"])
+
+            # 加载预处理配置
+            preprocess_config = config_data.get("preprocessing", {})
+            if "normalize" in preprocess_config:
+                self.main_gui.ae_normalize.set(preprocess_config["normalize"])
+            if "db_transform" in preprocess_config:
+                self.main_gui.ae_db_transform.set(preprocess_config["db_transform"])
+
+            # 加载训练配置
+            training_config = config_data.get("training", {})
+            if "batch_size" in training_config:
+                self.main_gui.ae_batch_size.set(str(training_config["batch_size"]))
+            if "learning_rate" in training_config:
+                self.main_gui.ae_learning_rate.set(str(training_config["learning_rate"]))
+            if "epochs_stage1" in training_config:
+                self.main_gui.ae_epochs_stage1.set(str(training_config["epochs_stage1"]))
+            if "epochs_stage2" in training_config:
+                self.main_gui.ae_epochs_stage2.set(str(training_config["epochs_stage2"]))
+            if "epochs_stage3" in training_config:
+                self.main_gui.ae_epochs_stage3.set(str(training_config["epochs_stage3"]))
+            if "training_mode" in training_config:
+                self.main_gui.ae_training_mode.set(training_config["training_mode"])
+
+            # 加载优化器配置
+            optimizer_config = config_data.get("optimizer", {})
+            if "optimizer_type" in optimizer_config:
+                self.main_gui.ae_optimizer_type.set(optimizer_config["optimizer_type"])
+            if "weight_decay" in optimizer_config:
+                self.main_gui.ae_weight_decay.set(str(optimizer_config["weight_decay"]))
+            if "momentum" in optimizer_config:
+                self.main_gui.ae_momentum.set(str(optimizer_config["momentum"]))
+
+            # 加载数据划分配置
+            data_split_config = config_data.get("data_split", {})
+            if "validation_split" in data_split_config:
+                self.main_gui.ae_validation_split.set(str(data_split_config["validation_split"]))
+
+            # 加载学习率调度配置
+            lr_config = config_data.get("learning_rate_schedule", {})
+            if "scheduler" in lr_config:
+                self.main_gui.ae_lr_scheduler.set(lr_config["scheduler"])
+            if "min_lr" in lr_config:
+                self.main_gui.ae_min_lr.set(str(lr_config["min_lr"]))
+            if "restart_period" in lr_config:
+                self.main_gui.ae_restart_period.set(str(lr_config["restart_period"]))
+
+            # 加载早停配置
+            es_config = config_data.get("early_stopping", {})
+            if "patience_stage1" in es_config:
+                self.main_gui.ae_patience_stage1.set(str(es_config["patience_stage1"]))
+            if "patience_stage2" in es_config:
+                self.main_gui.ae_patience_stage2.set(str(es_config["patience_stage2"]))
+            if "patience_stage3" in es_config:
+                self.main_gui.ae_patience_stage3.set(str(es_config["patience_stage3"]))
+            if "patience_e2e" in es_config:
+                self.main_gui.ae_patience_e2e.set(str(es_config["patience_e2e"]))
+
+            # 加载损失配置
+            loss_config = config_data.get("loss", {})
+            if "use_custom_loss" in loss_config:
+                self.main_gui.ae_use_custom_loss.set(loss_config["use_custom_loss"])
+
+            # 显示元数据信息
+            metadata = config_data.get("metadata", {})
+            saved_time = metadata.get("saved_time", "未知")
+            description = metadata.get("description", "")
+
+            self.main_gui.ae_log(f"✅ 配置已加载: {file_path}")
+            self.main_gui.ae_log(f"   保存时间: {saved_time}")
+            messagebox.showinfo("加载成功", f"配置已加载:\n{file_path}\n\n保存时间: {saved_time}\n{description}")
+
+            # 更新状态显示
+            self._update_status_display()
+
+        except Exception as e:
+            error_msg = f"加载配置失败: {e}"
+            self.main_gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("加载失败", error_msg)
 
     def run_performance_comparison(self):
         """运行性能对比分析"""
