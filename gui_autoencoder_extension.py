@@ -138,6 +138,7 @@ class AutoEncoderExtension:
         ttk.Entry(model_frame, textvariable=self.main_gui.ae_dropout_rate, width=8).grid(row=0, column=3, sticky="w")
 
         # 第二行：架构类型
+        # CNN: 标准4层卷积，平衡速度与性能 | Enhanced_CNN: 多尺度+注意力，大感受野 | Deep_CNN: 双卷积块，最强表达 | MLP: 全连接，参数敏感性分析
         ttk.Label(model_frame, text="架构类型:").grid(row=1, column=0, sticky="w", pady=(5, 0))
         architecture_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_architecture_type,
                                          values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP"], state="readonly", width=12)
@@ -232,6 +233,7 @@ class AutoEncoderExtension:
         lr_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 第一行：调度策略选择
+        # constant: 固定学习率 | cosine_restart: 余弦退火+周期重启 | cosine_simple: 简单余弦退火 | adaptive: 自适应调整(ReduceLROnPlateau)
         ttk.Label(lr_frame, text="调度策略:").grid(row=0, column=0, sticky="w")
         lr_scheduler_combo = ttk.Combobox(lr_frame, textvariable=self.main_gui.ae_lr_scheduler,
                                         values=['constant', 'cosine_restart', 'cosine_simple', 'adaptive'],
