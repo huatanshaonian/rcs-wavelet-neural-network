@@ -6325,12 +6325,14 @@ GPU峰值: {gpu_peak:.2f}GB"""
             if mode == 'wavelet':
                 # Wavelet模式: Step 1 - 小波变换（必须在线性域进行）
                 self.ae_log("📊 Step 1: 在原始RCS线性域数据上执行小波变换...")
-                wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
+                # ⚠️ 修复：forward_transform期望tensor输入，但rcs_data是numpy
+                rcs_tensor = torch.FloatTensor(rcs_data)
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
                 self.ae_log(f"📊 小波系数范围（线性域）: [{wavelet_coeffs.min():.4f}, {wavelet_coeffs.max():.4f}]")
 
                 # Step 2 - 预处理（dB变换 + Z-score标准化）
                 self.ae_log("📊 Step 2: 对小波系数应用预处理（dB变换 + 标准化）...")
-                # ⚠️ 修复：forward_transform返回tensor，但adapt_rcs_data期望numpy
+                # forward_transform返回tensor，但adapt_rcs_data期望numpy
                 input_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                 self.ae_log(f"📊 预处理后小波系数范围: [{input_data.min():.4f}, {input_data.max():.4f}]")
             else:
@@ -6507,8 +6509,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # ⚠️ 关键: 数据处理顺序必须与Stage 1一致
                 if mode == 'wavelet':
                     # 先小波变换，再预处理
-                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
-                    # ⚠️ 修复：forward_transform返回tensor，但adapt_rcs_data期望numpy
+                    # ⚠️ 修复：forward_transform期望tensor输入，但rcs_data是numpy
+                    rcs_tensor = torch.FloatTensor(rcs_data)
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                    # forward_transform返回tensor，但adapt_rcs_data期望numpy
                     input_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                 else:
                     # 直接预处理RCS
@@ -6681,8 +6685,10 @@ GPU峰值: {gpu_peak:.2f}GB"""
             self.ae_log(f"🔧 准备目标数据 (mode={mode})...")
             if mode == 'wavelet':
                 # 先小波变换，再预处理
-                wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
-                # ⚠️ 修复：forward_transform返回tensor，但adapt_rcs_data期望numpy
+                # ⚠️ 修复：forward_transform期望tensor输入，但rcs_data是numpy
+                rcs_tensor = torch.FloatTensor(rcs_data)
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                # forward_transform返回tensor，但adapt_rcs_data期望numpy
                 target_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                 self.ae_log(f"📊 小波系数 → 预处理后范围: [{target_data.min():.4f}, {target_data.max():.4f}]")
             else:
