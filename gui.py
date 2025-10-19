@@ -6330,7 +6330,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 # Step 2 - 预处理（dB变换 + Z-score标准化）
                 self.ae_log("📊 Step 2: 对小波系数应用预处理（dB变换 + 标准化）...")
-                input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                # ⚠️ 修复：forward_transform返回tensor，但adapt_rcs_data期望numpy
+                input_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                 self.ae_log(f"📊 预处理后小波系数范围: [{input_data.min():.4f}, {input_data.max():.4f}]")
             else:
                 # Direct模式: 直接预处理（dB变换 + Z-score标准化）
@@ -6507,7 +6508,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 if mode == 'wavelet':
                     # 先小波变换，再预处理
                     wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
-                    input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                    # ⚠️ 修复：forward_transform返回tensor，但adapt_rcs_data期望numpy
+                    input_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                 else:
                     # 直接预处理RCS
                     input_data = data_adapter.adapt_rcs_data(rcs_data)
@@ -6680,7 +6682,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
             if mode == 'wavelet':
                 # 先小波变换，再预处理
                 wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
-                target_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                # ⚠️ 修复：forward_transform返回tensor，但adapt_rcs_data期望numpy
+                target_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                 self.ae_log(f"📊 小波系数 → 预处理后范围: [{target_data.min():.4f}, {target_data.max():.4f}]")
             else:
                 # 直接预处理RCS
