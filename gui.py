@@ -4304,78 +4304,139 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 使用缓存的参数和RCS数据进行批量预测
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+                # ⚠️ 确定评估模式标识（用于图表显示）
+                if use_ae_system and parameter_mapper is None:
+                    evaluation_mode = "Stage1-Only RCS重建评估"
+                elif use_ae_system and parameter_mapper is not None:
+                    evaluation_mode = "Three-Stage 参数预测RCS评估"
+                else:
+                    evaluation_mode = "传统模型 参数预测RCS评估"
+
                 # 根据系统类型选择预测方式
                 if use_ae_system:
-                    # AutoEncoder系统预测
-                    print("使用AutoEncoder系统进行预测...")
-
-                    # ⚠️ 检测Stage1-Only模式
-                    if parameter_mapper is None:
-                        messagebox.showwarning(
-                            "警告",
-                            "无法生成统计对比：\n\n"
-                            "检测到Stage1-Only训练模式（无参数映射器）。\n\n"
-                            "统计对比功能需要从参数预测RCS，\n"
-                            "但Stage1-Only模式只训练了AutoEncoder重建，无法从参数预测。\n\n"
-                            "如需统计对比，请使用Three-Stage训练模式。"
-                        )
-                        return
-
                     autoencoder.to(device).eval()
-                    parameter_mapper.to(device).eval()
+                    data_adapter = self.ae_system.get('data_adapter', None)
 
-                    with torch.no_grad():
-                        # 批量预测所有模型
-                        params_tensor = torch.FloatTensor(param_data).to(device)
+                    # ⚠️ 区分两种评估模式
+                    if parameter_mapper is None:
+                        # ===== Stage1-Only模式：RCS重建评估 =====
+                        print("="*60)
+                        print("使用AutoEncoder系统进行重建评估（Stage1-Only模式）")
+                        print("评估目标：AutoEncoder的RCS重建能力")
+                        print("流程：真实RCS → Encoder → Decoder → 重建RCS")
+                        print("="*60)
 
-                        # 调试：检查输入参数的多样性
-                        print(f"输入参数形状: {param_data.shape}")
-                        print(f"前3个样本的参数: \n{param_data[:3]}")
-                        print(f"参数统计: min={param_data.min():.6f}, max={param_data.max():.6f}, mean={param_data.mean():.6f}, std={param_data.std():.6f}")
+                        with torch.no_grad():
+                            # 准备输入数据：RCS → 标准化（+小波变换）
+                            if wavelet_transform is not None:
+                                # Wavelet模式：RCS → 小波变换 → 标准化小波系数
+                                print("Wavelet模式：先进行小波变换...")
+                                rcs_tensor = torch.FloatTensor(rcs_data).to(device)
+                                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
 
-                        predicted_latents = parameter_mapper(params_tensor)
-
-                        # 调试：检查latent的多样性
-                        latent_np = predicted_latents.cpu().numpy()
-                        print(f"预测的latent形状: {latent_np.shape}")
-                        print(f"前3个样本的latent均值: {latent_np[:3].mean(axis=1)}")
-                        print(f"前3个样本的latent标准差: {latent_np[:3].std(axis=1)}")
-                        print(f"所有latent的整体统计: min={latent_np.min():.6f}, max={latent_np.max():.6f}, mean={latent_np.mean():.6f}, std={latent_np.std():.6f}")
-
-                        # 检查不同样本间的latent差异
-                        if len(latent_np) >= 2:
-                            latent_diff = np.abs(latent_np[0] - latent_np[1]).mean()
-                            print(f"样本1和样本2的latent平均差异: {latent_diff:.6f}")
-
-                        predicted_output = autoencoder.decode(predicted_latents)
-
-                        # ⚠️ 关键修复：decoder输出在标准化空间，必须逆变换回原始RCS空间
-                        # 获取data_adapter用于逆标准化
-                        data_adapter = self.ae_system.get('data_adapter', None)
-
-                        # 根据模式处理输出
-                        if wavelet_transform is not None:
-                            # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
-                            if data_adapter:
-                                # inverse_adapt期望tensor输入，返回numpy
-                                predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
-                                predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
+                                if data_adapter:
+                                    # 标准化小波系数
+                                    wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                                    input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                                    input_tensor = torch.FloatTensor(input_adapted).to(device)
+                                else:
+                                    input_tensor = wavelet_coeffs
                             else:
-                                predicted_coeffs = predicted_output
+                                # Direct模式：RCS → 标准化
+                                print("Direct模式：直接标准化RCS...")
+                                if data_adapter:
+                                    input_adapted = data_adapter.adapt_rcs_data(rcs_data)
+                                    input_tensor = torch.FloatTensor(input_adapted).to(device)
+                                else:
+                                    input_tensor = torch.FloatTensor(rcs_data).to(device)
 
-                            predicted_batch = wavelet_transform.inverse_transform(predicted_coeffs).cpu().numpy()
-                        else:
-                            # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
-                            if data_adapter:
-                                # inverse_adapt期望tensor输入，返回numpy
-                                predicted_batch = data_adapter.inverse_adapt(predicted_output)
+                            print(f"输入数据形状: {input_tensor.shape}")
+
+                            # AutoEncoder重建：Encode → Decode
+                            latents = autoencoder.encode(input_tensor)
+                            reconstructed_output = autoencoder.decode(latents)
+
+                            print(f"Latent形状: {latents.shape}")
+                            print(f"重建输出形状: {reconstructed_output.shape}")
+
+                            # 逆变换到RCS空间
+                            if wavelet_transform is not None:
+                                # 小波模式：逆标准化 → 逆小波变换 → RCS
+                                if data_adapter:
+                                    reconstructed_coeffs_np = data_adapter.inverse_adapt(reconstructed_output)
+                                    reconstructed_coeffs = torch.FloatTensor(reconstructed_coeffs_np).to(device)
+                                else:
+                                    reconstructed_coeffs = reconstructed_output
+
+                                predicted_batch = wavelet_transform.inverse_transform(reconstructed_coeffs).cpu().numpy()
                             else:
-                                predicted_batch = predicted_output.cpu().numpy()
+                                # 直接模式：逆标准化 → RCS
+                                if data_adapter:
+                                    predicted_batch = data_adapter.inverse_adapt(reconstructed_output)
+                                else:
+                                    predicted_batch = reconstructed_output.cpu().numpy()
 
-                        # 调试：检查预测输出的多样性
-                        print(f"预测输出形状: {predicted_batch.shape}")
-                        print(f"前3个样本的预测RCS均值: {[predicted_batch[i].mean() for i in range(min(3, len(predicted_batch)))]}")
-                        print(f"前3个样本的预测RCS标准差: {[predicted_batch[i].std() for i in range(min(3, len(predicted_batch)))]}")
+                            print(f"重建RCS形状: {predicted_batch.shape}")
+                            print(f"前3个样本的重建RCS均值: {[predicted_batch[i].mean() for i in range(min(3, len(predicted_batch)))]}")
+
+                    else:
+                        # ===== Three-Stage模式：参数预测RCS =====
+                        print("="*60)
+                        print("使用AutoEncoder系统进行参数预测评估（Three-Stage模式）")
+                        print("评估目标：从参数预测RCS的能力")
+                        print("流程：参数 → ParameterMapper → Decoder → 预测RCS")
+                        print("="*60)
+
+                        parameter_mapper.to(device).eval()
+
+                        with torch.no_grad():
+                            # 批量预测所有模型
+                            params_tensor = torch.FloatTensor(param_data).to(device)
+
+                            # 调试：检查输入参数的多样性
+                            print(f"输入参数形状: {param_data.shape}")
+                            print(f"前3个样本的参数: \n{param_data[:3]}")
+                            print(f"参数统计: min={param_data.min():.6f}, max={param_data.max():.6f}, mean={param_data.mean():.6f}, std={param_data.std():.6f}")
+
+                            predicted_latents = parameter_mapper(params_tensor)
+
+                            # 调试：检查latent的多样性
+                            latent_np = predicted_latents.cpu().numpy()
+                            print(f"预测的latent形状: {latent_np.shape}")
+                            print(f"前3个样本的latent均值: {latent_np[:3].mean(axis=1)}")
+                            print(f"前3个样本的latent标准差: {latent_np[:3].std(axis=1)}")
+                            print(f"所有latent的整体统计: min={latent_np.min():.6f}, max={latent_np.max():.6f}, mean={latent_np.mean():.6f}, std={latent_np.std():.6f}")
+
+                            # 检查不同样本间的latent差异
+                            if len(latent_np) >= 2:
+                                latent_diff = np.abs(latent_np[0] - latent_np[1]).mean()
+                                print(f"样本1和样本2的latent平均差异: {latent_diff:.6f}")
+
+                            predicted_output = autoencoder.decode(predicted_latents)
+
+                            # 根据模式处理输出
+                            if wavelet_transform is not None:
+                                # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                                if data_adapter:
+                                    # inverse_adapt期望tensor输入，返回numpy
+                                    predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                                    predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
+                                else:
+                                    predicted_coeffs = predicted_output
+
+                                predicted_batch = wavelet_transform.inverse_transform(predicted_coeffs).cpu().numpy()
+                            else:
+                                # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
+                                if data_adapter:
+                                    # inverse_adapt期望tensor输入，返回numpy
+                                    predicted_batch = data_adapter.inverse_adapt(predicted_output)
+                                else:
+                                    predicted_batch = predicted_output.cpu().numpy()
+
+                            # 调试：检查预测输出的多样性
+                            print(f"预测输出形状: {predicted_batch.shape}")
+                            print(f"前3个样本的预测RCS均值: {[predicted_batch[i].mean() for i in range(min(3, len(predicted_batch)))]}")
+                            print(f"前3个样本的预测RCS标准差: {[predicted_batch[i].std() for i in range(min(3, len(predicted_batch)))]}")
                 else:
                     # 传统模型预测
                     print("使用传统神经网络模型进行预测...")
@@ -4535,25 +4596,40 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 准备设备
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-                # 准备模型进行批量预测
-                if use_ae_system:
-                    print("使用AutoEncoder系统进行预测...")
+                # ⚠️ 区分两种评估模式（文件读取路径）
+                is_stage1_only = use_ae_system and parameter_mapper is None
+
+                # 确定评估模式标识（用于图表显示）
+                if is_stage1_only:
+                    evaluation_mode = "Stage1-Only RCS重建评估"
+                elif use_ae_system:
+                    evaluation_mode = "Three-Stage 参数预测RCS评估"
+                else:
+                    evaluation_mode = "传统模型 参数预测RCS评估"
+
+                if is_stage1_only:
+                    # Stage1-Only模式：RCS重建评估
+                    print("="*60)
+                    print("文件读取模式 - Stage1-Only RCS重建评估")
+                    print("评估目标：AutoEncoder的RCS重建能力")
+                    print("="*60)
                     autoencoder.to(device).eval()
-                    if parameter_mapper is not None:
+                    data_adapter = self.ae_system.get('data_adapter', None)
+                else:
+                    # Three-Stage或传统模型：参数预测评估
+                    print("="*60)
+                    print("文件读取模式 - 参数预测RCS评估")
+                    print("="*60)
+                    if use_ae_system:
+                        autoencoder.to(device).eval()
                         parameter_mapper.to(device).eval()
-                elif has_model:
-                    print("使用传统神经网络模型进行预测...")
-                    self.current_model.to(device).eval()
+                        data_adapter = self.ae_system.get('data_adapter', None)
+                    elif has_model:
+                        self.current_model.to(device).eval()
 
                 # 遍历每个模型进行预测和统计
                 for model_id in available_models:
                     try:
-                        model_idx = int(model_id) - 1  # CSV行索引（从0开始）
-
-                        if model_idx >= len(param_data_full):
-                            print(f"跳过模型 {model_id}: 参数数据索引越界")
-                            continue
-
                         # 读取真实RCS数据
                         data_1_5g = rv.get_rcs_matrix(model_id, "1.5G", rcs_dir)
                         data_3g = rv.get_rcs_matrix(model_id, "3G", rcs_dir)
@@ -4561,45 +4637,85 @@ GPU峰值: {gpu_peak:.2f}GB"""
                         actual_1_5g = data_1_5g['rcs_linear'].flatten()
                         actual_3g = data_3g['rcs_linear'].flatten()
 
-                        # ===== 使用真实模型进行预测 =====
-                        model_params = param_data_full[model_idx:model_idx+1]  # [1, num_params]
+                        # 组合为完整RCS数据 [1, 91, 91, 2]
+                        rcs_matrix = np.stack([data_1_5g['rcs_linear'], data_3g['rcs_linear']], axis=-1)
+                        rcs_input = rcs_matrix[np.newaxis, ...]  # [1, 91, 91, 2]
 
                         with torch.no_grad():
-                            params_tensor = torch.FloatTensor(model_params).to(device)
+                            if is_stage1_only:
+                                # ===== Stage1-Only模式：RCS → 重建RCS =====
+                                # 准备输入
+                                if wavelet_transform is not None:
+                                    # Wavelet模式：RCS → 小波变换 → 标准化
+                                    rcs_tensor = torch.FloatTensor(rcs_input).to(device)
+                                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
 
-                            if use_ae_system:
-                                # AutoEncoder系统预测
-                                if parameter_mapper is not None:
-                                    # Three-Stage模式: 参数 → latent → RCS
-                                    predicted_latents = parameter_mapper(params_tensor)
-                                    predicted_output = autoencoder.decode(predicted_latents)
+                                    if data_adapter:
+                                        wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                                        input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                                    else:
+                                        input_tensor = wavelet_coeffs
                                 else:
-                                    # Stage1-Only模式: 无法从参数预测，跳过
-                                    print(f"跳过模型 {model_id}: Stage1-Only模式无法从参数预测")
+                                    # Direct模式：RCS → 标准化
+                                    if data_adapter:
+                                        input_adapted = data_adapter.adapt_rcs_data(rcs_input)
+                                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                                    else:
+                                        input_tensor = torch.FloatTensor(rcs_input).to(device)
+
+                                # 重建
+                                latents = autoencoder.encode(input_tensor)
+                                reconstructed_output = autoencoder.decode(latents)
+
+                                # 逆变换
+                                if wavelet_transform is not None:
+                                    if data_adapter:
+                                        reconstructed_coeffs_np = data_adapter.inverse_adapt(reconstructed_output)
+                                        reconstructed_coeffs = torch.FloatTensor(reconstructed_coeffs_np).to(device)
+                                    else:
+                                        reconstructed_coeffs = reconstructed_output
+
+                                    predicted_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs).cpu().numpy()
+                                else:
+                                    if data_adapter:
+                                        predicted_rcs = data_adapter.inverse_adapt(reconstructed_output)
+                                    else:
+                                        predicted_rcs = reconstructed_output.cpu().numpy()
+
+                            else:
+                                # ===== Three-Stage或传统模型：参数 → 预测RCS =====
+                                model_idx = int(model_id) - 1
+
+                                if model_idx >= len(param_data_full):
+                                    print(f"跳过模型 {model_id}: 参数数据索引越界")
                                     continue
 
-                                # 获取data_adapter用于逆变换
-                                data_adapter = self.ae_system.get('data_adapter', None)
+                                model_params = param_data_full[model_idx:model_idx+1]  # [1, num_params]
+                                params_tensor = torch.FloatTensor(model_params).to(device)
 
-                                # 根据模式处理输出
-                                if wavelet_transform is not None:
-                                    # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
-                                    if data_adapter:
-                                        predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
-                                        predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
+                                if use_ae_system:
+                                    # Three-Stage模式
+                                    predicted_latents = parameter_mapper(params_tensor)
+                                    predicted_output = autoencoder.decode(predicted_latents)
+
+                                    # 逆变换
+                                    if wavelet_transform is not None:
+                                        if data_adapter:
+                                            predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                                            predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
+                                        else:
+                                            predicted_coeffs = predicted_output
+
+                                        predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs).cpu().numpy()
                                     else:
-                                        predicted_coeffs = predicted_output
-
-                                    predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs).cpu().numpy()
+                                        if data_adapter:
+                                            predicted_rcs = data_adapter.inverse_adapt(predicted_output)
+                                        else:
+                                            predicted_rcs = predicted_output.cpu().numpy()
                                 else:
-                                    # 直接模式：标准化RCS → 逆标准化 → RCS
-                                    if data_adapter:
-                                        predicted_rcs = data_adapter.inverse_adapt(predicted_output)
-                                    else:
-                                        predicted_rcs = predicted_output.cpu().numpy()
-                            else:
-                                # 传统模型预测
-                                predicted_rcs = self.current_model(params_tensor).cpu().numpy()
+                                    # 传统模型
+                                    predicted_rcs = self.current_model(params_tensor).cpu().numpy()
 
                             # 提取预测的两个频率 [1, 91, 91, 2/3]
                             pred_rcs_1d = predicted_rcs[0]  # [91, 91, 2/3]
@@ -4692,7 +4808,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             r1 = np.corrcoef(actual_means_dbsm, predicted_means_dbsm)[0,1]
             ax1.set_xlabel('真实均值 (dBsm)')
             ax1.set_ylabel('预测均值 (dBsm)')
-            ax1.set_title(f'1.5GHz 模型均值对比\nR = {r1:.4f}, 模型数: {len(model_ids)}')
+            ax1.set_title(f'1.5GHz 模型均值对比\nR = {r1:.4f}, 模型数: {len(model_ids)}\n[{evaluation_mode}]')
             ax1.legend()
             ax1.grid(True, alpha=0.3)
 
@@ -4717,7 +4833,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
             r2 = np.corrcoef(actual_means_dbsm_3g, predicted_means_dbsm_3g)[0,1]
             ax2.set_xlabel('真实均值 (dBsm)')
             ax2.set_ylabel('预测均值 (dBsm)')
-            ax2.set_title(f'3GHz 模型均值对比\nR = {r2:.4f}, 模型数: {len(model_ids)}')
+            ax2.set_title(f'3GHz 模型均值对比\nR = {r2:.4f}, 模型数: {len(model_ids)}\n[{evaluation_mode}]')
             ax2.legend()
             ax2.grid(True, alpha=0.3)
 
