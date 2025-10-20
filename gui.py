@@ -4270,8 +4270,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
             parameter_mapper = None
             wavelet_transform = None
 
-            # 检查数据来源：优先使用ae_system，其次使用self.rcs_data
+            # 检查数据来源：优先使用ae_system中的数据，否则使用self.rcs_data/param_data
             if has_ae_system and 'rcs_data' in self.ae_system and 'param_data' in self.ae_system:
+                # 情况1: ae_system中有数据缓存（训练后立即统计）
                 print("检测到AutoEncoder系统缓存数据")
                 has_param_data = True
                 has_rcs_data = True
@@ -4284,14 +4285,26 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 use_ae_system = True
                 print(f"AutoEncoder数据形状: 参数={param_data.shape}, RCS={rcs_data.shape}")
             else:
-                # 降级到传统模型数据
+                # 情况2/3: 使用数据管理页面加载的数据
                 has_param_data = hasattr(self, 'param_data') and self.param_data is not None
                 has_rcs_data = hasattr(self, 'rcs_data') and self.rcs_data is not None
                 if has_param_data and has_rcs_data:
                     param_data = self.param_data
                     rcs_data = self.rcs_data
-                    print(f"传统模型缓存数据形状: 参数={param_data.shape}, RCS={rcs_data.shape}")
-                use_ae_system = False
+
+                    # ⚠️ 关键修复：如果有AE系统，从ae_system获取模型组件
+                    if has_ae_system:
+                        # 情况2: 加载了模型 + 加载了数据（数据管理页面）
+                        print("使用数据管理页面的数据 + AutoEncoder模型")
+                        autoencoder = self.ae_system.get('autoencoder')
+                        parameter_mapper = self.ae_system.get('parameter_mapper')
+                        wavelet_transform = self.ae_system.get('wavelet_transform', None)
+                        use_ae_system = True
+                        print(f"AutoEncoder数据形状: 参数={param_data.shape}, RCS={rcs_data.shape}")
+                    else:
+                        # 情况3: 只有传统模型
+                        print(f"传统模型缓存数据形状: 参数={param_data.shape}, RCS={rcs_data.shape}")
+                        use_ae_system = False
 
             print(f"缓存数据检查: AE系统={has_ae_system}, 传统模型={has_model}, 参数数据={has_param_data}, RCS数据={has_rcs_data}")
 
