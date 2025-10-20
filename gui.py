@@ -1221,7 +1221,7 @@ class RCSWaveletGUI:
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.vis_type_var = tk.StringVar(value="2D热图")
         type_combo = ttk.Combobox(control_frame, textvariable=self.vis_type_var,
-                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "差值分析", "相关性分析",
+                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "差值分析", "相关性分析",
                                         "训练历史", "统计对比", "AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度"],
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
@@ -2842,7 +2842,7 @@ class RCSWaveletGUI:
         # 更新评估结果显示
         self._update_evaluation_display()
 
-    def _reconstruct_rcs(self, input_data=None, input_type='auto', model_ids=None, return_latents=False):
+    def _reconstruct_rcs(self, input_data=None, input_type='auto', model_ids=None, return_latents=False, return_wavelet_coeffs=False):
         """
         统一的RCS重建函数 - 支持多种输入方式
 
@@ -2863,11 +2863,14 @@ class RCSWaveletGUI:
             model_ids: 模型ID列表（当input_type='model_ids'时使用）
                 - 可以是字符串列表 ['001', '002'] 或整数列表 [0, 1]
             return_latents: 是否返回隐空间表示（默认False）
+            return_wavelet_coeffs: 是否返回小波系数（仅Wavelet模式，默认False）
 
         Returns:
             dict: {
                 'reconstructed_rcs': np.ndarray [N, 91, 91, num_freq] 重建的RCS（线性域）
                 'latents': np.ndarray [N, latent_dim] 隐空间表示（如果return_latents=True）
+                'original_wavelet_coeffs': np.ndarray [N, 49, 49, 8] 原始小波系数（如果return_wavelet_coeffs=True且mode='wavelet'）
+                'reconstructed_wavelet_coeffs': np.ndarray [N, 49, 49, 8] 重建小波系数（如果return_wavelet_coeffs=True且mode='wavelet'）
                 'input_type_used': str 实际使用的输入类型
                 'training_mode': str 训练模式
             }
@@ -2887,6 +2890,10 @@ class RCSWaveletGUI:
         autoencoder.to(device).eval()
         if training_mode == 'three_stage':
             parameter_mapper.to(device).eval()
+
+        # 初始化小波系数变量
+        original_wavelet_coeffs_np = None
+        reconstructed_wavelet_coeffs_np = None
 
         # 2. 确定输入类型
         if input_type == 'auto':
@@ -2949,6 +2956,25 @@ class RCSWaveletGUI:
                         predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
                     else:
                         predicted_coeffs = decoder_output
+                        predicted_coeffs_np = predicted_coeffs.cpu().numpy()
+
+                    # 保存重建的小波系数（如果需要）
+                    if return_wavelet_coeffs:
+                        reconstructed_wavelet_coeffs_np = predicted_coeffs_np.copy()
+                        # 获取原始RCS并计算原始小波系数（用于对比）
+                        if model_ids is not None:
+                            # 从数据集获取真实RCS
+                            indices = []
+                            for mid in model_ids:
+                                if isinstance(mid, str):
+                                    indices.append(int(mid) - 1)
+                                else:
+                                    indices.append(int(mid))
+                            original_rcs = self.ae_system['rcs_data'][indices]
+                            # 计算原始小波系数
+                            original_rcs_tensor = torch.FloatTensor(original_rcs).to(device)
+                            original_coeffs = wavelet_transform.forward_transform(original_rcs_tensor)
+                            original_wavelet_coeffs_np = original_coeffs.cpu().numpy()
 
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
@@ -2970,6 +2996,9 @@ class RCSWaveletGUI:
                         # 小波模式：先小波变换再标准化
                         rcs_tensor = torch.FloatTensor(input_data).to(device)
                         wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                        # 保存原始小波系数（如果需要）
+                        if return_wavelet_coeffs:
+                            original_wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
                         adapted_input = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                         adapted_input = torch.FloatTensor(adapted_input).to(device)
                     else:
@@ -2980,6 +3009,9 @@ class RCSWaveletGUI:
                     if mode == 'wavelet':
                         rcs_tensor = torch.FloatTensor(input_data).to(device)
                         adapted_input = wavelet_transform.forward_transform(rcs_tensor)
+                        # 保存原始小波系数（如果需要）
+                        if return_wavelet_coeffs:
+                            original_wavelet_coeffs_np = adapted_input.cpu().numpy()
                     else:
                         adapted_input = torch.FloatTensor(input_data).to(device)
 
@@ -2994,6 +3026,11 @@ class RCSWaveletGUI:
                         reconstructed_coeffs = torch.FloatTensor(reconstructed_coeffs_np).to(device)
                     else:
                         reconstructed_coeffs = reconstructed_output
+                        reconstructed_coeffs_np = reconstructed_coeffs.cpu().numpy()
+
+                    # 保存重建的小波系数（如果需要）
+                    if return_wavelet_coeffs:
+                        reconstructed_wavelet_coeffs_np = reconstructed_coeffs_np.copy()
 
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs)
@@ -3019,6 +3056,10 @@ class RCSWaveletGUI:
 
         if return_latents:
             result['latents'] = latents_np
+
+        if return_wavelet_coeffs and mode == 'wavelet':
+            result['original_wavelet_coeffs'] = original_wavelet_coeffs_np
+            result['reconstructed_wavelet_coeffs'] = reconstructed_wavelet_coeffs_np
 
         return result
 
@@ -3406,6 +3447,11 @@ class RCSWaveletGUI:
                         self._plot_ae_comparison()
                     else:
                         self._plot_comparison(model_id)
+                elif chart_type == "小波系数对比":
+                    if has_ae_model:
+                        self._plot_wavelet_coefficients_comparison()
+                    else:
+                        messagebox.showwarning("警告", "小波系数对比功能需要AutoEncoder模型")
                 elif chart_type == "差值分析":
                     self._plot_difference_analysis(model_id)
                 elif chart_type == "相关性分析":
@@ -7457,6 +7503,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 self._plot_ae_2d_heatmap(freq)
             elif chart_type == "对比图":
                 self._plot_ae_comparison()
+            elif chart_type == "小波系数对比":
+                self._plot_wavelet_coefficients_comparison()
             else:
                 # 对其他图表类型，显示提示信息
                 self.vis_fig.clear()
@@ -7731,6 +7779,117 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
         except Exception as e:
             messagebox.showerror("错误", f"无法生成对比图: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _plot_wavelet_coefficients_comparison(self):
+        """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH）"""
+        import numpy as np
+
+        # 检查是否是Wavelet模式
+        mode = self.ae_system.get('mode', 'wavelet')
+        if mode != 'wavelet':
+            messagebox.showwarning("警告", "此功能仅适用于Wavelet模式！")
+            return
+
+        # 获取用户输入的模型ID和频率
+        model_id_str = self.vis_model_var.get()
+        freq_str = self.vis_freq_var.get()
+
+        try:
+            # 使用统一重建函数重建RCS，同时获取小波系数
+            print(f"\n【小波系数可视化 - 模型{model_id_str}】")
+            result = self._reconstruct_rcs(
+                input_data=None,
+                input_type='model_ids',
+                model_ids=[model_id_str],
+                return_latents=False,
+                return_wavelet_coeffs=True  # 关键：获取小波系数
+            )
+
+            # 检查是否成功获取小波系数
+            if 'original_wavelet_coeffs' not in result or 'reconstructed_wavelet_coeffs' not in result:
+                messagebox.showerror("错误", "无法获取小波系数，请确保模型处于Wavelet模式")
+                return
+
+            original_coeffs = result['original_wavelet_coeffs'][0]  # [49, 49, 8]
+            reconstructed_coeffs = result['reconstructed_wavelet_coeffs'][0]  # [49, 49, 8]
+            training_mode = result['training_mode']
+
+            print(f"原始小波系数形状: {original_coeffs.shape}")
+            print(f"重建小波系数形状: {reconstructed_coeffs.shape}")
+
+            # 获取频率索引
+            freq_map = {"1.5G": 0, "3G": 1, "6G": 2}
+            freq_idx = freq_map.get(freq_str, 0)
+
+            # 提取该频率的4个小波通道
+            # 小波系数格式: [H, W, num_freq*4]
+            # 对于2频率: 通道0-3是1.5GHz的LL/LH/HL/HH, 通道4-7是3GHz的LL/LH/HL/HH
+            base_idx = freq_idx * 4
+
+            channel_names = ['LL (低频近似)', 'LH (水平边缘)', 'HL (垂直边缘)', 'HH (对角边缘)']
+
+            # 创建4行3列的图表
+            self.vis_fig.clear()
+
+            for ch_idx in range(4):
+                coeff_idx = base_idx + ch_idx
+
+                # 提取该通道的原始和重建系数
+                orig_ch = original_coeffs[:, :, coeff_idx]  # [49, 49]
+                recon_ch = reconstructed_coeffs[:, :, coeff_idx]  # [49, 49]
+                residual_ch = orig_ch - recon_ch
+
+                # 计算MSE
+                mse = np.mean((orig_ch - recon_ch)**2)
+
+                # 第一列: 原始系数
+                ax1 = self.vis_fig.add_subplot(4, 3, ch_idx*3 + 1)
+                vmin, vmax = orig_ch.min(), orig_ch.max()
+                im1 = ax1.imshow(orig_ch, cmap='viridis', aspect='auto')
+                ax1.set_title(f'{channel_names[ch_idx]}\n原始系数', fontsize=9)
+                ax1.set_ylabel(f'通道{ch_idx+1}', fontsize=8)
+                if ch_idx == 3:
+                    ax1.set_xlabel('像素', fontsize=8)
+                plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+
+                # 第二列: 重建系数 (使用相同的colorbar范围)
+                ax2 = self.vis_fig.add_subplot(4, 3, ch_idx*3 + 2)
+                im2 = ax2.imshow(recon_ch, cmap='viridis', aspect='auto', vmin=vmin, vmax=vmax)
+                ax2.set_title(f'重建系数\nMSE={mse:.4e}', fontsize=9)
+                if ch_idx == 3:
+                    ax2.set_xlabel('像素', fontsize=8)
+                plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
+
+                # 第三列: 残差
+                ax3 = self.vis_fig.add_subplot(4, 3, ch_idx*3 + 3)
+                residual_finite = residual_ch[np.isfinite(residual_ch)]
+                if len(residual_finite) > 0:
+                    residual_abs_max = np.percentile(np.abs(residual_finite), 95)
+                else:
+                    residual_abs_max = 1
+                im3 = ax3.imshow(residual_ch, cmap='RdBu_r', aspect='auto',
+                               vmin=-residual_abs_max, vmax=residual_abs_max)
+                mae = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
+                ax3.set_title(f'残差\nMAE={mae:.4e}', fontsize=9)
+                if ch_idx == 3:
+                    ax3.set_xlabel('像素', fontsize=8)
+                plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
+
+            # 显示训练模式信息
+            mode_display = {
+                'stage1_only': 'Stage 1 Only (RCS重建)',
+                'three_stage': 'Three-Stage (参数预测)'
+            }.get(training_mode, training_mode)
+
+            self.vis_fig.suptitle(f'小波系数对比分析 - 模型{model_id_str} @ {freq_str}\n({mode_display})',
+                                 fontsize=12, fontweight='bold')
+            self.vis_fig.tight_layout()
+            self.vis_canvas.draw()
+
+        except Exception as e:
+            messagebox.showerror("错误", f"无法生成小波系数对比图: {str(e)}")
             import traceback
             traceback.print_exc()
 
