@@ -66,7 +66,7 @@ import sys
 import torch
 
 # GUI管理器模块
-from gui_managers.managers import StatisticsManager
+from gui_managers.managers import StatisticsManager, VisualizationManager
 
 # 导入项目模块
 try:
@@ -217,6 +217,7 @@ class RCSWaveletGUI:
 
         # 初始化功能管理器
         self.statistics_manager = StatisticsManager(self)
+        self.visualization_manager = VisualizationManager(self)
 
         # 设置窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -3472,31 +3473,7 @@ class RCSWaveletGUI:
 
     def _plot_2d_heatmap(self, model_id, freq):
         """绘制2D热图"""
-        self.vis_fig.clear()
-
-        try:
-            # 使用现有的可视化函数
-            data = rv.get_rcs_matrix(model_id, freq, self.data_config['rcs_data_dir'])
-
-            ax = self.vis_fig.add_subplot(1, 1, 1)
-
-            # 获取实际的角度范围
-            phi_values = data['phi_values']
-            theta_values = data['theta_values']
-
-            im = ax.imshow(data['rcs_db'], cmap='jet', aspect='equal',
-                          extent=[phi_values.min(), phi_values.max(),
-                                 theta_values.max(), theta_values.min()])
-            ax.set_title(f'模型 {model_id} - {freq} RCS分布')
-            ax.set_xlabel('φ (方位角, 度)')
-            ax.set_ylabel('θ (俯仰角, 度)')
-            self.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
-
-            self.vis_fig.tight_layout()
-            self.vis_canvas.draw()
-
-        except Exception as e:
-            self.log_message(f"无法生成2D热图: {str(e)}")
+        return self.visualization_manager._plot_2d_heatmap(model_id, freq)
 
     def _plot_3d_surface(self, model_id, freq):
         """绘制3D表面图"""
