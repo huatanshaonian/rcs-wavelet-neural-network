@@ -4265,6 +4265,11 @@ GPU峰值: {gpu_peak:.2f}GB"""
             has_ae_system = hasattr(self, 'ae_system') and self.ae_system is not None
             has_model = hasattr(self, 'current_model') and self.current_model is not None
 
+            # 初始化AutoEncoder相关变量（避免UnboundLocalError）
+            autoencoder = None
+            parameter_mapper = None
+            wavelet_transform = None
+
             # 检查数据来源：优先使用ae_system，其次使用self.rcs_data
             if has_ae_system and 'rcs_data' in self.ae_system and 'param_data' in self.ae_system:
                 print("检测到AutoEncoder系统缓存数据")
