@@ -4337,9 +4337,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
                         if wavelet_transform is not None:
                             # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
                             if data_adapter:
-                                predicted_output_np = predicted_output.cpu().numpy()
-                                predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
-                                predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                                # inverse_adapt期望tensor输入，返回numpy
+                                predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                                predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
                             else:
                                 predicted_coeffs = predicted_output
 
@@ -4347,8 +4347,8 @@ GPU峰值: {gpu_peak:.2f}GB"""
                         else:
                             # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
                             if data_adapter:
-                                predicted_output_np = predicted_output.cpu().numpy()
-                                predicted_batch = data_adapter.inverse_adapt(predicted_output_np)
+                                # inverse_adapt期望tensor输入，返回numpy
+                                predicted_batch = data_adapter.inverse_adapt(predicted_output)
                             else:
                                 predicted_batch = predicted_output.cpu().numpy()
 
@@ -7569,9 +7569,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 if wavelet_transform is not None:
                     # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
                     if data_adapter:
-                        predicted_output_np = predicted_output.cpu().numpy()
-                        predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
-                        predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                        # inverse_adapt期望tensor输入，返回numpy
+                        predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                        predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
                     else:
                         predicted_coeffs = predicted_output
 
@@ -7579,9 +7579,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 else:
                     # 直接模式：标准化RCS → 逆标准化（逆dB + 逆Z-score） → RCS
                     if data_adapter:
-                        predicted_output_np = predicted_output.cpu().numpy()
-                        predicted_rcs = data_adapter.inverse_adapt(predicted_output_np)
-                        predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+                        # inverse_adapt期望tensor输入，返回numpy
+                        predicted_rcs_np = data_adapter.inverse_adapt(predicted_output)
+                        predicted_rcs = torch.FloatTensor(predicted_rcs_np).to(device)
                     else:
                         predicted_rcs = predicted_output
 
