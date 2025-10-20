@@ -1217,6 +1217,10 @@ class RCSWaveletGUI:
                                  values=["1.5G", "3G", "6G"], state="readonly", width=8)
         freq_combo.grid(row=0, column=3, padx=5, pady=2)
 
+        # 保存图片按钮
+        ttk.Button(control_frame, text="💾 保存图片", command=self.save_current_visualization,
+                  width=12).grid(row=0, column=4, padx=5, pady=2)
+
         # 可视化类型选择
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.vis_type_var = tk.StringVar(value="2D热图")
@@ -7847,7 +7851,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 # 第一列: 原始系数
                 ax1 = self.vis_fig.add_subplot(4, 3, ch_idx*3 + 1)
                 vmin, vmax = orig_ch.min(), orig_ch.max()
-                im1 = ax1.imshow(orig_ch, cmap='viridis', aspect='auto')
+                im1 = ax1.imshow(orig_ch, cmap='viridis', aspect='equal')
                 ax1.set_title(f'{channel_names[ch_idx]}\n原始系数', fontsize=9)
                 ax1.set_ylabel(f'通道{ch_idx+1}', fontsize=8)
                 if ch_idx == 3:
@@ -7856,7 +7860,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
                 # 第二列: 重建系数 (使用相同的colorbar范围)
                 ax2 = self.vis_fig.add_subplot(4, 3, ch_idx*3 + 2)
-                im2 = ax2.imshow(recon_ch, cmap='viridis', aspect='auto', vmin=vmin, vmax=vmax)
+                im2 = ax2.imshow(recon_ch, cmap='viridis', aspect='equal', vmin=vmin, vmax=vmax)
                 ax2.set_title(f'重建系数\nMSE={mse:.4e}', fontsize=9)
                 if ch_idx == 3:
                     ax2.set_xlabel('像素', fontsize=8)
@@ -7869,7 +7873,7 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     residual_abs_max = np.percentile(np.abs(residual_finite), 95)
                 else:
                     residual_abs_max = 1
-                im3 = ax3.imshow(residual_ch, cmap='RdBu_r', aspect='auto',
+                im3 = ax3.imshow(residual_ch, cmap='RdBu_r', aspect='equal',
                                vmin=-residual_abs_max, vmax=residual_abs_max)
                 mae = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
                 ax3.set_title(f'残差\nMAE={mae:.4e}', fontsize=9)
@@ -7890,6 +7894,47 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
         except Exception as e:
             messagebox.showerror("错误", f"无法生成小波系数对比图: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def save_current_visualization(self):
+        """保存当前显示的可视化图表到results文件夹"""
+        import os
+        from datetime import datetime
+
+        try:
+            # 检查是否有图表可以保存
+            if not hasattr(self, 'vis_fig') or self.vis_fig is None:
+                messagebox.showwarning("警告", "没有可保存的图表！请先生成图表。")
+                return
+
+            # 创建results目录
+            results_dir = 'results'
+            if not os.path.exists(results_dir):
+                os.makedirs(results_dir)
+
+            # 获取当前图表信息用于生成文件名
+            model_id = self.vis_model_var.get()
+            freq = self.vis_freq_var.get()
+            chart_type = self.vis_type_var.get()
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+            # 生成文件名（将图表类型中的空格替换为下划线）
+            chart_type_safe = chart_type.replace(' ', '_')
+            filename = f"vis_{chart_type_safe}_model{model_id}_{freq}_{timestamp}.png"
+            filepath = os.path.join(results_dir, filename)
+
+            # 保存图表
+            self.vis_fig.savefig(filepath, dpi=300, bbox_inches='tight')
+
+            # 显示成功消息
+            self.log_message(f"✅ 图表已保存到: {filepath}")
+            messagebox.showinfo("保存成功", f"图表已保存到:\n{filepath}")
+
+        except Exception as e:
+            error_msg = f"保存图表失败: {str(e)}"
+            self.log_message(f"❌ {error_msg}")
+            messagebox.showerror("保存失败", error_msg)
             import traceback
             traceback.print_exc()
 
