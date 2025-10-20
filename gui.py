@@ -4295,7 +4295,9 @@ GPU峰值: {gpu_peak:.2f}GB"""
 
             print(f"缓存数据检查: AE系统={has_ae_system}, 传统模型={has_model}, 参数数据={has_param_data}, RCS数据={has_rcs_data}")
 
-            if (has_model or (has_ae_system and autoencoder is not None and parameter_mapper is not None)) and has_param_data and has_rcs_data:
+            # ⚠️ 修复Stage1-Only缓存可用性：只需要autoencoder，不强制要求parameter_mapper
+            # Stage1-Only会在后续检测并给出友好提示
+            if (has_model or (has_ae_system and autoencoder is not None)) and has_param_data and has_rcs_data:
 
                 print("使用缓存数据进行快速统计计算...")
 
@@ -4306,6 +4308,19 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 if use_ae_system:
                     # AutoEncoder系统预测
                     print("使用AutoEncoder系统进行预测...")
+
+                    # ⚠️ 检测Stage1-Only模式
+                    if parameter_mapper is None:
+                        messagebox.showwarning(
+                            "警告",
+                            "无法生成统计对比：\n\n"
+                            "检测到Stage1-Only训练模式（无参数映射器）。\n\n"
+                            "统计对比功能需要从参数预测RCS，\n"
+                            "但Stage1-Only模式只训练了AutoEncoder重建，无法从参数预测。\n\n"
+                            "如需统计对比，请使用Three-Stage训练模式。"
+                        )
+                        return
+
                     autoencoder.to(device).eval()
                     parameter_mapper.to(device).eval()
 
@@ -4375,27 +4390,35 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 for i, current_rcs_data in enumerate(rcs_data):
                     model_id = f"{i+1:03d}"
 
-                    # 实际数据 [91, 91, 2/3] - 线性域
+                    # ===== 真实数据 =====
+                    # current_rcs_data来自self.ae_system['rcs_data'] 或 self.rcs_data
+                    # 由cache_manager.load_data_with_cache()加载
+                    # 使用rcs_result['rcs_linear'] → 确保是线性域 ✅
                     actual_1_5g = current_rcs_data[:, :, 0].flatten()
                     actual_3g = current_rcs_data[:, :, 1].flatten()
 
-                    # 预测数据域转换
+                    # ===== 预测数据 =====
+                    # predicted_batch已经通过inverse_adapt逆变换到线性域
+                    # Wavelet模式: inverse_adapt(decoder输出) → 逆小波变换 → 线性RCS
+                    # Direct模式: inverse_adapt(decoder输出) → 线性RCS
                     pred_raw_1_5g = predicted_batch[i, :, :, 0].flatten()
                     pred_raw_3g = predicted_batch[i, :, :, 1].flatten()
 
                     # 根据系统类型进行域转换
                     if use_ae_system:
-                        # AutoEncoder系统：输出已经是线性域RCS
-                        # (因为训练时输入就是线性域的RCS数据)
+                        # AutoEncoder系统：predicted_batch已经是线性域RCS
+                        # （已经过inverse_adapt处理）
                         pred_1_5g = pred_raw_1_5g
                         pred_3g = pred_raw_3g
 
-                        # 调试信息：检查预测值的分布
+                        # ⚠️ 详细调试：验证数据域一致性
                         if i < 3:  # 只打印前3个模型
-                            print(f"模型{model_id} [1.5GHz]: 预测值 min={pred_1_5g.min():.6f}, max={pred_1_5g.max():.6f}, mean={pred_1_5g.mean():.6f}, std={pred_1_5g.std():.6f}")
-                            print(f"模型{model_id} [1.5GHz]: 真实值 min={actual_1_5g.min():.6f}, max={actual_1_5g.max():.6f}, mean={actual_1_5g.mean():.6f}, std={actual_1_5g.std():.6f}")
-                            print(f"模型{model_id} [1.5GHz]: 预测前5个值: {pred_1_5g[:5]}")
-                            print(f"模型{model_id} [1.5GHz]: 真实前5个值: {actual_1_5g[:5]}")
+                            print(f"\n模型{model_id} 数据域验证:")
+                            print(f"  真实RCS [1.5GHz]: min={actual_1_5g.min():.6e}, max={actual_1_5g.max():.6e}, mean={actual_1_5g.mean():.6e}")
+                            print(f"  预测RCS [1.5GHz]: min={pred_1_5g.min():.6e}, max={pred_1_5g.max():.6e}, mean={pred_1_5g.mean():.6e}")
+                            print(f"  真实RCS [3GHz]:   min={actual_3g.min():.6e}, max={actual_3g.max():.6e}, mean={actual_3g.mean():.6e}")
+                            print(f"  预测RCS [3GHz]:   min={pred_3g.min():.6e}, max={pred_3g.max():.6e}, mean={pred_3g.mean():.6e}")
+                            print(f"  数据域检查: 真实和预测的数量级应该相近（线性域RCS通常在1e-6 ~ 1e-1范围）")
                     elif hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
                         # 传统模型 + 预处理：网络输出是标准化的dB值
                         mean = self.preprocessing_stats['mean']
@@ -4455,13 +4478,44 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 print(f"使用缓存数据处理了 {len(rcs_data)} 个模型")
 
             else:
-                # 降级方案：使用文件读取
+                # 降级方案：使用文件读取 + 模型预测
                 print("缓存数据不可用，使用文件读取方式...")
 
-                import rcs_visual as rv
-                rcs_dir = self.data_config['rcs_data_dir']
+                # ⚠️ 关键检查：必须有模型才能生成预测统计
+                if not (has_model or (has_ae_system and autoencoder is not None)):
+                    messagebox.showerror(
+                        "错误",
+                        "无法生成统计对比：\n\n"
+                        "缓存数据不可用，且未检测到可用的模型。\n\n"
+                        "请先：\n"
+                        "1. 加载数据（建立缓存）\n"
+                        "2. 或加载已训练的模型\n\n"
+                        "统计对比需要使用模型进行真实预测，不能使用模拟数据。"
+                    )
+                    return
 
-                # 获取所有可用模型
+                import rcs_visual as rv
+                import rcs_data_reader as rdr
+
+                rcs_dir = self.data_config['rcs_data_dir']
+                params_file = self.data_config['params_file']
+
+                # 检查参数文件是否存在
+                if not os.path.exists(params_file):
+                    messagebox.showerror("错误", f"参数文件不存在: {params_file}")
+                    return
+
+                # 读取参数数据
+                print(f"从文件读取参数数据: {params_file}")
+                param_data_full, param_names = rdr.load_parameters(params_file, verbose=False)
+
+                if param_data_full is None or len(param_data_full) == 0:
+                    messagebox.showerror("错误", "无法读取参数数据")
+                    return
+
+                print(f"成功读取参数数据: {param_data_full.shape}")
+
+                # 获取所有可用模型ID
                 available_models = []
                 if os.path.exists(rcs_dir):
                     for file in os.listdir(rcs_dir):
@@ -4476,19 +4530,85 @@ GPU峰值: {gpu_peak:.2f}GB"""
                     messagebox.showwarning("警告", "未找到RCS数据文件")
                     return
 
+                print(f"找到 {len(available_models)} 个RCS数据文件")
+
+                # 准备设备
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+                # 准备模型进行批量预测
+                if use_ae_system:
+                    print("使用AutoEncoder系统进行预测...")
+                    autoencoder.to(device).eval()
+                    if parameter_mapper is not None:
+                        parameter_mapper.to(device).eval()
+                elif has_model:
+                    print("使用传统神经网络模型进行预测...")
+                    self.current_model.to(device).eval()
+
+                # 遍历每个模型进行预测和统计
                 for model_id in available_models:
                     try:
-                        # 读取实际数据
+                        model_idx = int(model_id) - 1  # CSV行索引（从0开始）
+
+                        if model_idx >= len(param_data_full):
+                            print(f"跳过模型 {model_id}: 参数数据索引越界")
+                            continue
+
+                        # 读取真实RCS数据
                         data_1_5g = rv.get_rcs_matrix(model_id, "1.5G", rcs_dir)
                         data_3g = rv.get_rcs_matrix(model_id, "3G", rcs_dir)
 
                         actual_1_5g = data_1_5g['rcs_linear'].flatten()
                         actual_3g = data_3g['rcs_linear'].flatten()
 
-                        # 模拟预测数据（添加随机噪声）
-                        np.random.seed(int(model_id))
-                        pred_1_5g = actual_1_5g * (1 + np.random.normal(0, 0.1, len(actual_1_5g)))
-                        pred_3g = actual_3g * (1 + np.random.normal(0, 0.1, len(actual_3g)))
+                        # ===== 使用真实模型进行预测 =====
+                        model_params = param_data_full[model_idx:model_idx+1]  # [1, num_params]
+
+                        with torch.no_grad():
+                            params_tensor = torch.FloatTensor(model_params).to(device)
+
+                            if use_ae_system:
+                                # AutoEncoder系统预测
+                                if parameter_mapper is not None:
+                                    # Three-Stage模式: 参数 → latent → RCS
+                                    predicted_latents = parameter_mapper(params_tensor)
+                                    predicted_output = autoencoder.decode(predicted_latents)
+                                else:
+                                    # Stage1-Only模式: 无法从参数预测，跳过
+                                    print(f"跳过模型 {model_id}: Stage1-Only模式无法从参数预测")
+                                    continue
+
+                                # 获取data_adapter用于逆变换
+                                data_adapter = self.ae_system.get('data_adapter', None)
+
+                                # 根据模式处理输出
+                                if wavelet_transform is not None:
+                                    # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                                    if data_adapter:
+                                        predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                                        predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
+                                    else:
+                                        predicted_coeffs = predicted_output
+
+                                    predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs).cpu().numpy()
+                                else:
+                                    # 直接模式：标准化RCS → 逆标准化 → RCS
+                                    if data_adapter:
+                                        predicted_rcs = data_adapter.inverse_adapt(predicted_output)
+                                    else:
+                                        predicted_rcs = predicted_output.cpu().numpy()
+                            else:
+                                # 传统模型预测
+                                predicted_rcs = self.current_model(params_tensor).cpu().numpy()
+
+                            # 提取预测的两个频率 [1, 91, 91, 2/3]
+                            pred_rcs_1d = predicted_rcs[0]  # [91, 91, 2/3]
+                            pred_1_5g = pred_rcs_1d[:, :, 0].flatten()
+                            pred_3g = pred_rcs_1d[:, :, 1].flatten()
+
+                            # 确保线性域数值为正
+                            pred_1_5g = np.maximum(pred_1_5g, 1e-12)
+                            pred_3g = np.maximum(pred_3g, 1e-12)
 
                         # 计算统计指标
                         stats_1_5g = {
