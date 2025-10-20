@@ -7908,20 +7908,19 @@ GPU峰值: {gpu_peak:.2f}GB"""
                 messagebox.showwarning("警告", "没有可保存的图表！请先生成图表。")
                 return
 
-            # 创建results目录
-            results_dir = 'results'
-            if not os.path.exists(results_dir):
-                os.makedirs(results_dir)
+            # 创建结果保存目录（使用会话时间戳，与统计对比保持一致）
+            timestamp = self.get_ae_session_timestamp() if hasattr(self, 'ae_session_timestamp') else datetime.now().strftime("%Y%m%d_%H%M%S")
+            results_dir = os.path.join("results", f"visualization_{timestamp}")
+            os.makedirs(results_dir, exist_ok=True)
 
             # 获取当前图表信息用于生成文件名
             model_id = self.vis_model_var.get()
             freq = self.vis_freq_var.get()
             chart_type = self.vis_type_var.get()
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-            # 生成文件名（将图表类型中的空格替换为下划线）
+            # 生成文件名（将图表类型中的空格替换为下划线，不包含时间戳）
             chart_type_safe = chart_type.replace(' ', '_')
-            filename = f"vis_{chart_type_safe}_model{model_id}_{freq}_{timestamp}.png"
+            filename = f"vis_{chart_type_safe}_model{model_id}_{freq}.png"
             filepath = os.path.join(results_dir, filename)
 
             # 保存图表
