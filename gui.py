@@ -3719,7 +3719,9 @@ class RCSWaveletGUI:
             messagebox.showerror("错误", error_msg)
 
     def _run_three_stage_training(self, rcs_data, param_data, batch_size, learning_rate,
-        return self.training_manager._run_three_stage_training()
+                                epochs_stage1, epochs_stage2, epochs_stage3):
+        """执行三阶段训练"""
+        return self.training_manager._run_three_stage_training(rcs_data, param_data, batch_size, learning_rate, epochs_stage1, epochs_stage2, epochs_stage3)
 
     def _run_end_to_end_training(self, rcs_data, param_data, batch_size, learning_rate, total_epochs):
         """执行端到端训练"""
