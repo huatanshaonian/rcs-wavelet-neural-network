@@ -7,5 +7,6 @@ from .statistics_manager import StatisticsManager
 from .visualization_manager import VisualizationManager
 from .training_manager import TrainingManager
 from .evaluation_manager import EvaluationManager
+from .reconstruction_manager import ReconstructionManager
 
-__all__ = ['StatisticsManager', 'VisualizationManager', 'TrainingManager', 'EvaluationManager']
+__all__ = ['StatisticsManager', 'VisualizationManager', 'TrainingManager', 'EvaluationManager', 'ReconstructionManager']
