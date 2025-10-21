@@ -5,5 +5,6 @@ GUI功能管理器模块
 
 from .statistics_manager import StatisticsManager
 from .visualization_manager import VisualizationManager
+from .training_manager import TrainingManager
 
-__all__ = ['StatisticsManager', 'VisualizationManager']
+__all__ = ['StatisticsManager', 'VisualizationManager', 'TrainingManager']
