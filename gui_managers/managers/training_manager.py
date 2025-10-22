@@ -341,8 +341,7 @@ class TrainingManager:
                         mode='min',
                         factor=0.5,
                         patience=20,
-                        min_lr=self.gui.training_config.get('min_lr', 1e-5),
-                        verbose=True
+                        min_lr=self.gui.training_config.get('min_lr', 1e-5)
                     )
                 else:
                     # 默认使用余弦重启
@@ -2198,8 +2197,7 @@ class TrainingManager:
                 mode='min',
                 factor=0.5,
                 patience=20,
-                min_lr=training_config['min_lr'],
-                verbose=True
+                min_lr=training_config['min_lr']
             )
         else:
             # 默认使用常数学习率（最简单的策略）

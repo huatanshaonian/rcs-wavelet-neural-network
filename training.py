@@ -670,8 +670,7 @@ class CrossValidationTrainer:
                 mode='min',
                 factor=0.5,
                 patience=20,
-                min_lr=config.get('min_lr', 1e-5),
-                verbose=True
+                min_lr=config.get('min_lr', 1e-5)
             )
         else:
             # 默认使用余弦重启
