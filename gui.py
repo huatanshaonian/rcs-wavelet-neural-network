@@ -3117,7 +3117,8 @@ class RCSWaveletGUI:
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
                     self.ae_system['rcs_data'] = self.rcs_data
                 if hasattr(self, 'param_data') and self.param_data is not None:
-                    self.ae_system['parameter_data'] = self.param_data
+                    # 修复键名错误：应为 'param_data'，否则重建函数在three_stage模式下取数失败
+                    self.ae_system['param_data'] = self.param_data
 
                 if 'training_history' in checkpoint:
                     self.ae_training_history = checkpoint['training_history']
