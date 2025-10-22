@@ -1850,7 +1850,7 @@ class RCSWaveletGUI:
 
     def _set_random_seeds(self, seed=42):
         """设置全局随机种子以保证训练的可重现性"""
-        return self.training_manager._set_random_seeds(seed=42)
+        return self.training_manager._set_random_seeds(seed=seed)
 
     def _initialize_cuda_safely(self):
         """安全初始化CUDA环境"""
@@ -2167,7 +2167,13 @@ class RCSWaveletGUI:
                 'training_mode': str 训练模式
             }
         """
-        return self.reconstruction_manager._reconstruct_rcs(input_data=None, input_type='auto', model_ids=None, return_latents=False, return_wavelet_coeffs=False)
+        return self.reconstruction_manager._reconstruct_rcs(
+            input_data=input_data,
+            input_type=input_type,
+            model_ids=model_ids,
+            return_latents=return_latents,
+            return_wavelet_coeffs=return_wavelet_coeffs
+        )
 
     def _evaluate_autoencoder_model(self):
         """评估AutoEncoder模型 - 使用统一重建函数"""
@@ -3376,7 +3382,7 @@ class RCSWaveletGUI:
 
     def _ae_step_scheduler(self, scheduler, scheduler_type, val_loss=None):
         """AutoEncoder学习率调度器步进 (复用项目调度逻辑)"""
-        return self.training_manager._ae_step_scheduler(scheduler, scheduler_type, val_loss=None)
+        return self.training_manager._ae_step_scheduler(scheduler, scheduler_type, val_loss=val_loss)
 
     def _ae_log_training_progress(self, epoch, total_epochs, train_loss, val_loss, lr, stage_name):
         """AutoEncoder训练进度日志 (统一格式)"""
