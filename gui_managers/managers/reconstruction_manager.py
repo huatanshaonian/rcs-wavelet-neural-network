@@ -95,11 +95,25 @@ class ReconstructionManager:
             # 根据training_mode获取对应数据
             if training_mode == 'three_stage':
                 # Three-Stage: 从参数重建
-                input_data = self.gui.ae_system['param_data'][indices]
+                param_data = self.gui.ae_system.get('param_data', None)
+                if param_data is None:
+                    param_data = self.gui.ae_system.get('parameter_data', None)
+                if param_data is None and hasattr(self.gui, 'param_data') and self.gui.param_data is not None:
+                    self.gui.ae_system['param_data'] = self.gui.param_data
+                    param_data = self.gui.param_data
+                if param_data is None:
+                    raise KeyError("param_data 缺失：请先加载参数数据或在数据管理页创建系统")
+                input_data = param_data[indices]
                 input_type = 'params'
             else:
                 # Stage1-Only: 从RCS重建
-                input_data = self.gui.ae_system['rcs_data'][indices]
+                rcs_data = self.gui.ae_system.get('rcs_data', None)
+                if rcs_data is None and hasattr(self.gui, 'rcs_data') and self.gui.rcs_data is not None:
+                    self.gui.ae_system['rcs_data'] = self.gui.rcs_data
+                    rcs_data = self.gui.rcs_data
+                if rcs_data is None:
+                    raise KeyError("rcs_data 缺失：请先加载RCS数据或在数据管理页创建系统")
+                input_data = rcs_data[indices]
                 input_type = 'rcs'
 
         # 4. 验证输入数据
@@ -147,7 +161,13 @@ class ReconstructionManager:
                                     indices.append(int(mid) - 1)
                                 else:
                                     indices.append(int(mid))
-                            original_rcs = self.gui.ae_system['rcs_data'][indices]
+                            rcs_data_safe = self.gui.ae_system.get('rcs_data', None)
+                            if rcs_data_safe is None and hasattr(self.gui, 'rcs_data') and self.gui.rcs_data is not None:
+                                self.gui.ae_system['rcs_data'] = self.gui.rcs_data
+                                rcs_data_safe = self.gui.rcs_data
+                            if rcs_data_safe is None:
+                                raise KeyError("rcs_data 缺失：无法计算原始小波系数")
+                            original_rcs = rcs_data_safe[indices]
                             # 计算原始小波系数
                             original_rcs_tensor = torch.FloatTensor(original_rcs).to(device)
                             original_coeffs = wavelet_transform.forward_transform(original_rcs_tensor)
