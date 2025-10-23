@@ -42,13 +42,12 @@ def setup_matplotlib_font():
 
     # 设置中文字体
     chinese_fonts = ['Microsoft YaHei', 'SimHei', 'SimSun', 'DejaVu Sans']
-    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    matplotlib.rcParams['font.family'] = ['sans-serif']
 
-    for font in chinese_fonts:
-        if font in available_fonts:
-            matplotlib.rcParams['font.family'] = ['sans-serif']
-            matplotlib.rcParams['font.sans-serif'] = [font] + matplotlib.rcParams['font.sans-serif']
-            break
+    # 直接优先加入常用中文字体，避免在启动时遍历系统全部字体文件
+    existing_fonts = list(matplotlib.rcParams.get('font.sans-serif', []))
+    preferred_fonts = [font for font in chinese_fonts if font not in existing_fonts]
+    matplotlib.rcParams['font.sans-serif'] = preferred_fonts + existing_fonts
 
     # 设置字体大小
     matplotlib.rcParams['font.size'] = 10

@@ -28,6 +28,7 @@ from models.direct_autoencoder import DirectAutoEncoder
 from models.mlp_autoencoder import WaveletMLPAutoEncoder, DirectMLPAutoEncoder
 from models.enhanced_cnn_autoencoder import EnhancedWaveletAutoEncoder, EnhancedDirectAutoEncoder
 from models.deep_autoencoder import DeepWaveletAutoEncoder, DeepDirectAutoEncoder
+from models.sine_cnn_autoencoder import SinWaveletAutoEncoder, SinDirectAutoEncoder
 from utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 from utils.data_adapters import RCS_DataAdapter
 
@@ -237,6 +238,16 @@ def create_autoencoder_system(config_name: str = '2freq',
                 input_size=49  # db4小波变换后的尺寸
             )
             print(f"使用 WaveletMLPAutoEncoder")
+        elif architecture.lower() in ('sine_cnn', 'sine'):
+            # 小波 + Sine CNN
+            autoencoder = SinWaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                input_size=49
+            )
+            print(f"使用 SinWaveletAutoEncoder (sin激活)")
         elif architecture.lower() == 'enhanced_cnn':
             # 小波 + Enhanced CNN
             autoencoder = EnhancedWaveletAutoEncoder(
@@ -280,6 +291,14 @@ def create_autoencoder_system(config_name: str = '2freq',
                 dropout_rate=dropout_rate
             )
             print(f"使用 DirectMLPAutoEncoder")
+        elif architecture.lower() in ('sine_cnn', 'sine'):
+            # 直接 + Sine CNN
+            autoencoder = SinDirectAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate
+            )
+            print(f"使用 SinDirectAutoEncoder (sin激活)")
         elif architecture.lower() == 'enhanced_cnn':
             # 直接 + Enhanced CNN
             autoencoder = EnhancedDirectAutoEncoder(

@@ -126,6 +126,8 @@ Architecture:
 - ✅ DirectMLPAutoEncoder
 - ✅ EnhancedWaveletAutoEncoder
 - ✅ EnhancedDirectAutoEncoder
+- ✅ SinWaveletAutoEncoder
+- ✅ SinDirectAutoEncoder
 
 ### 不规范的命名（实验性模型）
 - ❌ CorrectCNNAutoEncoder → 应为 WaveletAutoEncoder (已被替代)
@@ -145,7 +147,7 @@ from autoencoder.utils.frequency_config import create_autoencoder_system
 system = create_autoencoder_system(
     config_name='2freq',
     mode='wavelet',        # 'wavelet' 或 'direct'
-    architecture='cnn',    # 'cnn', 'mlp', 或 'enhanced_cnn'
+    architecture='cnn',    # 'cnn', 'mlp', 'enhanced_cnn', 或 'sine_cnn'
     latent_dim=256
 )
 
@@ -153,6 +155,8 @@ system = create_autoencoder_system(
 if mode == 'wavelet':
     if architecture == 'mlp':
         autoencoder = WaveletMLPAutoEncoder(...)
+    elif architecture in ('sine_cnn', 'sine'):
+        autoencoder = SinWaveletAutoEncoder(...)
     elif architecture == 'enhanced_cnn':
         autoencoder = EnhancedWaveletAutoEncoder(...)
     else:  # 'cnn'
@@ -160,6 +164,8 @@ if mode == 'wavelet':
 else:  # mode == 'direct'
     if architecture == 'mlp':
         autoencoder = DirectMLPAutoEncoder(...)
+    elif architecture in ('sine_cnn', 'sine'):
+        autoencoder = SinDirectAutoEncoder(...)
     elif architecture == 'enhanced_cnn':
         autoencoder = EnhancedDirectAutoEncoder(...)
     else:  # 'cnn'
