@@ -141,7 +141,7 @@ class AutoEncoderExtension:
         # CNN: 标准4层卷积，平衡速度与性能 | Enhanced_CNN: 多尺度+注意力，大感受野 | Deep_CNN: 双卷积块，最强表达 | MLP: 全连接，参数敏感性分析
         ttk.Label(model_frame, text="架构类型:").grid(row=1, column=0, sticky="w", pady=(5, 0))
         architecture_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_architecture_type,
-                                         values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP", "Sine_CNN"], state="readonly", width=12)
+                                         values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP", "Sine_CNN", "Sine_MLP"], state="readonly", width=12)
         architecture_combo.grid(row=1, column=1, columnspan=3, sticky="ew", pady=(5, 0))
 
         # 第三行：小波类型（仅Wavelet模式可用）
