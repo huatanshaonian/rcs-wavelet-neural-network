@@ -433,6 +433,61 @@ class AutoEncoderExtension:
         # 更新状态显示
         self._update_status_display()
 
+    def _log_model_structure(self, model, mode_name="AutoEncoder"):
+        """
+        将模型结构信息输出到日志
+
+        Args:
+            model: AutoEncoder模型实例
+            mode_name: 模式名称（用于日志标题）
+        """
+        try:
+            # 获取模型信息
+            if not hasattr(model, 'get_model_info'):
+                self.main_gui.ae_log("  ⚠️ 模型不支持get_model_info方法")
+                return
+
+            model_info = model.get_model_info()
+
+            # 输出基本信息
+            self.main_gui.ae_log(f"\n📊 【{mode_name}模式】模型结构信息:")
+            self.main_gui.ae_log(f"  • 模型类: {type(model).__name__}")
+            self.main_gui.ae_log(f"  • 架构: {model_info.get('architecture', 'Unknown')}")
+            self.main_gui.ae_log(f"  • 隐空间维度: {model_info.get('latent_dim', 'Unknown')}")
+
+            # 输入/输出形状
+            if 'input_shape' in model_info:
+                self.main_gui.ae_log(f"  • 输入形状: {model_info['input_shape']}")
+            if 'output_shape' in model_info:
+                self.main_gui.ae_log(f"  • 输出形状: {model_info['output_shape']}")
+
+            # 参数统计
+            total_params = sum(p.numel() for p in model.parameters())
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            self.main_gui.ae_log(f"  • 总参数量: {total_params:,}")
+            self.main_gui.ae_log(f"  • 可训练参数: {trainable_params:,}")
+
+            # 全连接层结构（自适应调整）
+            if 'fc_structure' in model_info:
+                self.main_gui.ae_log(f"\n  🔗 全连接层结构（自适应）:")
+                self.main_gui.ae_log(f"     {model_info['fc_structure']}")
+
+                if 'num_fc_layers' in model_info:
+                    self.main_gui.ae_log(f"     层数: {model_info['num_fc_layers']}")
+
+                # 压缩比
+                if 'compression_ratios' in model_info:
+                    self.main_gui.ae_log(f"     压缩比:")
+                    for i, ratio in enumerate(model_info['compression_ratios'][:3], 1):  # 只显示前3个
+                        self.main_gui.ae_log(f"       阶段{i}: {ratio}")
+                    if len(model_info['compression_ratios']) > 3:
+                        self.main_gui.ae_log(f"       ...")
+
+            self.main_gui.ae_log("")  # 空行分隔
+
+        except Exception as e:
+            self.main_gui.ae_log(f"  ⚠️ 获取模型结构信息失败: {e}")
+
     def _update_status_display(self):
         """更新状态显示（精简版）"""
         self.status_text.delete(1.0, tk.END)
@@ -522,6 +577,9 @@ class AutoEncoderExtension:
 
             self.main_gui.ae_log(f"✅ {mode}模式系统创建成功!")
 
+            # 输出模型结构信息
+            self._log_model_structure(self.main_gui.ae_system['autoencoder'], mode)
+
             # 更新原有GUI状态
             self.main_gui.update_ae_status()
             self._update_status_display()
@@ -587,6 +645,11 @@ class AutoEncoderExtension:
                 system['param_data'] = self.main_gui.param_data
 
             self.main_gui.ae_log("✅ 双系统创建成功!")
+
+            # 输出两个系统的模型结构信息
+            self._log_model_structure(self.wavelet_system['autoencoder'], "Wavelet")
+            self._log_model_structure(self.direct_system['autoencoder'], "Direct")
+
             self._update_status_display()
 
             messagebox.showinfo("成功", "双系统创建成功！现在可以进行性能对比分析。")

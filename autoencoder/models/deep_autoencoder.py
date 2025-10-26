@@ -12,6 +12,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Dict, Any
 
+from autoencoder.utils.adaptive_layers import (
+    build_adaptive_fc_pair,
+    get_structure_info,
+)
+
 
 class DeepWaveletAutoEncoder(nn.Module):
     """
@@ -108,38 +113,20 @@ class DeepWaveletAutoEncoder(nn.Module):
                 nn.Sigmoid()  # 输出0-1的权重
             )
 
-        # 编码器FC层: [256, 7, 7] → latent_dim
+        # 编码器FC层: [256, 7, 7] → latent_dim（自适应构建）
         self.final_conv_size = 256 * 7 * 7  # 12544
-        # TODO: latent_dim优化点 - 待实验验证
-        # 当前架构: 12544 → 1024 → 512 → latent_dim (三级渐进式压缩)
-        # - latent_dim=256: 512→256 (2:1) ✅ 非常温和
-        # - latent_dim=128: 512→128 (4:1) ✅ 温和
-        # - latent_dim=64:  512→64 (8:1) ⚠️ 可接受，需验证Stage 1重建误差
-        # 注: Deep架构已采用多级压缩，对小latent_dim支持较好
-        self.encoder_fc = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.final_conv_size, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(512, latent_dim)  # 压缩瓶颈
+        self.encoder_fc, decoder_fc, self.intermediate_dims = build_adaptive_fc_pair(
+            input_dim=self.final_conv_size,
+            latent_dim=latent_dim,
+            dropout_rate=dropout_rate,
+            arch_type='cnn',
+        )
+        self.decoder_fc = nn.Sequential(*decoder_fc, nn.ReLU(inplace=True))
+        self.structure_info = get_structure_info(
+            self.final_conv_size, latent_dim, self.intermediate_dims
         )
 
         # ===== 深度Decoder架构 =====
-
-        # 解码器FC层
-        self.decoder_fc = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(512, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, self.final_conv_size),
-            nn.ReLU(inplace=True)
-        )
 
         # Stage 4 逆向: [256, 7, 7] → [128, 13, 13]
         self.deconv4 = nn.Sequential(
@@ -303,12 +290,16 @@ class DeepWaveletAutoEncoder(nn.Module):
             'parameters': param_count,
             'use_attention': self.use_attention,
             'dropout_rate': self.dropout_rate,
+            'fc_structure': self.structure_info['fc_structure'],
+            'intermediate_dims': self.structure_info['intermediate_dims'],
+            'num_fc_layers': self.structure_info['num_fc_layers'],
+            'compression_ratios': self.structure_info['compression_ratios'],
             'stages': [
                 f'Conv1: {self.input_channels}→32 [{self.input_size}×{self.input_size}] (双卷积)',
                 'Conv2: 32→64 [25×25] (双卷积)',
                 'Conv3: 64→128 [13×13] (双卷积)',
                 'Conv4: 128→256 [7×7] (双卷积)',
-                f'FC: {self.final_conv_size}→{self.latent_dim}'
+                f'FC: {self.structure_info["fc_structure"]}'
             ]
         }
 
@@ -404,37 +395,20 @@ class DeepDirectAutoEncoder(nn.Module):
                 nn.Sigmoid()
             )
 
-        # 编码器FC层（减少参数量）
+        # 编码器FC层（自适应构建）
         self.final_conv_size = 256 * 12 * 12  # 36864
-        # TODO: latent_dim优化点 - 待实验验证
-        # 当前架构: 36864 → 1024 → 512 → latent_dim (三级渐进式压缩)
-        # - latent_dim=256: 512→256 (2:1) ✅ 非常温和
-        # - latent_dim=128: 512→128 (4:1) ✅ 温和
-        # - latent_dim=64:  512→64 (8:1) ⚠️ 可接受，需验证Stage 1重建误差
-        # 注: Deep架构已采用多级压缩，对小latent_dim支持较好
-        self.encoder_fc = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.final_conv_size, 1024),  # 减少从2048到1024
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(512, latent_dim)  # 压缩瓶颈
+        self.encoder_fc, decoder_fc, self.intermediate_dims = build_adaptive_fc_pair(
+            input_dim=self.final_conv_size,
+            latent_dim=latent_dim,
+            dropout_rate=dropout_rate,
+            arch_type='cnn',
+        )
+        self.decoder_fc = nn.Sequential(*decoder_fc, nn.ReLU(inplace=True))
+        self.structure_info = get_structure_info(
+            self.final_conv_size, latent_dim, self.intermediate_dims
         )
 
         # ===== 深度Decoder架构 =====
-
-        self.decoder_fc = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(512, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, self.final_conv_size),  # 减少从2048到1024
-            nn.ReLU(inplace=True)
-        )
 
         # 解码器卷积层
         self.deconv4 = nn.Sequential(
@@ -558,12 +532,16 @@ class DeepDirectAutoEncoder(nn.Module):
             'parameters': param_count,
             'use_attention': self.use_attention,
             'dropout_rate': self.dropout_rate,
+            'fc_structure': self.structure_info['fc_structure'],
+            'intermediate_dims': self.structure_info['intermediate_dims'],
+            'num_fc_layers': self.structure_info['num_fc_layers'],
+            'compression_ratios': self.structure_info['compression_ratios'],
             'stages': [
                 f'Conv1: {self.input_channels}→32 [{self.input_size}×{self.input_size}] (双卷积)',
                 'Conv2: 32→64 [46×46] (双卷积)',
                 'Conv3: 64→128 [23×23] (双卷积)',
                 'Conv4: 128→256 [12×12] (双卷积)',
-                f'FC: {self.final_conv_size}→{self.latent_dim}'
+                f'FC: {self.structure_info["fc_structure"]}'
             ]
         }
 
