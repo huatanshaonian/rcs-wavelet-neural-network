@@ -20,7 +20,7 @@ def test_architecture_combination(mode, architecture, config_name='2freq'):
         # 创建系统
         system = create_autoencoder_system(
             config_name=config_name,
-            latent_dim=256,
+            latent_dim=32,
             dropout_rate=0.2,
             wavelet='db4',
             normalize=True,

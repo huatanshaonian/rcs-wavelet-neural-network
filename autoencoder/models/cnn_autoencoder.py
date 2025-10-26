@@ -8,8 +8,53 @@ CNN-AutoEncoder核心模型
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 import numpy as np
+
+
+def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
+    """
+    动态计算中间层维度，实现渐进式压缩
+
+    策略：
+    - 保持每级压缩比不超过max_ratio（默认4:1）
+    - 自动生成多个中间层以平滑过渡
+    - 维度向上取整到2的幂次，便于硬件优化
+
+    Args:
+        input_dim: 输入维度
+        latent_dim: 目标隐空间维度
+        max_ratio: 每级最大压缩比（默认4）
+
+    Returns:
+        中间层维度列表（不包括input_dim和latent_dim）
+
+    Example:
+        >>> calculate_intermediate_dims(4096, 32, max_ratio=4)
+        [1024, 256, 64]  # 4096→1024→256→64→32
+    """
+    if input_dim <= latent_dim:
+        return []
+
+    dims = []
+    current = input_dim
+
+    # 持续压缩直到接近目标维度
+    while current > latent_dim * max_ratio:
+        # 压缩到当前的1/2到1/4之间
+        next_dim = max(latent_dim, current // max_ratio)
+        # 向上取整到2的幂次（如64, 128, 256...）
+        next_dim = 2 ** round(np.log2(next_dim))
+        # 确保不小于latent_dim
+        next_dim = max(next_dim, latent_dim)
+
+        if next_dim < current:
+            dims.append(next_dim)
+            current = next_dim
+        else:
+            break
+
+    return dims
 
 
 class WaveletAutoEncoder(nn.Module):
@@ -75,29 +120,51 @@ class WaveletAutoEncoder(nn.Module):
         # 计算展平后的特征维度
         self.flattened_size = 256 * 4 * 4  # 4096
 
-        # 编码器的最后几层
-        # TODO: latent_dim优化点 - 待实验验证
-        # 当前架构: 4096 → 1024 → latent_dim (单步压缩)
-        # - latent_dim=256: 1024→256 (4:1) ✅ 温和，无问题
-        # - latent_dim=128: 1024→128 (8:1) ⚠️ 中等，需验证Stage 1重建误差
-        # - latent_dim=64:  1024→64 (16:1) ❌ 激进，建议增加512过渡层
-        # 如果Stage 1 val_loss > 0.05，考虑多级压缩: 4096→1024→512→256→latent_dim
-        self.encoder_fc = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.flattened_size, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, latent_dim)  # 压缩瓶颈
+        # ===== 动态适配：自动计算中间层维度 =====
+        # 策略：保持每级压缩比≤4:1，避免信息瓶颈
+        self.intermediate_dims = calculate_intermediate_dims(
+            self.flattened_size, latent_dim, max_ratio=4
         )
 
+        # 编码器全连接层：渐进式压缩
+        # 示例: latent_dim=32 → [4096, 1024, 256, 64, 32]
+        #       latent_dim=16 → [4096, 1024, 256, 64, 16]
+        encoder_fc_layers = [nn.Flatten()]
+        current_dim = self.flattened_size
+
+        # 构建中间层
+        for intermediate_dim in self.intermediate_dims:
+            encoder_fc_layers.extend([
+                nn.Linear(current_dim, intermediate_dim),
+                nn.ReLU(inplace=True),
+                nn.Dropout(dropout_rate)
+            ])
+            current_dim = intermediate_dim
+
+        # 最后一层到latent_dim
+        encoder_fc_layers.append(nn.Linear(current_dim, latent_dim))
+        self.encoder_fc = nn.Sequential(*encoder_fc_layers)
+
         # ===== Decoder: 隐空间 → 小波系数 =====
-        self.decoder_fc = nn.Sequential(
-            nn.Linear(latent_dim, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, self.flattened_size),
+        # 对称的解码器结构
+        decoder_fc_layers = []
+        current_dim = latent_dim
+
+        # 反向构建中间层
+        for intermediate_dim in reversed(self.intermediate_dims):
+            decoder_fc_layers.extend([
+                nn.Linear(current_dim, intermediate_dim),
+                nn.ReLU(inplace=True),
+                nn.Dropout(dropout_rate)
+            ])
+            current_dim = intermediate_dim
+
+        # 最后一层到flattened_size
+        decoder_fc_layers.extend([
+            nn.Linear(current_dim, self.flattened_size),
             nn.ReLU(inplace=True)
-        )
+        ])
+        self.decoder_fc = nn.Sequential(*decoder_fc_layers)
 
         # 解码器 - 不包含最终的Upsample，在decode()中动态处理
         self.decoder_conv = nn.Sequential(
@@ -236,9 +303,14 @@ class WaveletAutoEncoder(nn.Module):
         """获取模型详细信息"""
         param_count = self.get_parameter_count()
 
+        # 构建FC层结构描述
+        fc_structure = [self.flattened_size] + self.intermediate_dims + [self.latent_dim]
+        fc_structure_str = ' → '.join(map(str, fc_structure))
+
         input_size = self.input_size * self.input_size * self.input_channels
         return {
             'model_name': 'WaveletAutoEncoder',
+            'architecture': 'CNN',
             'latent_dim': self.latent_dim,
             'num_frequencies': self.num_frequencies,
             'wavelet_bands': self.wavelet_bands,
@@ -247,6 +319,9 @@ class WaveletAutoEncoder(nn.Module):
             'input_shape': f'[B, {self.input_size}, {self.input_size}, {self.input_channels}]',
             'output_shape': f'[B, {self.input_size}, {self.input_size}, {self.input_channels}]',
             'latent_shape': f'[B, {self.latent_dim}]',
+            'fc_structure': fc_structure_str,
+            'intermediate_dims': self.intermediate_dims,
+            'num_fc_layers': len(fc_structure) - 1,
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
             'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1'

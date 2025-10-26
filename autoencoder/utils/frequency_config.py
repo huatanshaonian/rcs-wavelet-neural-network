@@ -79,7 +79,7 @@ class FrequencyConfig:
         return self.config.copy()
 
     def create_autoencoder(self,
-                          latent_dim: int = 256,
+                          latent_dim: int = 32,
                           dropout_rate: float = 0.2) -> WaveletAutoEncoder:
         """
         创建对应配置的AutoEncoder
@@ -164,7 +164,7 @@ class FrequencyConfig:
 
     def create_parameter_mapper(self,
                               param_dim: int = 9,
-                              latent_dim: int = 256,
+                              latent_dim: int = 32,
                               hidden_dims: list = [64, 128],
                               dropout_rate: float = 0.3) -> ParameterMapper:
         """
@@ -196,7 +196,7 @@ class FrequencyConfig:
 
 
 def create_autoencoder_system(config_name: str = '2freq',
-                            latent_dim: int = 256,
+                            latent_dim: int = 32,
                             dropout_rate: float = 0.2,
                             wavelet: str = 'db4',
                             normalize: bool = True,
@@ -350,9 +350,25 @@ def create_autoencoder_system(config_name: str = '2freq',
 
     # 打印模型参数信息
     ae_params = autoencoder.get_parameter_count()
+    model_info = autoencoder.get_model_info()
+
+    print(f"\n【模型配置】")
     print(f"  - AutoEncoder参数量: {ae_params['total']:,}")
     print(f"  - 隐空间维度: {latent_dim}")
     print(f"  - 输入通道数: {freq_config.config['input_channels']}")
+
+    # 显示网络结构（如果有）
+    if 'fc_structure' in model_info:
+        print(f"\n【网络结构】")
+        print(f"  - FC层结构: {model_info['fc_structure']}")
+        print(f"  - FC层数: {model_info['num_fc_layers']}")
+    elif 'mlp_structure' in model_info:
+        print(f"\n【网络结构】")
+        print(f"  - MLP结构: {model_info['mlp_structure']}")
+        print(f"  - MLP层数: {model_info['num_mlp_layers']}")
+
+    if 'compression_ratio' in model_info:
+        print(f"  - 总压缩比: {model_info['compression_ratio']}")
 
     system = {
         'config': freq_config,

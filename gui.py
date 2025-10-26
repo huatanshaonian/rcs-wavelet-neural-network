@@ -237,7 +237,7 @@ class RCSWaveletGUI:
         self.ae_freq_config = tk.StringVar(value="2freq")  # 2freq 或 3freq
 
         # 模型配置
-        self.ae_latent_dim = tk.StringVar(value="256")
+        self.ae_latent_dim = tk.StringVar(value="32")
         self.ae_dropout_rate = tk.StringVar(value="0.2")
         self.ae_wavelet_type = tk.StringVar(value="db4")
         self.ae_architecture_type = tk.StringVar(value="CNN")  # 架构类型: CNN或MLP
