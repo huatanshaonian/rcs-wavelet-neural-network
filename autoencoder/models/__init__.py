@@ -7,6 +7,8 @@ from .direct_autoencoder import DirectAutoEncoder
 from .mlp_autoencoder import WaveletMLPAutoEncoder, DirectMLPAutoEncoder
 from .enhanced_cnn_autoencoder import EnhancedWaveletAutoEncoder, EnhancedDirectAutoEncoder
 from .deep_autoencoder import DeepWaveletAutoEncoder, DeepDirectAutoEncoder
+from .sine_cnn_autoencoder import SinWaveletAutoEncoder, SinDirectAutoEncoder
+from .sine_mlp_autoencoder import SinWaveletMLPAutoEncoder, SinDirectMLPAutoEncoder
 from .parameter_mapper import ParameterMapperFactory
 
 __all__ = [
@@ -18,6 +20,10 @@ __all__ = [
     'EnhancedDirectAutoEncoder',
     'DeepWaveletAutoEncoder',
     'DeepDirectAutoEncoder',
+    'SinWaveletAutoEncoder',
+    'SinDirectAutoEncoder',
+    'SinWaveletMLPAutoEncoder',
+    'SinDirectMLPAutoEncoder',
     'ParameterMapper',
     'ParameterMapperFactory'
 ]

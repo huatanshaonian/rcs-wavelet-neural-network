@@ -11,6 +11,8 @@ import torch.nn.functional as F
 from typing import Tuple, Dict, Any, List
 import numpy as np
 
+from autoencoder.utils.adaptive_layers import get_structure_info
+
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
     """
@@ -165,6 +167,11 @@ class WaveletAutoEncoder(nn.Module):
             nn.ReLU(inplace=True)
         ])
         self.decoder_fc = nn.Sequential(*decoder_fc_layers)
+
+        # 保存结构信息（用于 get_model_info）
+        self.structure_info = get_structure_info(
+            self.flattened_size, latent_dim, self.intermediate_dims
+        )
 
         # 解码器 - 不包含最终的Upsample，在decode()中动态处理
         self.decoder_conv = nn.Sequential(
@@ -322,6 +329,7 @@ class WaveletAutoEncoder(nn.Module):
             'fc_structure': fc_structure_str,
             'intermediate_dims': self.intermediate_dims,
             'num_fc_layers': len(fc_structure) - 1,
+            'compression_ratios': self.structure_info['compression_ratios'],
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
             'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1'
