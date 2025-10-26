@@ -65,14 +65,15 @@ class FrequencyConfig:
         self.config = self.CONFIGS[config_name].copy()
 
         # 计算派生参数
-        self.config['input_channels'] = self.config['num_frequencies'] * 4  # 4个小波频带
+        self.config['wavelet_input_channels'] = self.config['num_frequencies'] * 4  # Wavelet模式: 频率×4个小波频带
+        self.config['direct_input_channels'] = self.config['num_frequencies']       # Direct模式: 等于频率数
         self.config['wavelet_bands'] = 4
 
         print(f"初始化频率配置: {config_name}")
         print(f"描述: {self.config['description']}")
         print(f"频率数量: {self.config['num_frequencies']}")
         print(f"频率标签: {self.config['frequency_labels']}")
-        print(f"输入通道数: {self.config['input_channels']}")
+        # 不再显示通用的input_channels，因为它依赖于mode
 
     def get_info(self) -> Dict[str, Any]:
         """获取配置信息"""
@@ -352,10 +353,19 @@ def create_autoencoder_system(config_name: str = '2freq',
     ae_params = autoencoder.get_parameter_count()
     model_info = autoencoder.get_model_info()
 
+    # 根据mode确定实际输入通道数
+    if mode == 'wavelet':
+        actual_input_channels = freq_config.config['wavelet_input_channels']
+        input_shape_desc = f"[B, 49, 49, {actual_input_channels}]"
+    else:
+        actual_input_channels = freq_config.config['direct_input_channels']
+        input_shape_desc = f"[B, 91, 91, {actual_input_channels}]"
+
     print(f"\n【模型配置】")
     print(f"  - AutoEncoder参数量: {ae_params['total']:,}")
     print(f"  - 隐空间维度: {latent_dim}")
-    print(f"  - 输入通道数: {freq_config.config['input_channels']}")
+    print(f"  - 输入通道数: {actual_input_channels} ({mode}模式)")
+    print(f"  - 输入形状: {input_shape_desc}")
 
     # 显示网络结构（如果有）
     if 'fc_structure' in model_info:
