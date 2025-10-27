@@ -68,7 +68,7 @@ class UnifiedTrainingConfigGUI:
         # AutoEncoder特定参数
         self.ae_latent_dim = tk.StringVar(value="256")
         self.ae_dropout_rate = tk.StringVar(value="0.2")
-        self.ae_mode = tk.StringVar(value="wavelet")  # wavelet 或 direct
+        self.ae_mode = tk.StringVar(value="wavelet")  # wavelet, direct, 或 differentiable_wavelet
         self.ae_freq_config = tk.StringVar(value="2freq")  # 2freq 或 3freq
         self.ae_training_mode = tk.StringVar(value="three_stage")  # three_stage 或 stage1_only
 
@@ -258,7 +258,7 @@ class UnifiedTrainingConfigGUI:
 
         ttk.Label(arch_row1, text="模式:").pack(side=tk.LEFT, padx=(0, 5))
         mode_combo = ttk.Combobox(arch_row1, textvariable=self.ae_mode,
-                                values=['wavelet', 'direct'], state='readonly', width=10)
+                                values=['wavelet', 'direct', 'differentiable_wavelet'], state='readonly', width=20)
         mode_combo.pack(side=tk.LEFT, padx=(0, 20))
 
         ttk.Label(arch_row1, text="频率配置:").pack(side=tk.LEFT, padx=(0, 5))
