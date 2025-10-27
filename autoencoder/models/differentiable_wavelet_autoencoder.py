@@ -1,0 +1,486 @@
+"""
+可微分小波AutoEncoder模型
+
+第三种模式：differentiable_wavelet
+- 与传统wavelet模式不同，损失直接在RCS空间计算
+- 小波变换集成到网络中，可以端到端训练
+- 更容易添加物理约束（如ReLU保证RCS≥0）
+
+架构对比：
+- wavelet模式：  RCS → 小波(numpy) → AE → 逆小波(numpy) → RCS（损失在系数空间）
+- differentiable模式：RCS → 小波(torch) → AE → 逆小波(torch) → RCS（损失在RCS空间）✓
+"""
+
+import torch
+import torch.nn as nn
+from typing import Tuple, Dict, Any, List
+import numpy as np
+
+# 导入可微分小波变换
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from differentiable_wavelet_transform import DifferentiableWaveletTransform
+
+
+class DifferentiableWaveletAutoEncoder(nn.Module):
+    """
+    可微分小波CNN AutoEncoder
+
+    与WaveletAutoEncoder的区别：
+    1. 集成了可微分小波变换（nn.Module）
+    2. 输入/输出都是RCS数据（不是小波系数）
+    3. 损失在RCS空间计算
+    4. 可以端到端训练，梯度回传通过整个网络
+
+    输入: [B, 91, 91, 2] RCS数据
+    输出: [B, 91, 91, 2] 重建RCS数据
+    """
+
+    def __init__(self,
+                 latent_dim: int = 256,
+                 num_frequencies: int = 2,
+                 wavelet_bands: int = 4,
+                 dropout_rate: float = 0.2,
+                 wavelet_type: str = 'db4',
+                 input_size: int = 49):
+        """
+        初始化可微分小波CNN AutoEncoder
+
+        Args:
+            latent_dim: 隐空间维度
+            num_frequencies: 频率数量
+            wavelet_bands: 小波频带数（固定为4）
+            dropout_rate: Dropout比率
+            wavelet_type: 小波类型（db4, haar等）
+            input_size: 小波系数尺寸（自动从wavelet_type计算）
+        """
+        super().__init__()
+
+        self.latent_dim = latent_dim
+        self.num_frequencies = num_frequencies
+        self.wavelet_bands = wavelet_bands
+        self.input_channels = num_frequencies * wavelet_bands
+        self.dropout_rate = dropout_rate
+        self.wavelet_type = wavelet_type
+        self.input_size = input_size
+
+        # ===== 关键：集成可微分小波变换 =====
+        self.wavelet_transform = DifferentiableWaveletTransform(
+            wavelet=wavelet_type,
+            mode='symmetric',
+            level=1
+        )
+
+        # ===== CNN Encoder: 小波系数 → 隐空间 =====
+        # [B, 49, 49, 8] → [B, 256]
+        self.encoder = nn.Sequential(
+            # 输入: [B, 8, 49, 49]
+            nn.Conv2d(self.input_channels, 64, kernel_size=3, stride=2, padding=1),  # → [B, 64, 25, 25]
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout_rate),
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # → [B, 128, 13, 13]
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout_rate),
+
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # → [B, 256, 7, 7]
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout_rate),
+
+            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),  # → [B, 256, 4, 4]
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+        )
+
+        # 计算flatten后的维度
+        self.flatten_dim = 256 * 4 * 4  # 4096
+
+        # FC层：4096 → latent_dim
+        self.fc_encoder = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(self.flatten_dim, 1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(1024, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(256, latent_dim)
+        )
+
+        # ===== CNN Decoder: 隐空间 → 小波系数 =====
+        # FC层：latent_dim → 4096
+        self.fc_decoder = nn.Sequential(
+            nn.Linear(latent_dim, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(256, 1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+            nn.Linear(1024, self.flatten_dim),
+            nn.ReLU(inplace=True)
+        )
+
+        self.decoder = nn.Sequential(
+            # [B, 256, 4, 4]
+            nn.ConvTranspose2d(256, 256, kernel_size=4, stride=2, padding=1),  # → [B, 256, 8, 8]
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout_rate),
+
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),  # → [B, 128, 16, 16]
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout_rate),
+
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # → [B, 64, 31, 31]
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout_rate),
+
+            nn.ConvTranspose2d(64, self.input_channels, kernel_size=3, stride=2, padding=1),  # → [B, 8, 61, 61]
+            # 最后一层不加激活函数，允许小波系数为负值
+        )
+
+        # 保存结构信息
+        self._structure_info = {
+            'type': 'DifferentiableWaveletAutoEncoder',
+            'latent_dim': latent_dim,
+            'wavelet_type': wavelet_type,
+            'differentiable': True
+        }
+
+    def encode(self, rcs_data: torch.Tensor) -> torch.Tensor:
+        """
+        编码：RCS → 小波系数 → 隐空间
+
+        Args:
+            rcs_data: [B, H, W, C] RCS数据
+
+        Returns:
+            latent: [B, latent_dim] 隐空间表示
+        """
+        # Step 1: RCS → 小波系数（可微分）
+        wavelet_coeffs = self.wavelet_transform.forward_transform(rcs_data)  # [B, 49, 49, 8]
+
+        # Step 2: 转换为[B, C, H, W]格式
+        wavelet_coeffs = wavelet_coeffs.permute(0, 3, 1, 2)  # [B, 8, 49, 49]
+
+        # Step 3: CNN编码
+        features = self.encoder(wavelet_coeffs)  # [B, 256, 4, 4]
+
+        # Step 4: FC到隐空间
+        latent = self.fc_encoder(features)  # [B, latent_dim]
+
+        return latent
+
+    def decode(self, latent: torch.Tensor) -> torch.Tensor:
+        """
+        解码：隐空间 → 小波系数 → RCS
+
+        Args:
+            latent: [B, latent_dim] 隐空间表示
+
+        Returns:
+            rcs_data: [B, H, W, C] 重建的RCS数据
+        """
+        # Step 1: FC展开
+        features = self.fc_decoder(latent)  # [B, 4096]
+        features = features.view(-1, 256, 4, 4)  # [B, 256, 4, 4]
+
+        # Step 2: CNN解码
+        wavelet_coeffs = self.decoder(features)  # [B, 8, H', W']
+
+        # Step 3: 裁剪到正确的小波尺寸
+        target_size = self.wavelet_transform.wavelet_size
+        if target_size is not None:
+            h, w = target_size
+            wavelet_coeffs = wavelet_coeffs[:, :, :h, :w]
+
+        # Step 4: 转换为[B, H, W, C]格式
+        wavelet_coeffs = wavelet_coeffs.permute(0, 2, 3, 1)  # [B, 49, 49, 8]
+
+        # Step 5: 小波系数 → RCS（可微分）
+        rcs_data = self.wavelet_transform.inverse_transform(wavelet_coeffs)  # [B, 91, 91, 2]
+
+        return rcs_data
+
+    def forward(self, rcs_data: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        前向传播：RCS → 隐空间 → 重建RCS
+
+        Args:
+            rcs_data: [B, H, W, C] 输入RCS数据
+
+        Returns:
+            reconstructed: [B, H, W, C] 重建的RCS数据
+            latent: [B, latent_dim] 隐空间表示
+        """
+        latent = self.encode(rcs_data)
+        reconstructed = self.decode(latent)
+        return reconstructed, latent
+
+    def get_parameter_count(self) -> Dict[str, int]:
+        """获取参数数量"""
+        encoder_params = sum(p.numel() for p in self.encoder.parameters() if p.requires_grad)
+        decoder_params = sum(p.numel() for p in self.decoder.parameters() if p.requires_grad)
+        fc_enc_params = sum(p.numel() for p in self.fc_encoder.parameters() if p.requires_grad)
+        fc_dec_params = sum(p.numel() for p in self.fc_decoder.parameters() if p.requires_grad)
+        wavelet_params = sum(p.numel() for p in self.wavelet_transform.parameters() if p.requires_grad)
+
+        return {
+            'encoder': encoder_params + fc_enc_params,
+            'decoder': decoder_params + fc_dec_params,
+            'wavelet_transform': wavelet_params,
+            'total': encoder_params + decoder_params + fc_enc_params + fc_dec_params + wavelet_params
+        }
+
+    def get_model_info(self) -> Dict[str, Any]:
+        """获取模型信息"""
+        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return {
+            'type': 'DifferentiableWaveletAutoEncoder',
+            'latent_dim': self.latent_dim,
+            'num_frequencies': self.num_frequencies,
+            'total_params': total_params,
+            'wavelet_type': self.wavelet_type,
+            'differentiable': True,
+            'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
+            'output_shape': f'[B, 91, 91, {self.num_frequencies}]',
+            'loss_space': 'RCS'  # 关键：损失在RCS空间
+        }
+
+
+class DifferentiableWaveletMLPAutoEncoder(nn.Module):
+    """
+    可微分小波MLP AutoEncoder
+
+    使用全连接网络处理小波系数
+    适合参数敏感性分析
+    """
+
+    def __init__(self,
+                 latent_dim: int = 256,
+                 num_frequencies: int = 2,
+                 wavelet_bands: int = 4,
+                 dropout_rate: float = 0.2,
+                 wavelet_type: str = 'db4',
+                 input_size: int = 49):
+        super().__init__()
+
+        self.latent_dim = latent_dim
+        self.num_frequencies = num_frequencies
+        self.wavelet_bands = wavelet_bands
+        self.dropout_rate = dropout_rate
+        self.wavelet_type = wavelet_type
+        self.input_size = input_size
+
+        # 可微分小波变换
+        self.wavelet_transform = DifferentiableWaveletTransform(
+            wavelet=wavelet_type,
+            mode='symmetric',
+            level=1
+        )
+
+        # 计算输入维度
+        self.input_dim = input_size * input_size * num_frequencies * wavelet_bands
+
+        # MLP Encoder
+        self.encoder = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(self.input_dim, 4096),
+            nn.BatchNorm1d(4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(4096, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(512, latent_dim)
+        )
+
+        # MLP Decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(512, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(1024, 4096),
+            nn.BatchNorm1d(4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(4096, self.input_dim)
+        )
+
+    def encode(self, rcs_data: torch.Tensor) -> torch.Tensor:
+        """RCS → 小波系数 → 隐空间"""
+        wavelet_coeffs = self.wavelet_transform.forward_transform(rcs_data)
+        latent = self.encoder(wavelet_coeffs)
+        return latent
+
+    def decode(self, latent: torch.Tensor) -> torch.Tensor:
+        """隐空间 → 小波系数 → RCS"""
+        wavelet_coeffs = self.decoder(latent)
+        # Reshape
+        batch_size = latent.size(0)
+        wavelet_coeffs = wavelet_coeffs.view(batch_size, self.input_size, self.input_size, -1)
+        rcs_data = self.wavelet_transform.inverse_transform(wavelet_coeffs)
+        return rcs_data
+
+    def forward(self, rcs_data: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        latent = self.encode(rcs_data)
+        reconstructed = self.decode(latent)
+        return reconstructed, latent
+
+    def get_parameter_count(self) -> Dict[str, int]:
+        """获取参数数量"""
+        encoder_params = sum(p.numel() for p in self.encoder.parameters() if p.requires_grad)
+        decoder_params = sum(p.numel() for p in self.decoder.parameters() if p.requires_grad)
+        wavelet_params = sum(p.numel() for p in self.wavelet_transform.parameters() if p.requires_grad)
+
+        return {
+            'encoder': encoder_params,
+            'decoder': decoder_params,
+            'wavelet_transform': wavelet_params,
+            'total': encoder_params + decoder_params + wavelet_params
+        }
+
+    def get_model_info(self) -> Dict[str, Any]:
+        """获取模型信息"""
+        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return {
+            'type': 'DifferentiableWaveletMLPAutoEncoder',
+            'latent_dim': self.latent_dim,
+            'num_frequencies': self.num_frequencies,
+            'total_params': total_params,
+            'wavelet_type': self.wavelet_type,
+            'differentiable': True,
+            'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
+            'output_shape': f'[B, 91, 91, {self.num_frequencies}]',
+            'loss_space': 'RCS'
+        }
+
+
+class DifferentiableSineWaveletMLPAutoEncoder(DifferentiableWaveletMLPAutoEncoder):
+    """
+    可微分Sine激活MLP AutoEncoder
+
+    使用sin激活函数代替ReLU
+    可能更适合周期性信号
+    """
+
+    def __init__(self, *args, **kwargs):
+        # 先不调用父类初始化，我们要自定义
+        nn.Module.__init__(self)
+
+        latent_dim = kwargs.get('latent_dim', 256)
+        num_frequencies = kwargs.get('num_frequencies', 2)
+        wavelet_bands = kwargs.get('wavelet_bands', 4)
+        dropout_rate = kwargs.get('dropout_rate', 0.2)
+        wavelet_type = kwargs.get('wavelet_type', 'db4')
+        input_size = kwargs.get('input_size', 49)
+
+        self.latent_dim = latent_dim
+        self.num_frequencies = num_frequencies
+        self.wavelet_bands = wavelet_bands
+        self.dropout_rate = dropout_rate
+        self.wavelet_type = wavelet_type
+        self.input_size = input_size
+
+        # 可微分小波变换
+        self.wavelet_transform = DifferentiableWaveletTransform(
+            wavelet=wavelet_type,
+            mode='symmetric',
+            level=1
+        )
+
+        # 计算输入维度
+        self.input_dim = input_size * input_size * num_frequencies * wavelet_bands
+
+        # MLP Encoder (使用Sin激活)
+        self.encoder = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(self.input_dim, 4096),
+            nn.BatchNorm1d(4096),
+            SinActivation(),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(4096, 1024),
+            nn.BatchNorm1d(1024),
+            SinActivation(),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            SinActivation(),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(512, latent_dim)
+        )
+
+        # MLP Decoder (使用Sin激活)
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 512),
+            nn.BatchNorm1d(512),
+            SinActivation(),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(512, 1024),
+            nn.BatchNorm1d(1024),
+            SinActivation(),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(1024, 4096),
+            nn.BatchNorm1d(4096),
+            SinActivation(),
+            nn.Dropout(dropout_rate),
+
+            nn.Linear(4096, self.input_dim)
+        )
+
+    def get_model_info(self) -> Dict[str, Any]:
+        """获取模型信息（重写以返回正确类型名）"""
+        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return {
+            'type': 'DifferentiableSineWaveletMLPAutoEncoder',
+            'latent_dim': self.latent_dim,
+            'num_frequencies': self.num_frequencies,
+            'total_params': total_params,
+            'wavelet_type': self.wavelet_type,
+            'differentiable': True,
+            'activation': 'sin',
+            'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
+            'output_shape': f'[B, 91, 91, {self.num_frequencies}]',
+            'loss_space': 'RCS'
+        }
+
+
+class SinActivation(nn.Module):
+    """Sin激活函数"""
+    def forward(self, x):
+        return torch.sin(x)
+
+
+# 导出
+__all__ = [
+    'DifferentiableWaveletAutoEncoder',
+    'DifferentiableWaveletMLPAutoEncoder',
+    'DifferentiableSineWaveletMLPAutoEncoder'
+]

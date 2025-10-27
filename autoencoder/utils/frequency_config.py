@@ -30,6 +30,11 @@ from models.sine_mlp_autoencoder import SinWaveletMLPAutoEncoder, SinDirectMLPAu
 from models.enhanced_cnn_autoencoder import EnhancedWaveletAutoEncoder, EnhancedDirectAutoEncoder
 from models.deep_autoencoder import DeepWaveletAutoEncoder, DeepDirectAutoEncoder
 from models.sine_cnn_autoencoder import SinWaveletAutoEncoder, SinDirectAutoEncoder
+from models.differentiable_wavelet_autoencoder import (
+    DifferentiableWaveletAutoEncoder,
+    DifferentiableWaveletMLPAutoEncoder,
+    DifferentiableSineWaveletMLPAutoEncoder
+)
 from utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 from utils.data_adapters import RCS_DataAdapter
 
@@ -230,6 +235,10 @@ def create_autoencoder_system(config_name: str = '2freq',
         # 小波模式
         wavelet_transform = freq_config.create_wavelet_transform(wavelet)
 
+        # 获取实际的小波变换后尺寸（自适应不同小波基）
+        wavelet_size = wavelet_transform.wavelet_size[0]  # 取高度（正方形）
+        print(f"小波变换后尺寸: {wavelet_size}x{wavelet_size} (小波类型: {wavelet})")
+
         if architecture.lower() == 'mlp':
             # 小波 + MLP
             autoencoder = WaveletMLPAutoEncoder(
@@ -237,7 +246,7 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
-                input_size=49  # db4小波变换后的尺寸
+                input_size=wavelet_size  # 自适应小波尺寸
             )
             print(f"使用 WaveletMLPAutoEncoder")
         elif architecture.lower() in ('sine_mlp', 'sine-mlp'):
@@ -247,7 +256,7 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
-                input_size=49
+                input_size=wavelet_size  # 自适应小波尺寸
             )
             print(f"使用 SinWaveletMLPAutoEncoder (sin激活)")
         elif architecture.lower() in ('sine_cnn', 'sine'):
@@ -257,7 +266,7 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
-                input_size=49
+                input_size=wavelet_size  # 自适应小波尺寸
             )
             print(f"使用 SinWaveletAutoEncoder (sin激活)")
         elif architecture.lower() == 'enhanced_cnn':
@@ -267,7 +276,7 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
-                input_size=49
+                input_size=wavelet_size  # 自适应小波尺寸
             )
             print(f"使用 EnhancedWaveletAutoEncoder (增强感受野CNN)")
         elif architecture.lower() == 'deep_cnn':
@@ -278,7 +287,7 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
                 use_attention=True,
-                input_size=49
+                input_size=wavelet_size  # 自适应小波尺寸
             )
             print(f"使用 DeepWaveletAutoEncoder (深度CNN, 双卷积+通道注意力)")
         else:
@@ -288,10 +297,10 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
-                input_size=49
+                input_size=wavelet_size  # 自适应小波尺寸
             )
             print(f"使用 WaveletAutoEncoder (标准CNN)")
-    else:
+    elif mode == 'direct':
         # 直接模式
         wavelet_transform = None
 
@@ -345,8 +354,53 @@ def create_autoencoder_system(config_name: str = '2freq',
                 dropout_rate=dropout_rate
             )
             print(f"使用 DirectAutoEncoder (标准CNN)")
+    elif mode == 'differentiable_wavelet':
+        # 可微分小波模式（第三种模式）
+        # 特点：小波变换集成在模型中，损失在RCS空间计算
+        wavelet_transform = None  # differentiable模式不需要单独的小波变换
 
-    data_adapter = freq_config.create_data_adapter(normalize, mode=mode)
+        # 获取小波尺寸（用于模型初始化）
+        temp_wt = freq_config.create_wavelet_transform(wavelet)
+        wavelet_size = temp_wt.wavelet_size[0]
+        print(f"可微分小波尺寸: {wavelet_size}x{wavelet_size} (小波类型: {wavelet})")
+
+        if architecture.lower() == 'mlp':
+            # 可微分小波 + MLP
+            autoencoder = DifferentiableWaveletMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size
+            )
+            print(f"使用 DifferentiableWaveletMLPAutoEncoder (端到端训练)")
+        elif architecture.lower() in ('sine_mlp', 'sine-mlp'):
+            # 可微分小波 + Sine MLP
+            autoencoder = DifferentiableSineWaveletMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size
+            )
+            print(f"使用 DifferentiableSineWaveletMLPAutoEncoder (sin激活, 端到端训练)")
+        else:
+            # 可微分小波 + CNN (默认)
+            autoencoder = DifferentiableWaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size
+            )
+            print(f"使用 DifferentiableWaveletAutoEncoder (标准CNN, 端到端训练)")
+    else:
+        raise ValueError(f"未知的模式: {mode}. 支持的模式: 'wavelet', 'direct', 'differentiable_wavelet'")
+
+    data_adapter = freq_config.create_data_adapter(normalize, mode=mode if mode != 'differentiable_wavelet' else 'wavelet')
     parameter_mapper = freq_config.create_parameter_mapper(latent_dim=latent_dim)
 
     # 打印模型参数信息
@@ -357,6 +411,10 @@ def create_autoencoder_system(config_name: str = '2freq',
     if mode == 'wavelet':
         actual_input_channels = freq_config.config['wavelet_input_channels']
         input_shape_desc = f"[B, 49, 49, {actual_input_channels}]"
+    elif mode == 'differentiable_wavelet':
+        # differentiable模式输入/输出都是RCS
+        actual_input_channels = freq_config.config['direct_input_channels']
+        input_shape_desc = f"[B, 91, 91, {actual_input_channels}] (RCS空间)"
     else:
         actual_input_channels = freq_config.config['direct_input_channels']
         input_shape_desc = f"[B, 91, 91, {actual_input_channels}]"
