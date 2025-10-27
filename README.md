@@ -40,8 +40,7 @@
 ```
 wavelet/
 ├── gui.py                              # 主GUI程序（6000+行）
-├── gui_autoencoder_extension.py        # AutoEncoder GUI扩展
-├── gui_training_config.py              # 训练配置对话框
+├── gui_autoencoder_extension.py        # AutoEncoder GUI扩展（包含所有AE配置）
 ├── wavelet_gui_helper.py               # 小波分析辅助工具
 ├── main.py                             # 命令行入口
 ├── CLAUDE.md                           # 项目开发指令（重要）

@@ -586,8 +586,7 @@ class RCSWaveletGUI:
         此标签页的内容在 main.py 启动时会被 AutoEncoderExtension 覆盖
 
         如需修改AutoEncoder界面，请修改：
-        - gui_autoencoder_extension.py: AutoEncoderExtension类
-        - gui_training_config.py: 训练配置对话框
+        - gui_autoencoder_extension.py: AutoEncoderExtension类（主界面）
         - wavelet_gui_helper.py: 小波分析辅助函数
         ==========================================
         """

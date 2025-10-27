@@ -78,8 +78,7 @@ input_channels = 12  # 3频率 × 4小波带
 ```
 wavelet/
 ├── gui.py                          # 主GUI（6000+行，核心界面）
-├── gui_autoencoder_extension.py   # AutoEncoder GUI扩展
-├── gui_training_config.py         # 训练配置对话框
+├── gui_autoencoder_extension.py   # AutoEncoder GUI扩展（包含所有AE配置）
 ├── wavelet_gui_helper.py          # 小波分析辅助工具
 ├── main.py                         # 命令行入口
 ├── CLAUDE.md                       # 本文档
@@ -575,12 +574,10 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
        - stage1_only: 直接测试RCS重建（RCS → Encoder → Decoder → 重建RCS）
        - three_stage: 从参数预测RCS（参数 → ParameterMapper → Decoder → RCS）
    - **影响文件**:
-     - `gui_training_config.py`: 添加训练模式UI和配置管理
+     - `gui_autoencoder_extension.py`: 主GUI添加"仅Stage 1"选项，训练模式UI
      - `gui.py`: _run_three_stage_training_v2支持两种训练模式
      - `gui.py`: save_ae_model/load_ae_model保存/加载training_mode
      - `gui.py`: _evaluate_autoencoder_model适配两种评估方式
-     - `gui_autoencoder_extension.py`: 主GUI添加"仅Stage 1"选项 (✅ 正确位置)
-     - `gui.py`: 旧AutoEncoder界面同步更新+废弃标记 (向后兼容)
    - **使用场景**:
      - AutoEncoder架构对比研究
      - 重建性能调参优化
