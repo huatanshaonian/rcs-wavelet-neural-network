@@ -17,24 +17,31 @@ import os
 # 导入 AutoEncoder 的小波变换工具
 sys.path.append(os.path.join(os.path.dirname(__file__), 'autoencoder'))
 from autoencoder.utils.correct_wavelet_transform import CorrectWaveletTransform
+from autoencoder.utils.differentiable_wavelet_transform import DifferentiableWaveletTransform
 
-def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
+def simple_wavelet_analysis(data, wavelet='db4', data_type='dB', transform_mode='numpy'):
     """
     简化的小波分析函数
-    **现在使用 CorrectWaveletTransform 进行变换，与 AutoEncoder 训练时保持一致**
+    **支持两种小波变换模式：numpy（传统）和 differentiable（可微分）**
 
     重要原理：
     - 小波变换始终在原始（线性）RCS数据上进行
     - data_type参数只影响最终的可视化显示
     - 使用与训练时相同的小波变换实现，便于验证正确性
 
+    模式说明：
+    - numpy模式：使用 CorrectWaveletTransform（基于numpy/pywt）
+    - differentiable模式：使用 DifferentiableWaveletTransform（基于torch/ptwt，可微分）
+
     修改历史：
     - 2025-01-13: 改用 CorrectWaveletTransform 替代直接调用 pywt
+    - 2025-01-18: 添加 differentiable 模式支持（使用 ptwt）
 
     Args:
         data: 2D numpy数组（如果data_type='dB'，则为分贝值；否则为线性值）
         wavelet: 小波类型
         data_type: 显示类型 ('dB' 或 'linear') - 仅影响可视化
+        transform_mode: 小波变换模式 ('numpy' 或 'differentiable')
 
     Returns:
         dict: 包含分析结果的字典
@@ -52,13 +59,22 @@ def simple_wavelet_analysis(data, wavelet='db4', data_type='dB'):
         analysis_data = data         # 小波分析用原始线性数据
         display_original = data      # 显示也用线性数据
 
-    # 使用 CorrectWaveletTransform 进行小波变换（与 AutoEncoder 训练时一致）
-    print(f"\n=== 使用 CorrectWaveletTransform 进行小波分析 ===")
-    print(f"小波类型: {wavelet}")
-    print(f"输入数据形状: {analysis_data.shape}")
+    # 根据模式创建小波变换器
+    if transform_mode == 'differentiable':
+        print(f"\n=== 使用 DifferentiableWaveletTransform (可微分, ptwt) 进行小波分析 ===")
+        print(f"小波类型: {wavelet}")
+        print(f"输入数据形状: {analysis_data.shape}")
 
-    # 创建小波变换器（单频率）
-    wavelet_transform = CorrectWaveletTransform(wavelet=wavelet, mode='symmetric', num_frequencies=1)
+        # 创建可微分小波变换器
+        wavelet_transform = DifferentiableWaveletTransform(wavelet=wavelet, mode='symmetric', level=1)
+    else:
+        # 默认使用numpy模式
+        print(f"\n=== 使用 CorrectWaveletTransform (numpy, pywt) 进行小波分析 ===")
+        print(f"小波类型: {wavelet}")
+        print(f"输入数据形状: {analysis_data.shape}")
+
+        # 创建numpy小波变换器（单频率）
+        wavelet_transform = CorrectWaveletTransform(wavelet=wavelet, mode='symmetric', num_frequencies=1)
 
     # 将 2D 数据转换为 4D tensor: [1, 91, 91, 1]
     data_4d = torch.from_numpy(analysis_data).float().unsqueeze(0).unsqueeze(-1)  # [1, H, W, 1]

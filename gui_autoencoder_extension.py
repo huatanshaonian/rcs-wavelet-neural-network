@@ -354,6 +354,14 @@ class AutoEncoderExtension:
                                      values=["db4", "db8", "haar"], state="readonly", width=6)
         wavelet_combo.pack(side=tk.LEFT, padx=5)
 
+        # 第三行：小波变换模式选择
+        sel_frame3 = ttk.Frame(wavelet_frame)
+        sel_frame3.pack(fill=tk.X, pady=(0, 3))
+        ttk.Label(sel_frame3, text="变换模式:").pack(side=tk.LEFT)
+        self.wavelet_transform_mode = tk.StringVar(value="numpy")
+        ttk.Radiobutton(sel_frame3, text="NumPy (传统)", variable=self.wavelet_transform_mode, value="numpy").pack(side=tk.LEFT, padx=(5, 5))
+        ttk.Radiobutton(sel_frame3, text="Differentiable (可微分)", variable=self.wavelet_transform_mode, value="differentiable").pack(side=tk.LEFT)
+
         # 运行小波分析按钮
         ttk.Button(wavelet_frame, text="🔬 运行小波分析", command=self.run_wavelet_analysis).pack(fill=tk.X)
 
@@ -1091,7 +1099,8 @@ class AutoEncoderExtension:
                 analysis_result = simple_wavelet_analysis(
                     analysis_data,
                     wavelet=self.wavelet_analysis_wavelet.get(),
-                    data_type=data_type
+                    data_type=data_type,
+                    transform_mode=self.wavelet_transform_mode.get()
                 )
 
                 self.main_gui.ae_log("📈 生成可视化结果...")
