@@ -124,6 +124,11 @@ class AutoEncoderExtension:
         ttk.Label(mode_frame, text="   • RCS → 直接输入AutoEncoder",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W)
 
+        ttk.Radiobutton(mode_frame, text="⚡ 可微分小波模式 (Differentiable Wavelet)",
+                       variable=self.main_gui.ae_mode, value="differentiable_wavelet").pack(anchor=tk.W, pady=(5, 0))
+        ttk.Label(mode_frame, text="   • RCS → 可微分小波 → AutoEncoder → 逆小波 → RCS",
+                 font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W)
+
         # 2. 模型架构配置组
         model_group = ttk.LabelFrame(left_column, text="🏗️ 模型架构")
         model_group.pack(fill=tk.X, pady=(0, 10))
@@ -424,7 +429,8 @@ class AutoEncoderExtension:
         mode = self.main_gui.ae_mode.get()
 
         # 更新小波设置可用性
-        if mode == "wavelet":
+        if mode in ("wavelet", "differentiable_wavelet"):
+            # 小波模式和可微分小波模式都需要小波类型设置
             self.wavelet_combo.configure(state="readonly")
         else:
             self.wavelet_combo.configure(state="disabled")
@@ -435,7 +441,7 @@ class AutoEncoderExtension:
             # Direct模式 + 标准化 → 自动启用dB
             self.main_gui.ae_db_transform.set(True)
         else:
-            # Wavelet模式或未启用标准化 → 不使用dB
+            # Wavelet/Differentiable模式或未启用标准化 → 不使用dB
             self.main_gui.ae_db_transform.set(False)
 
         # 更新状态显示
