@@ -331,8 +331,6 @@ class AutoEncoderExtension:
         ttk.Button(ops_frame, text="创建双系统 (对比)", command=self.create_dual_systems).pack(fill=tk.X, pady=(0, 3))
         # 运行性能对比分析
         ttk.Button(ops_frame, text="运行性能对比", command=self.run_performance_comparison).pack(fill=tk.X, pady=(0, 3))
-        # 通道注意力权重可视化
-        ttk.Button(ops_frame, text="📊 注意力权重可视化", command=self.visualize_attention_weights).pack(fill=tk.X, pady=(0, 3))
 
         # 配置文件管理（两按钮并排）
         config_button_frame = ttk.Frame(ops_frame)
@@ -1165,122 +1163,6 @@ class AutoEncoderExtension:
 
         except Exception as e:
             messagebox.showerror("错误", f"显示小波分析结果失败: {e}")
-
-    def visualize_attention_weights(self):
-        """生成通道注意力权重可视化图表"""
-        try:
-            # 检查是否有AutoEncoder系统
-            if not hasattr(self.main_gui, 'ae_system') or self.main_gui.ae_system is None:
-                messagebox.showwarning("警告", "请先创建AutoEncoder系统")
-                return
-
-            # 获取模型
-            autoencoder = self.main_gui.ae_system.get('autoencoder', None)
-            if autoencoder is None:
-                messagebox.showwarning("警告", "AutoEncoder模型未加载")
-                return
-
-            # 检查模型是否支持通道注意力
-            if not hasattr(autoencoder, 'get_channel_attention_weights'):
-                messagebox.showwarning("警告", "当前模型不支持通道注意力机制")
-                return
-
-            # 检查是否有RCS数据
-            if not hasattr(self.main_gui, 'rcs_data') or self.main_gui.rcs_data is None:
-                messagebox.showwarning("警告", "请先加载RCS数据")
-                return
-
-            # 启动后台线程生成可视化
-            def vis_thread():
-                try:
-                    import torch
-                    import numpy as np
-
-                    self.main_gui.ae_log("🎨 开始生成通道注意力权重可视化...")
-
-                    # 准备样本数据
-                    mode = self.main_gui.ae_system.get('mode', 'wavelet')
-                    wavelet_transform = self.main_gui.ae_system.get('wavelet_transform', None)
-                    data_adapter = self.main_gui.ae_system.get('data_adapter', None)
-
-                    # 取少量样本用于可视化
-                    sample_size = min(16, len(self.main_gui.rcs_data))
-                    sample_rcs = self.main_gui.rcs_data[:sample_size]
-
-                    # 根据模式准备输入数据
-                    if mode == 'wavelet' and wavelet_transform is not None:
-                        # Wavelet模式: RCS → 小波变换 → 标准化
-                        rcs_tensor = torch.FloatTensor(sample_rcs)
-                        wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
-                        if data_adapter:
-                            sample_data = torch.FloatTensor(data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy()))
-                        else:
-                            sample_data = wavelet_coeffs
-                    else:
-                        # Direct模式: RCS → 标准化
-                        if data_adapter:
-                            sample_data = torch.FloatTensor(data_adapter.adapt_rcs_data(sample_rcs))
-                        else:
-                            sample_data = torch.FloatTensor(sample_rcs)
-
-                    # 运行前向传播获取注意力权重
-                    device = next(autoencoder.parameters()).device
-                    sample_data = sample_data.to(device)
-
-                    autoencoder.eval()
-                    with torch.no_grad():
-                        _ = autoencoder.encode(sample_data)
-
-                    # 获取注意力权重
-                    weights_info = autoencoder.get_channel_attention_weights()
-
-                    # 检查是否启用了注意力机制
-                    if not weights_info.get('enabled', False):
-                        self.main_gui.root.after(0, lambda: messagebox.showinfo(
-                            "提示", "当前模型未启用通道注意力机制\n\n请在训练配置中勾选 '🔍 输入层通道注意力' 选项"))
-                        return
-
-                    weights = weights_info.get('weights', None)
-                    channel_names = weights_info.get('channel_names', None)
-
-                    if weights is None or channel_names is None:
-                        self.main_gui.root.after(0, lambda: messagebox.showwarning(
-                            "警告", "无法获取注意力权重\n\n请先运行一次训练或评估"))
-                        return
-
-                    # 调用可视化工具
-                    from visualize_attention_weights import visualize_channel_attention_weights
-
-                    # 生成保存路径
-                    import os
-                    save_dir = "ae_checkpoints"
-                    os.makedirs(save_dir, exist_ok=True)
-                    save_path = os.path.join(save_dir, f"attention_weights_{mode}.png")
-
-                    self.main_gui.ae_log("📊 生成可视化图表...")
-
-                    # 调用可视化函数（会自动显示和保存）
-                    visualize_channel_attention_weights(
-                        autoencoder,
-                        sample_data.cpu(),
-                        mode=mode,
-                        save_path=save_path
-                    )
-
-                    self.main_gui.ae_log(f"✅ 注意力权重可视化完成！图片已保存至: {save_path}")
-                    self.main_gui.root.after(0, lambda: messagebox.showinfo(
-                        "成功", f"注意力权重可视化已生成！\n\n图片保存位置:\n{save_path}"))
-
-                except Exception as e:
-                    error_msg = f"可视化失败: {e}"
-                    self.main_gui.ae_log(f"❌ {error_msg}")
-                    self.main_gui.root.after(0, lambda: messagebox.showerror("错误", error_msg))
-
-            # 启动后台线程
-            threading.Thread(target=vis_thread, daemon=True).start()
-
-        except Exception as e:
-            messagebox.showerror("错误", f"启动可视化失败: {e}")
 
 
 def integrate_extension_to_gui(main_gui):
