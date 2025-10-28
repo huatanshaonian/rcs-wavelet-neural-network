@@ -21,6 +21,52 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from differentiable_wavelet_transform import DifferentiableWaveletTransform
+from autoencoder.utils.adaptive_layers import get_structure_info
+
+
+def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
+    """
+    动态计算中间层维度，实现渐进式压缩
+
+    策略：
+    - 保持每级压缩比不超过max_ratio（默认4:1）
+    - 自动生成多个中间层以平滑过渡
+    - 维度向上取整到2的幂次，便于硬件优化
+
+    Args:
+        input_dim: 输入维度
+        latent_dim: 目标隐空间维度
+        max_ratio: 每级最大压缩比（默认4）
+
+    Returns:
+        中间层维度列表（不包括input_dim和latent_dim）
+
+    Example:
+        >>> calculate_intermediate_dims(4096, 32, max_ratio=4)
+        [1024, 256, 64]  # 4096→1024→256→64→32
+    """
+    if input_dim <= latent_dim:
+        return []
+
+    dims = []
+    current = input_dim
+
+    # 持续压缩直到接近目标维度
+    while current > latent_dim * max_ratio:
+        # 压缩到当前的1/2到1/4之间
+        next_dim = max(latent_dim, current // max_ratio)
+        # 向上取整到2的幂次（如64, 128, 256...）
+        next_dim = 2 ** round(np.log2(next_dim))
+        # 确保不小于latent_dim
+        next_dim = max(next_dim, latent_dim)
+
+        if next_dim < current:
+            dims.append(next_dim)
+            current = next_dim
+        else:
+            break
+
+    return dims
 
 
 class DifferentiableWaveletAutoEncoder(nn.Module):
@@ -110,29 +156,55 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
 
         print(f"  CNN自适应: 小波{input_size}×{input_size} → Encoder输出{encoder_output_size}×{encoder_output_size}×256 = {self.flatten_dim}")
 
-        # FC层：4096 → latent_dim
-        self.fc_encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.flatten_dim, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, 256),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(256, latent_dim)
+        # ===== 动态适配：自动计算中间层维度（支持小隐空间）=====
+        # 策略：保持每级压缩比≤4:1，避免信息瓶颈
+        self.intermediate_dims = calculate_intermediate_dims(
+            self.flatten_dim, latent_dim, max_ratio=4
         )
 
-        # ===== CNN Decoder: 隐空间 → 小波系数 =====
-        # FC层：latent_dim → 4096
-        self.fc_decoder = nn.Sequential(
-            nn.Linear(latent_dim, 256),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(256, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),
-            nn.Linear(1024, self.flatten_dim),
+        # 编码器全连接层：渐进式压缩
+        # 示例: latent_dim=32 → [flatten_dim, 1024, 256, 64, 32]
+        #       latent_dim=16 → [flatten_dim, 1024, 256, 64, 16]
+        encoder_fc_layers = [nn.Flatten()]
+        current_dim = self.flatten_dim
+
+        # 构建中间层
+        for intermediate_dim in self.intermediate_dims:
+            encoder_fc_layers.extend([
+                nn.Linear(current_dim, intermediate_dim),
+                nn.ReLU(inplace=True),
+                nn.Dropout(dropout_rate)
+            ])
+            current_dim = intermediate_dim
+
+        # 最后一层到latent_dim
+        encoder_fc_layers.append(nn.Linear(current_dim, latent_dim))
+        self.fc_encoder = nn.Sequential(*encoder_fc_layers)
+
+        # ===== Decoder: 隐空间 → 小波系数 =====
+        # 对称的解码器结构
+        decoder_fc_layers = []
+        current_dim = latent_dim
+
+        # 反向构建中间层
+        for intermediate_dim in reversed(self.intermediate_dims):
+            decoder_fc_layers.extend([
+                nn.Linear(current_dim, intermediate_dim),
+                nn.ReLU(inplace=True),
+                nn.Dropout(dropout_rate)
+            ])
+            current_dim = intermediate_dim
+
+        # 最后一层到flatten_dim
+        decoder_fc_layers.extend([
+            nn.Linear(current_dim, self.flatten_dim),
             nn.ReLU(inplace=True)
+        ])
+        self.fc_decoder = nn.Sequential(*decoder_fc_layers)
+
+        # 保存结构信息（用于 get_model_info）
+        self.structure_info = get_structure_info(
+            self.flatten_dim, latent_dim, self.intermediate_dims
         )
 
         self.decoder = nn.Sequential(
@@ -155,14 +227,6 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             nn.ConvTranspose2d(64, self.input_channels, kernel_size=3, stride=2, padding=1),  # → [B, 8, 61, 61]
             # 最后一层不加激活函数，允许小波系数为负值
         )
-
-        # 保存结构信息
-        self._structure_info = {
-            'type': 'DifferentiableWaveletAutoEncoder',
-            'latent_dim': latent_dim,
-            'wavelet_type': wavelet_type,
-            'differentiable': True
-        }
 
     def encode(self, rcs_data: torch.Tensor) -> torch.Tensor:
         """
@@ -242,26 +306,40 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         fc_dec_params = sum(p.numel() for p in self.fc_decoder.parameters() if p.requires_grad)
         wavelet_params = sum(p.numel() for p in self.wavelet_transform.parameters() if p.requires_grad)
 
+        total = encoder_params + decoder_params + fc_enc_params + fc_dec_params + wavelet_params
+        trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
+
         return {
             'encoder': encoder_params + fc_enc_params,
             'decoder': decoder_params + fc_dec_params,
             'wavelet_transform': wavelet_params,
-            'total': encoder_params + decoder_params + fc_enc_params + fc_dec_params + wavelet_params
+            'total': total,
+            'trainable': trainable
         }
 
     def get_model_info(self) -> Dict[str, Any]:
         """获取模型信息"""
-        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        param_count = self.get_parameter_count()
+
+        # 构建FC层结构描述
+        fc_structure = [self.flatten_dim] + self.intermediate_dims + [self.latent_dim]
+        fc_structure_str = ' → '.join(map(str, fc_structure))
+
         return {
             'type': 'DifferentiableWaveletAutoEncoder',
+            'architecture': 'CNN',
             'latent_dim': self.latent_dim,
             'num_frequencies': self.num_frequencies,
-            'total_params': total_params,
             'wavelet_type': self.wavelet_type,
             'differentiable': True,
             'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
             'output_shape': f'[B, 91, 91, {self.num_frequencies}]',
-            'loss_space': 'RCS'  # 关键：损失在RCS空间
+            'loss_space': 'RCS',  # 关键：损失在RCS空间
+            'total_params': param_count['total'],
+            'trainable_params': param_count['trainable'],
+            'fc_structure': fc_structure_str,
+            'intermediate_dims': self.intermediate_dims,
+            **self.structure_info  # 包含compression_ratios等详细信息
         }
 
 
