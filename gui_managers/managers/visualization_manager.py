@@ -1420,10 +1420,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH）"""
         import numpy as np
 
-        # 检查是否是Wavelet模式
+        # 检查是否是Wavelet或Differentiable Wavelet模式
         mode = self.gui.ae_system.get('mode', 'wavelet')
-        if mode != 'wavelet':
-            messagebox.showwarning("警告", "此功能仅适用于Wavelet模式！")
+        if mode not in ('wavelet', 'differentiable_wavelet'):
+            messagebox.showwarning("警告", "此功能仅适用于Wavelet和Differentiable Wavelet模式！")
             return
 
         # 获取用户输入的模型ID和频率

@@ -175,6 +175,36 @@ class ReconstructionManager:
 
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+                elif mode == 'differentiable_wavelet':
+                    # Differentiable小波模式：decoder输出已经是RCS，但需要获取小波系数
+                    reconstructed_rcs = decoder_output  # 已经是RCS
+
+                    # 如果需要小波系数，从AutoEncoder内部提取
+                    if return_wavelet_coeffs:
+                        # 获取原始RCS
+                        if model_ids is not None:
+                            indices = []
+                            for mid in model_ids:
+                                if isinstance(mid, str):
+                                    indices.append(int(mid) - 1)
+                                else:
+                                    indices.append(int(mid))
+                            rcs_data_safe = self.gui.ae_system.get('rcs_data', None)
+                            if rcs_data_safe is None and hasattr(self.gui, 'rcs_data') and self.gui.rcs_data is not None:
+                                self.gui.ae_system['rcs_data'] = self.gui.rcs_data
+                                rcs_data_safe = self.gui.rcs_data
+                            if rcs_data_safe is None:
+                                raise KeyError("rcs_data 缺失：无法计算原始小波系数")
+                            original_rcs = rcs_data_safe[indices]
+                            original_rcs_tensor = torch.FloatTensor(original_rcs).to(device)
+
+                            # 使用AutoEncoder内部的wavelet_transform获取原始小波系数
+                            original_coeffs = autoencoder.wavelet_transform.forward_transform(original_rcs_tensor)
+                            original_wavelet_coeffs_np = original_coeffs.cpu().numpy()
+
+                            # 使用AutoEncoder内部的wavelet_transform获取重建小波系数
+                            reconstructed_coeffs = autoencoder.wavelet_transform.forward_transform(reconstructed_rcs)
+                            reconstructed_wavelet_coeffs_np = reconstructed_coeffs.cpu().numpy()
                 else:
                     # Direct模式：标准化RCS → 逆标准化 → RCS
                     if data_adapter:
@@ -198,6 +228,14 @@ class ReconstructionManager:
                             original_wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
                         adapted_input = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
                         adapted_input = torch.FloatTensor(adapted_input).to(device)
+                    elif mode == 'differentiable_wavelet':
+                        # Differentiable小波模式：直接输入RCS（小波变换在AutoEncoder内部）
+                        rcs_tensor = torch.FloatTensor(input_data).to(device)
+                        # 如果需要小波系数，先计算原始小波系数
+                        if return_wavelet_coeffs:
+                            original_coeffs = autoencoder.wavelet_transform.forward_transform(rcs_tensor)
+                            original_wavelet_coeffs_np = original_coeffs.cpu().numpy()
+                        adapted_input = rcs_tensor  # 直接使用RCS
                     else:
                         # Direct模式：直接标准化RCS
                         adapted_input = data_adapter.adapt_rcs_data(input_data)
@@ -209,6 +247,13 @@ class ReconstructionManager:
                         # 保存原始小波系数（如果需要）
                         if return_wavelet_coeffs:
                             original_wavelet_coeffs_np = adapted_input.cpu().numpy()
+                    elif mode == 'differentiable_wavelet':
+                        # Differentiable小波模式：直接输入RCS
+                        rcs_tensor = torch.FloatTensor(input_data).to(device)
+                        if return_wavelet_coeffs:
+                            original_coeffs = autoencoder.wavelet_transform.forward_transform(rcs_tensor)
+                            original_wavelet_coeffs_np = original_coeffs.cpu().numpy()
+                        adapted_input = rcs_tensor
                     else:
                         adapted_input = torch.FloatTensor(input_data).to(device)
 
@@ -231,6 +276,14 @@ class ReconstructionManager:
 
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs)
+                elif mode == 'differentiable_wavelet':
+                    # Differentiable小波模式：输出已经是RCS
+                    reconstructed_rcs = reconstructed_output
+
+                    # 如果需要小波系数，从AutoEncoder内部提取
+                    if return_wavelet_coeffs:
+                        reconstructed_coeffs = autoencoder.wavelet_transform.forward_transform(reconstructed_rcs)
+                        reconstructed_wavelet_coeffs_np = reconstructed_coeffs.cpu().numpy()
                 else:
                     # Direct模式：逆标准化
                     if data_adapter:
@@ -254,7 +307,7 @@ class ReconstructionManager:
         if return_latents:
             result['latents'] = latents_np
 
-        if return_wavelet_coeffs and mode == 'wavelet':
+        if return_wavelet_coeffs and mode in ('wavelet', 'differentiable_wavelet'):
             result['original_wavelet_coeffs'] = original_wavelet_coeffs_np
             result['reconstructed_wavelet_coeffs'] = reconstructed_wavelet_coeffs_np
 

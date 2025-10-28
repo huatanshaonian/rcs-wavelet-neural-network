@@ -105,12 +105,15 @@ class StatisticsManager:
                 # 使用缓存的参数和RCS数据进行批量预测
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-                # ⚠️ 确定评估模式标识（用于图表显示）
-                if use_ae_system and parameter_mapper is None:
-                    evaluation_mode = "Stage1-Only RCS重建评估"
-                elif use_ae_system and parameter_mapper is not None:
-                    evaluation_mode = "Three-Stage 参数预测RCS评估"
+                # ⚠️ 确定评估模式标识（用于图表显示）- 修复：直接检查training_mode
+                if use_ae_system:
+                    training_mode = self.gui.ae_system.get('training_mode', 'three_stage')
+                    if training_mode == 'stage1_only':
+                        evaluation_mode = "Stage1-Only RCS重建评估"
+                    else:
+                        evaluation_mode = "Three-Stage 参数预测RCS评估"
                 else:
+                    training_mode = 'three_stage'  # 传统模型默认为three_stage
                     evaluation_mode = "传统模型 参数预测RCS评估"
 
                 # 根据系统类型选择预测方式
@@ -118,8 +121,8 @@ class StatisticsManager:
                     autoencoder.to(device).eval()
                     data_adapter = self.gui.ae_system.get('data_adapter', None)
 
-                    # ⚠️ 区分两种评估模式
-                    if parameter_mapper is None:
+                    # ⚠️ 区分两种评估模式 - 修复：直接检查training_mode而非parameter_mapper
+                    if training_mode == 'stage1_only':
                         # ===== Stage1-Only模式：RCS重建评估 =====
                         print("="*60)
                         print("使用AutoEncoder系统进行重建评估（Stage1-Only模式）")
@@ -397,8 +400,13 @@ class StatisticsManager:
                 # 准备设备
                 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-                # ⚠️ 区分两种评估模式（文件读取路径）
-                is_stage1_only = use_ae_system and parameter_mapper is None
+                # ⚠️ 区分两种评估模式（文件读取路径）- 修复：直接检查training_mode
+                if use_ae_system:
+                    training_mode = self.gui.ae_system.get('training_mode', 'three_stage')
+                    is_stage1_only = (training_mode == 'stage1_only')
+                else:
+                    is_stage1_only = False
+                    training_mode = 'three_stage'
 
                 # 确定评估模式标识（用于图表显示）
                 if is_stage1_only:
