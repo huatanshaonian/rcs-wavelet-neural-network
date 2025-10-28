@@ -207,7 +207,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                             wavelet: str = 'db4',
                             normalize: bool = True,
                             mode: str = 'wavelet',
-                            architecture: str = 'cnn') -> Dict[str, Any]:
+                            architecture: str = 'cnn',
+                            use_channel_attention: bool = False) -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -219,6 +220,7 @@ def create_autoencoder_system(config_name: str = '2freq',
         normalize: 是否标准化数据
         mode: 'wavelet' 或 'direct' 模式
         architecture: 'cnn' 或 'mlp' 架构
+        use_channel_attention: 是否在输入层使用通道注意力机制 (默认: False)
 
     Returns:
         包含所有组件的字典
@@ -276,9 +278,11 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
-                input_size=wavelet_size  # 自适应小波尺寸
+                input_size=wavelet_size,  # 自适应小波尺寸
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 EnhancedWaveletAutoEncoder (增强感受野CNN)")
+            attention_status = "启用输入层注意力" if use_channel_attention else "仅中间层注意力"
+            print(f"使用 EnhancedWaveletAutoEncoder (增强感受野CNN, {attention_status})")
         elif architecture.lower() == 'deep_cnn':
             # 小波 + Deep CNN
             autoencoder = DeepWaveletAutoEncoder(
@@ -287,9 +291,11 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
                 use_attention=True,
-                input_size=wavelet_size  # 自适应小波尺寸
+                input_size=wavelet_size,  # 自适应小波尺寸
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 DeepWaveletAutoEncoder (深度CNN, 双卷积+通道注意力)")
+            attention_status = "输入层+中间层双注意力" if use_channel_attention else "仅中间层注意力"
+            print(f"使用 DeepWaveletAutoEncoder (深度CNN, {attention_status})")
         else:
             # 小波 + CNN (默认)
             autoencoder = WaveletAutoEncoder(
@@ -297,9 +303,11 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
-                input_size=wavelet_size  # 自适应小波尺寸
+                input_size=wavelet_size,  # 自适应小波尺寸
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 WaveletAutoEncoder (标准CNN)")
+            attention_status = "启用输入层通道注意力" if use_channel_attention else "关闭输入层通道注意力"
+            print(f"使用 WaveletAutoEncoder (标准CNN, {attention_status})")
     elif mode == 'direct':
         # 直接模式
         wavelet_transform = None
@@ -333,9 +341,11 @@ def create_autoencoder_system(config_name: str = '2freq',
             autoencoder = EnhancedDirectAutoEncoder(
                 latent_dim=latent_dim,
                 num_frequencies=freq_config.config['num_frequencies'],
-                dropout_rate=dropout_rate
+                dropout_rate=dropout_rate,
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 EnhancedDirectAutoEncoder (增强感受野CNN)")
+            attention_status = "启用输入层注意力" if use_channel_attention else "仅中间层注意力"
+            print(f"使用 EnhancedDirectAutoEncoder (增强感受野CNN, {attention_status})")
         elif architecture.lower() == 'deep_cnn':
             # 直接 + Deep CNN
             autoencoder = DeepDirectAutoEncoder(
@@ -343,17 +353,21 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 dropout_rate=dropout_rate,
                 use_attention=True,
-                input_size=91
+                input_size=91,
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 DeepDirectAutoEncoder (深度CNN, 双卷积+通道注意力)")
+            attention_status = "输入层+中间层双注意力" if use_channel_attention else "仅中间层注意力"
+            print(f"使用 DeepDirectAutoEncoder (深度CNN, {attention_status})")
         else:
             # 直接 + CNN (默认)
             autoencoder = DirectAutoEncoder(
                 latent_dim=latent_dim,
                 num_frequencies=freq_config.config['num_frequencies'],
-                dropout_rate=dropout_rate
+                dropout_rate=dropout_rate,
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 DirectAutoEncoder (标准CNN)")
+            attention_status = "启用输入层通道注意力" if use_channel_attention else "关闭输入层通道注意力"
+            print(f"使用 DirectAutoEncoder (标准CNN, {attention_status})")
     elif mode == 'differentiable_wavelet':
         # 可微分小波模式（第三种模式）
         # 特点：小波变换集成在模型中，损失在RCS空间计算
@@ -372,9 +386,11 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
                 wavelet_type=wavelet,
-                input_size=wavelet_size
+                input_size=wavelet_size,
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 DifferentiableWaveletMLPAutoEncoder (端到端训练)")
+            attention_status = "启用输入层通道注意力" if use_channel_attention else "关闭输入层通道注意力"
+            print(f"使用 DifferentiableWaveletMLPAutoEncoder (端到端训练, {attention_status})")
         elif architecture.lower() in ('sine_mlp', 'sine-mlp'):
             # 可微分小波 + Sine MLP
             autoencoder = DifferentiableSineWaveletMLPAutoEncoder(
@@ -383,9 +399,11 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
                 wavelet_type=wavelet,
-                input_size=wavelet_size
+                input_size=wavelet_size,
+                use_channel_attention=use_channel_attention
             )
-            print(f"使用 DifferentiableSineWaveletMLPAutoEncoder (sin激活, 端到端训练)")
+            attention_status = "启用输入层通道注意力" if use_channel_attention else "关闭输入层通道注意力"
+            print(f"使用 DifferentiableSineWaveletMLPAutoEncoder (sin激活, 端到端训练, {attention_status})")
         else:
             # 可微分小波 + CNN (默认)
             autoencoder = DifferentiableWaveletAutoEncoder(
@@ -394,7 +412,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
                 wavelet_type=wavelet,
-                input_size=wavelet_size
+                input_size=wavelet_size,
+                use_channel_attention=use_channel_attention
             )
             print(f"使用 DifferentiableWaveletAutoEncoder (标准CNN, 端到端训练)")
     else:

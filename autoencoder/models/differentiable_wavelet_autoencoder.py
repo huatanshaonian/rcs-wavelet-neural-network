@@ -376,7 +376,8 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
                  wavelet_type: str = 'db4',
-                 input_size: int = 49):
+                 input_size: int = 49,
+                 use_channel_attention: bool = False):
         super().__init__()
 
         self.latent_dim = latent_dim
@@ -385,6 +386,8 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.wavelet_type = wavelet_type
         self.input_size = input_size
+        self.use_channel_attention = use_channel_attention
+        self.input_channels = num_frequencies * wavelet_bands
 
         # 可微分小波变换
         self.wavelet_transform = DifferentiableWaveletTransform(
@@ -392,6 +395,16 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
             mode='symmetric',
             level=1
         )
+
+        # ===== 通道注意力模块（可选） =====
+        if self.use_channel_attention:
+            reduction = get_recommended_reduction(self.input_channels)
+            self.channel_attention = ChannelAttention(
+                num_channels=self.input_channels,
+                reduction=reduction
+            )
+        else:
+            self.channel_attention = None
 
         # 计算输入维度
         self.input_dim = input_size * input_size * num_frequencies * wavelet_bands
@@ -439,7 +452,17 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
 
     def encode(self, rcs_data: torch.Tensor) -> torch.Tensor:
         """RCS → 小波系数 → 隐空间"""
-        wavelet_coeffs = self.wavelet_transform.forward_transform(rcs_data)
+        # Step 1: 小波变换
+        wavelet_coeffs = self.wavelet_transform.forward_transform(rcs_data)  # [B, H, W, C]
+
+        # Step 2: 应用通道注意力（如果启用）
+        if self.use_channel_attention and self.channel_attention is not None:
+            # MLP需要先转换为[B, C, H, W]格式应用注意力
+            wavelet_coeffs_chw = wavelet_coeffs.permute(0, 3, 1, 2)  # [B, C, H, W]
+            wavelet_coeffs_chw = self.channel_attention(wavelet_coeffs_chw)
+            wavelet_coeffs = wavelet_coeffs_chw.permute(0, 2, 3, 1)  # [B, H, W, C]
+
+        # Step 3: MLP编码
         latent = self.encoder(wavelet_coeffs)
         return latent
 
@@ -480,9 +503,39 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
             'total_params': total_params,
             'wavelet_type': self.wavelet_type,
             'differentiable': True,
+            'use_channel_attention': self.use_channel_attention,
             'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
             'output_shape': f'[B, 91, 91, {self.num_frequencies}]',
             'loss_space': 'RCS'
+        }
+
+    def get_channel_attention_weights(self):
+        """
+        获取输入层通道注意力权重
+
+        Returns:
+            dict: 包含权重信息的字典
+        """
+        if not self.use_channel_attention or self.channel_attention is None:
+            return {'enabled': False, 'weights': None, 'channel_names': None}
+
+        weights = self.channel_attention.get_attention_weights()
+        if weights is None:
+            return {'enabled': True, 'weights': None, 'channel_names': None,
+                   'message': '请先运行一次前向传播（encode或forward）'}
+
+        # 生成通道名称（小波系数）
+        channel_names = []
+        bands = ['LL', 'LH', 'HL', 'HH']
+        for freq_idx in range(self.num_frequencies):
+            freq_label = f"F{freq_idx+1}"
+            for band in bands:
+                channel_names.append(f"{band}_{freq_label}")
+
+        return {
+            'enabled': True,
+            'weights': weights,
+            'channel_names': channel_names
         }
 
 
@@ -504,6 +557,7 @@ class DifferentiableSineWaveletMLPAutoEncoder(DifferentiableWaveletMLPAutoEncode
         dropout_rate = kwargs.get('dropout_rate', 0.2)
         wavelet_type = kwargs.get('wavelet_type', 'db4')
         input_size = kwargs.get('input_size', 49)
+        use_channel_attention = kwargs.get('use_channel_attention', False)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -511,6 +565,8 @@ class DifferentiableSineWaveletMLPAutoEncoder(DifferentiableWaveletMLPAutoEncode
         self.dropout_rate = dropout_rate
         self.wavelet_type = wavelet_type
         self.input_size = input_size
+        self.use_channel_attention = use_channel_attention
+        self.input_channels = num_frequencies * wavelet_bands
 
         # 可微分小波变换
         self.wavelet_transform = DifferentiableWaveletTransform(
@@ -518,6 +574,16 @@ class DifferentiableSineWaveletMLPAutoEncoder(DifferentiableWaveletMLPAutoEncode
             mode='symmetric',
             level=1
         )
+
+        # ===== 通道注意力模块（可选） =====
+        if self.use_channel_attention:
+            reduction = get_recommended_reduction(self.input_channels)
+            self.channel_attention = ChannelAttention(
+                num_channels=self.input_channels,
+                reduction=reduction
+            )
+        else:
+            self.channel_attention = None
 
         # 计算输入维度
         self.input_dim = input_size * input_size * num_frequencies * wavelet_bands
@@ -574,6 +640,7 @@ class DifferentiableSineWaveletMLPAutoEncoder(DifferentiableWaveletMLPAutoEncode
             'wavelet_type': self.wavelet_type,
             'differentiable': True,
             'activation': 'sin',
+            'use_channel_attention': self.use_channel_attention,
             'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
             'output_shape': f'[B, 91, 91, {self.num_frequencies}]',
             'loss_space': 'RCS'
