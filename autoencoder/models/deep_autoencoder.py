@@ -16,6 +16,7 @@ from autoencoder.utils.adaptive_layers import (
     build_adaptive_fc_pair,
     get_structure_info,
 )
+from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
 
 
 class DeepWaveletAutoEncoder(nn.Module):

@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from typing import Tuple, Dict, Any, List
 import numpy as np
 from autoencoder.utils.adaptive_layers import get_structure_info
+from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -67,7 +68,8 @@ class DirectAutoEncoder(nn.Module):
     def __init__(self,
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
-                 dropout_rate: float = 0.2):
+                 dropout_rate: float = 0.2,
+                 use_channel_attention: bool = False):
         """
         初始化直接AutoEncoder
 
@@ -75,6 +77,7 @@ class DirectAutoEncoder(nn.Module):
             latent_dim: 隐空间维度
             num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
             dropout_rate: Dropout比率
+            use_channel_attention: 是否使用通道注意力机制 (默认: False)
         """
         super().__init__()
 
@@ -82,6 +85,17 @@ class DirectAutoEncoder(nn.Module):
         self.num_frequencies = num_frequencies
         self.dropout_rate = dropout_rate
         self.input_channels = num_frequencies  # 直接使用频率数量作为通道数
+        self.use_channel_attention = use_channel_attention
+
+        # ===== 通道注意力模块（可选） =====
+        if self.use_channel_attention:
+            reduction = get_recommended_reduction(self.input_channels)
+            self.channel_attention = ChannelAttention(
+                num_channels=self.input_channels,
+                reduction=reduction
+            )
+        else:
+            self.channel_attention = None
 
         # ===== Encoder: RCS数据 → 隐空间 =====
         self.encoder = nn.Sequential(
@@ -242,6 +256,10 @@ class DirectAutoEncoder(nn.Module):
         if x.dim() == 4 and x.shape[-1] == self.num_frequencies:
             x = x.permute(0, 3, 1, 2)
 
+        # 应用通道注意力（如果启用）
+        if self.use_channel_attention and self.channel_attention is not None:
+            x = self.channel_attention(x)
+
         # 编码
         features = self.encoder(x)  # [B, 512, 1, 1]
         latent = self.to_latent(features)  # [B, latent_dim]
@@ -332,7 +350,8 @@ class DirectAutoEncoder(nn.Module):
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
             'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1',
-            'compression_ratios': self.structure_info['compression_ratios']
+            'compression_ratios': self.structure_info['compression_ratios'],
+            'use_channel_attention': self.use_channel_attention
         }
 
 

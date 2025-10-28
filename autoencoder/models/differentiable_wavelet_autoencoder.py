@@ -22,6 +22,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from differentiable_wavelet_transform import DifferentiableWaveletTransform
 from autoencoder.utils.adaptive_layers import get_structure_info
+from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -89,7 +90,8 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
                  wavelet_type: str = 'db4',
-                 input_size: int = 49):
+                 input_size: int = 49,
+                 use_channel_attention: bool = False):
         """
         初始化可微分小波CNN AutoEncoder
 
@@ -100,6 +102,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             dropout_rate: Dropout比率
             wavelet_type: 小波类型（db4, haar等）
             input_size: 小波系数尺寸（自动从wavelet_type计算）
+            use_channel_attention: 是否使用通道注意力机制 (默认: False)
         """
         super().__init__()
 
@@ -110,6 +113,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.wavelet_type = wavelet_type
         self.input_size = input_size
+        self.use_channel_attention = use_channel_attention
 
         # ===== 关键：集成可微分小波变换 =====
         self.wavelet_transform = DifferentiableWaveletTransform(
@@ -117,6 +121,16 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             mode='symmetric',
             level=1
         )
+
+        # ===== 通道注意力模块（可选） =====
+        if self.use_channel_attention:
+            reduction = get_recommended_reduction(self.input_channels)
+            self.channel_attention = ChannelAttention(
+                num_channels=self.input_channels,
+                reduction=reduction
+            )
+        else:
+            self.channel_attention = None
 
         # ===== CNN Encoder: 小波系数 → 隐空间 =====
         # [B, 49, 49, 8] → [B, 256]
@@ -244,6 +258,10 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         # Step 2: 转换为[B, C, H, W]格式
         wavelet_coeffs = wavelet_coeffs.permute(0, 3, 1, 2)  # [B, 8, 49, 49]
 
+        # Step 2.5: 应用通道注意力（如果启用）
+        if self.use_channel_attention and self.channel_attention is not None:
+            wavelet_coeffs = self.channel_attention(wavelet_coeffs)
+
         # Step 3: CNN编码
         features = self.encoder(wavelet_coeffs)  # [B, 256, 4, 4]
 
@@ -339,6 +357,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             'trainable_params': param_count['trainable'],
             'fc_structure': fc_structure_str,
             'intermediate_dims': self.intermediate_dims,
+            'use_channel_attention': self.use_channel_attention,
             **self.structure_info  # 包含compression_ratios等详细信息
         }
 

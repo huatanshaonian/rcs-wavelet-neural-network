@@ -12,6 +12,7 @@ from typing import Tuple, Dict, Any, List
 import numpy as np
 
 from autoencoder.utils.adaptive_layers import get_structure_info
+from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -70,7 +71,8 @@ class WaveletAutoEncoder(nn.Module):
                  num_frequencies: int = 2,
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
-                 input_size: int = 49):
+                 input_size: int = 49,
+                 use_channel_attention: bool = False):
         """
         初始化AutoEncoder
 
@@ -80,6 +82,7 @@ class WaveletAutoEncoder(nn.Module):
             wavelet_bands: 小波频带数 (通常为4: LL,LH,HL,HH)
             dropout_rate: Dropout比率
             input_size: 输入小波系数尺寸 (49 for db4小波变换后的尺寸)
+            use_channel_attention: 是否使用通道注意力机制 (默认: False)
         """
         super().__init__()
 
@@ -89,6 +92,17 @@ class WaveletAutoEncoder(nn.Module):
         self.input_channels = num_frequencies * wavelet_bands
         self.dropout_rate = dropout_rate
         self.input_size = input_size
+        self.use_channel_attention = use_channel_attention
+
+        # ===== 通道注意力模块（可选） =====
+        if self.use_channel_attention:
+            reduction = get_recommended_reduction(self.input_channels)
+            self.channel_attention = ChannelAttention(
+                num_channels=self.input_channels,
+                reduction=reduction
+            )
+        else:
+            self.channel_attention = None
 
         # ===== Encoder: 小波系数 → 隐空间 =====
         self.encoder = nn.Sequential(
@@ -235,6 +249,10 @@ class WaveletAutoEncoder(nn.Module):
         # 调整维度: [B, input_size, input_size, num_freq*4] → [B, num_freq*4, input_size, input_size]
         x = x.permute(0, 3, 1, 2)
 
+        # 应用通道注意力（如果启用）
+        if self.use_channel_attention and self.channel_attention is not None:
+            x = self.channel_attention(x)
+
         # 卷积特征提取
         features = self.encoder(x)  # [B, 256, 4, 4]
 
@@ -332,7 +350,8 @@ class WaveletAutoEncoder(nn.Module):
             'compression_ratios': self.structure_info['compression_ratios'],
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
-            'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1'
+            'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1',
+            'use_channel_attention': self.use_channel_attention
         }
 
 

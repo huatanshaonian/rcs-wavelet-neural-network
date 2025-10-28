@@ -1376,6 +1376,10 @@ class TrainingManager:
                 self.gui.ae_training_history['stage_histories']['stage1'] = stage1_history
 
                 self.gui.ae_log("🎉 AutoEncoder重建训练完成!")
+
+                # 打印通道注意力权重（如果启用）
+                self._print_channel_attention_weights(rcs_data)
+
                 self.gui.ae_log("💡 提示: 该模型只能进行RCS重建评估，不能从参数预测RCS")
                 messagebox.showinfo("成功", "AutoEncoder重建训练完成！\n\n该模型专注于重建性能，适合调参和模型对比研究。")
             else:
@@ -1404,6 +1408,10 @@ class TrainingManager:
                 self.gui.ae_training_history['stage_histories']['stage3'] = stage3_history
 
                 self.gui.ae_log("🎉 三阶段训练完成!")
+
+                # 打印通道注意力权重（如果启用）
+                self._print_channel_attention_weights(rcs_data)
+
                 messagebox.showinfo("成功", "三阶段训练完成!")
 
         except Exception as e:
@@ -2254,4 +2262,102 @@ class TrainingManager:
         lr_str = f", LR={lr:.2e}" if lr is not None else ""
         self.gui.ae_log(f"  {stage_name} Epoch {epoch+1:4d}/{total_epochs}: Train={train_loss:.6f}, Val={val_loss:.6f}{lr_str}")
         self.gui.root.update_idletasks()
+
+    def _print_channel_attention_weights(self, rcs_data):
+        """打印通道注意力权重（如果启用）"""
+        import torch
+        import numpy as np
+
+        # 检查是否有AutoEncoder系统
+        if not hasattr(self.gui, 'ae_system') or self.gui.ae_system is None:
+            return
+
+        # 获取模型
+        autoencoder = self.gui.ae_system.get('autoencoder', None)
+        if autoencoder is None:
+            return
+
+        # 检查模型是否实现了获取注意力权重的方法
+        if not hasattr(autoencoder, 'get_channel_attention_weights'):
+            return
+
+        try:
+            # 准备样本数据用于前向传播
+            mode = self.gui.ae_system.get('mode', 'wavelet')
+            wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)
+            data_adapter = self.gui.ae_system.get('data_adapter', None)
+
+            # 取少量样本（前8个）用于获取注意力权重
+            sample_size = min(8, len(rcs_data))
+            sample_rcs = rcs_data[:sample_size]
+
+            # 根据模式准备输入数据
+            if mode == 'wavelet' and wavelet_transform is not None:
+                # Wavelet模式: RCS → 小波变换 → 标准化
+                rcs_tensor = torch.FloatTensor(sample_rcs)
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                if data_adapter:
+                    sample_data = torch.FloatTensor(data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy()))
+                else:
+                    sample_data = wavelet_coeffs
+            else:
+                # Direct模式: RCS → 标准化
+                if data_adapter:
+                    sample_data = torch.FloatTensor(data_adapter.adapt_rcs_data(sample_rcs))
+                else:
+                    sample_data = torch.FloatTensor(sample_rcs)
+
+            # 运行前向传播获取注意力权重
+            device = next(autoencoder.parameters()).device
+            sample_data = sample_data.to(device)
+
+            autoencoder.eval()
+            with torch.no_grad():
+                _ = autoencoder.encode(sample_data)
+
+            # 获取注意力权重
+            weights_info = autoencoder.get_channel_attention_weights()
+
+            # 检查是否启用了注意力机制
+            if not weights_info.get('enabled', False):
+                return  # 未启用，静默返回
+
+            weights = weights_info.get('weights', None)
+            channel_names = weights_info.get('channel_names', None)
+
+            if weights is None or channel_names is None:
+                return  # 无权重数据
+
+            # 打印注意力权重
+            self.gui.ae_log("\n" + "="*60)
+            self.gui.ae_log("📊 通道注意力权重分析")
+            self.gui.ae_log("="*60)
+
+            for name, weight in zip(channel_names, weights):
+                # 创建简单的文本条形图
+                bar = '█' * int(weight * 30)
+                self.gui.ae_log(f"  {name:12s}: {weight:.4f}  {bar}")
+
+            # 统计信息
+            self.gui.ae_log(f"\n  最大权重: {weights.max():.4f} ({channel_names[np.argmax(weights)]})")
+            self.gui.ae_log(f"  最小权重: {weights.min():.4f} ({channel_names[np.argmin(weights)]})")
+            self.gui.ae_log(f"  平均权重: {weights.mean():.4f}")
+            self.gui.ae_log(f"  标准差:   {weights.std():.4f}")
+
+            # 如果是Wavelet模式，分析LL vs 高频
+            if mode == 'wavelet':
+                num_freqs = len(weights) // 4
+                ll_weights = weights[::4]  # 每4个取1个（LL）
+                hf_weights = np.delete(weights, np.arange(0, len(weights), 4))  # 去除LL
+
+                self.gui.ae_log(f"\n  🔷 LL通道平均权重: {ll_weights.mean():.4f}")
+                self.gui.ae_log(f"  🔶 高频通道平均权重: {hf_weights.mean():.4f}")
+                if hf_weights.mean() > 0:
+                    self.gui.ae_log(f"  📈 LL/高频比值: {ll_weights.mean() / hf_weights.mean():.2f}:1")
+
+            self.gui.ae_log("="*60 + "\n")
+
+        except Exception as e:
+            # 静默失败，不影响训练流程
+            self.gui.ae_log(f"⚠️ 注意力权重打印失败: {e}")
 
