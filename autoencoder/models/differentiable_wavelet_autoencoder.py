@@ -75,29 +75,40 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         # ===== CNN Encoder: 小波系数 → 隐空间 =====
         # [B, 49, 49, 8] → [B, 256]
         self.encoder = nn.Sequential(
-            # 输入: [B, 8, 49, 49]
-            nn.Conv2d(self.input_channels, 64, kernel_size=3, stride=2, padding=1),  # → [B, 64, 25, 25]
+            # 输入: [B, 8, input_size, input_size]
+            nn.Conv2d(self.input_channels, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.Dropout2d(dropout_rate),
 
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # → [B, 128, 13, 13]
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Dropout2d(dropout_rate),
 
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # → [B, 256, 7, 7]
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
             nn.Dropout2d(dropout_rate),
 
-            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),  # → [B, 256, 4, 4]
+            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
         )
 
-        # 计算flatten后的维度
-        self.flatten_dim = 256 * 4 * 4  # 4096
+        # ⚠️ 自动计算flatten维度（根据input_size动态调整）
+        def calc_conv_output_size(input_size, num_layers=4):
+            """计算经过num_layers层stride=2卷积后的输出尺寸"""
+            h = input_size
+            for _ in range(num_layers):
+                h = (h + 2*1 - 3) // 2 + 1
+            return h
+
+        encoder_output_size = calc_conv_output_size(input_size, num_layers=4)
+        self.flatten_dim = 256 * encoder_output_size * encoder_output_size
+        self.encoder_output_size = encoder_output_size  # 保存用于decoder
+
+        print(f"  CNN自适应: 小波{input_size}×{input_size} → Encoder输出{encoder_output_size}×{encoder_output_size}×256 = {self.flatten_dim}")
 
         # FC层：4096 → latent_dim
         self.fc_encoder = nn.Sequential(
@@ -188,8 +199,8 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             rcs_data: [B, H, W, C] 重建的RCS数据
         """
         # Step 1: FC展开
-        features = self.fc_decoder(latent)  # [B, 4096]
-        features = features.view(-1, 256, 4, 4)  # [B, 256, 4, 4]
+        features = self.fc_decoder(latent)  # [B, flatten_dim]
+        features = features.view(-1, 256, self.encoder_output_size, self.encoder_output_size)  # [B, 256, H, H]
 
         # Step 2: CNN解码
         wavelet_coeffs = self.decoder(features)  # [B, 8, H', W']
