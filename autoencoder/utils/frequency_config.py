@@ -39,6 +39,10 @@ from models.dual_branch_autoencoder import (
     DualBranchWaveletAutoEncoder,
     DualBranchWaveletMLPAutoEncoder
 )
+from models.dual_branch_differentiable_autoencoder import (
+    DualBranchDifferentiableWaveletAutoEncoder,
+    DualBranchDifferentiableWaveletMLPAutoEncoder
+)
 from utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 from utils.data_adapters import RCS_DataAdapter
 
@@ -430,6 +434,28 @@ def create_autoencoder_system(config_name: str = '2freq',
             )
             attention_status = "启用输入层通道注意力" if use_channel_attention else "关闭输入层通道注意力"
             print(f"使用 DifferentiableSineWaveletMLPAutoEncoder (sin激活, 端到端训练, {attention_status})")
+        elif architecture.lower() in ('dual_branch_cnn', 'dual_branch'):
+            # 可微分小波 + 双分支CNN
+            autoencoder = DualBranchDifferentiableWaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size,
+                ll_ratio=0.7  # LL分支占70%隐空间
+            )
+            print(f"使用 DualBranchDifferentiableWaveletAutoEncoder (双分支CNN + 可微分小波, 端到端训练)")
+        elif architecture.lower() == 'dual_branch_mlp':
+            # 可微分小波 + 双分支MLP
+            autoencoder = DualBranchDifferentiableWaveletMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size,
+                ll_ratio=0.7  # LL分支占70%隐空间
+            )
+            print(f"使用 DualBranchDifferentiableWaveletMLPAutoEncoder (双分支MLP + 可微分小波, 端到端训练)")
         else:
             # 可微分小波 + CNN (默认)
             autoencoder = DifferentiableWaveletAutoEncoder(

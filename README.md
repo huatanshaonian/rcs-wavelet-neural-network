@@ -44,6 +44,8 @@
 | **CNN** | DifferentiableWaveletAutoEncoder | ~1.2M | ✅ | ❌ | ✅ | 端到端小波学习 |
 | **MLP** | DifferentiableWaveletMLPAutoEncoder | ~3M | ✅ | ❌ | ✅ | 端到端+MLP |
 | **Sine_MLP** | DifferentiableSineWaveletMLPAutoEncoder | ~3M | ✅ | ❌ | ✅ | 端到端+Sine+MLP |
+| **Dual_Branch_CNN** | DualBranchDifferentiableWaveletAutoEncoder | ~1.25M | ❌ | ✅ | ✅ | 端到端+LL/HF分离 ⭐ |
+| **Dual_Branch_MLP** | DualBranchDifferentiableWaveletMLPAutoEncoder | ~3M | ❌ | ✅ | ✅ | 端到端+MLP+分离 |
 
 ### 功能说明
 
@@ -54,7 +56,7 @@
 - **启用方式**: GUI中勾选"通道注意力"选项
 
 #### 🌿 双分支架构 (Dual-Branch)
-- **支持网络**: 仅Wavelet模式（Dual_Branch_CNN, Dual_Branch_MLP）
+- **支持网络**: Wavelet模式和Differentiable Wavelet模式（Dual_Branch_CNN, Dual_Branch_MLP）
 - **功能**:
   - LL分支：处理低频主体（>90%能量），使用大卷积核(7×7)
   - HF分支：处理高频细节（<10%能量），使用小卷积核(3×3)
