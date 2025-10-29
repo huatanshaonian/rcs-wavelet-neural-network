@@ -15,6 +15,10 @@ from .differentiable_wavelet_autoencoder import (
     DifferentiableWaveletMLPAutoEncoder,
     DifferentiableSineWaveletMLPAutoEncoder
 )
+from .dual_branch_autoencoder import (
+    DualBranchWaveletAutoEncoder,
+    DualBranchWaveletMLPAutoEncoder
+)
 
 __all__ = [
     'WaveletAutoEncoder',
@@ -34,5 +38,8 @@ __all__ = [
     # Differentiable模式
     'DifferentiableWaveletAutoEncoder',
     'DifferentiableWaveletMLPAutoEncoder',
-    'DifferentiableSineWaveletMLPAutoEncoder'
+    'DifferentiableSineWaveletMLPAutoEncoder',
+    # 双分支模式
+    'DualBranchWaveletAutoEncoder',
+    'DualBranchWaveletMLPAutoEncoder'
 ]

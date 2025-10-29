@@ -3267,172 +3267,122 @@ class RCSWaveletGUI:
         return self.visualization_manager._plot_ae_comparison()
 
     def _plot_attention_weights(self):
-        """绘制通道注意力权重可视化"""
+        """绘制通道注意力权重历史折线图"""
         try:
-            import torch
             import numpy as np
             import matplotlib.pyplot as plt
 
-            # 检查模型是否支持通道注意力
-            autoencoder = self.ae_system.get('autoencoder', None)
-            if autoencoder is None:
-                messagebox.showwarning("警告", "AutoEncoder模型未加载")
+            # 检查是否有训练历史
+            if not hasattr(self, 'ae_training_history') or self.ae_training_history is None:
+                messagebox.showwarning("警告", "没有训练历史数据\n\n请先训练模型")
                 return
 
-            if not hasattr(autoencoder, 'get_channel_attention_weights'):
-                messagebox.showwarning("警告", "当前模型不支持通道注意力机制")
+            # 获取注意力权重历史
+            stage_histories = self.ae_training_history.get('stage_histories', {})
+            stage1_history = stage_histories.get('stage1', {})
+            attention_history = stage1_history.get('attention_history', None)
+
+            if attention_history is None or not attention_history.get('epochs'):
+                messagebox.showwarning("警告", "没有注意力权重历史记录\n\n可能原因：\n1. 未启用通道注意力\n2. 训练epoch数不足（需要≥100）")
                 return
 
-            # 检查是否有RCS数据
-            if not hasattr(self, 'rcs_data') or self.rcs_data is None:
-                messagebox.showwarning("警告", "请先加载RCS数据")
+            epochs = attention_history['epochs']
+            weights_list = attention_history['weights']
+            channel_names = attention_history['channel_names']
+
+            if not epochs or not weights_list or channel_names is None:
+                messagebox.showwarning("警告", "注意力权重数据不完整")
                 return
 
-            self.log_message("🎨 生成通道注意力权重可视化...")
-
-            # 准备样本数据
-            mode = self.ae_system.get('mode', 'wavelet')
-            wavelet_transform = self.ae_system.get('wavelet_transform', None)
-            data_adapter = self.ae_system.get('data_adapter', None)
-
-            # 取少量样本用于可视化
-            sample_size = min(16, len(self.rcs_data))
-            sample_rcs = self.rcs_data[:sample_size]
-
-            # 根据模式准备输入数据
-            if mode == 'wavelet' and wavelet_transform is not None:
-                # Wavelet模式: RCS → 小波变换 → 标准化
-                rcs_tensor = torch.FloatTensor(sample_rcs)
-                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
-                if data_adapter:
-                    sample_data = torch.FloatTensor(data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy()))
-                else:
-                    sample_data = wavelet_coeffs
-            else:
-                # Direct模式: RCS → 标准化
-                if data_adapter:
-                    sample_data = torch.FloatTensor(data_adapter.adapt_rcs_data(sample_rcs))
-                else:
-                    sample_data = torch.FloatTensor(sample_rcs)
-
-            # 运行前向传播获取注意力权重
-            device = next(autoencoder.parameters()).device
-            sample_data = sample_data.to(device)
-
-            autoencoder.eval()
-            with torch.no_grad():
-                _ = autoencoder.encode(sample_data)
-
-            # 获取注意力权重
-            weights_info = autoencoder.get_channel_attention_weights()
-
-            # 检查是否启用了注意力机制
-            if not weights_info.get('enabled', False):
-                messagebox.showinfo("提示", "当前模型未启用通道注意力机制\n\n请在训练配置中勾选 '🔍 输入层通道注意力' 选项")
-                return
-
-            weights = weights_info.get('weights', None)
-            channel_names = weights_info.get('channel_names', None)
-
-            if weights is None or channel_names is None:
-                messagebox.showwarning("警告", "无法获取注意力权重\n\n请先运行一次训练或评估")
-                return
+            self.log_message(f"📈 绘制注意力权重历史折线图 ({len(epochs)} 个记录点)...")
 
             # 清除之前的图表
             self.vis_fig.clear()
 
+            # 转换为numpy数组便于处理
+            weights_array = np.array(weights_list)  # [n_records, n_channels]
+            mode = self.ae_system.get('mode', 'wavelet')
+
             # 创建子图
             if mode == 'wavelet':
-                # Wavelet模式：创建2个子图（柱状图和热力图）
+                # Wavelet模式：LL和高频分开绘制
                 ax1 = self.vis_fig.add_subplot(2, 1, 1)
                 ax2 = self.vis_fig.add_subplot(2, 1, 2)
+
+                # === 子图1: LL通道 ===
+                ll_indices = [i for i, name in enumerate(channel_names) if name.startswith('LL')]
+                for idx in ll_indices:
+                    ax1.plot(epochs, weights_array[:, idx], marker='o', linewidth=2,
+                            label=channel_names[idx], alpha=0.8)
+
+                ax1.set_xlabel('Epoch', fontsize=11, fontweight='bold')
+                ax1.set_ylabel('注意力权重', fontsize=11, fontweight='bold')
+                ax1.set_title('LL通道权重演化', fontsize=13, fontweight='bold')
+                ax1.legend(loc='best', fontsize=9)
+                ax1.grid(True, alpha=0.3, linestyle='--')
+                ax1.set_ylim(0, 1.0)
+
+                # === 子图2: 高频通道 ===
+                hf_indices = [i for i, name in enumerate(channel_names) if not name.startswith('LL')]
+                for idx in hf_indices:
+                    ax2.plot(epochs, weights_array[:, idx], marker='s', linewidth=2,
+                            label=channel_names[idx], alpha=0.8, markersize=4)
+
+                ax2.set_xlabel('Epoch', fontsize=11, fontweight='bold')
+                ax2.set_ylabel('注意力权重', fontsize=11, fontweight='bold')
+                ax2.set_title('高频通道权重演化 (LH/HL/HH)', fontsize=13, fontweight='bold')
+                ax2.legend(loc='best', fontsize=9, ncol=2)
+                ax2.grid(True, alpha=0.3, linestyle='--')
+                ax2.set_ylim(0, 1.0)
+
             else:
-                # Direct模式：只创建柱状图
-                ax1 = self.vis_fig.add_subplot(1, 1, 1)
-                ax2 = None
+                # Direct模式：所有通道在一张图
+                ax = self.vis_fig.add_subplot(1, 1, 1)
 
-            # === 子图1: 柱状图 ===
-            colors = []
-            if mode == 'wavelet':
-                # 小波模式：LL通道用蓝色，高频通道用红色
-                for name in channel_names:
-                    if name.startswith('LL'):
-                        colors.append('#2E86DE')  # 蓝色 - LL
-                    else:
-                        colors.append('#EE5A6F')  # 红色 - 高频
-            else:
-                # Direct模式：使用渐变色
-                colors = plt.cm.viridis(np.linspace(0, 1, len(weights)))
+                for i, name in enumerate(channel_names):
+                    ax.plot(epochs, weights_array[:, i], marker='o', linewidth=2.5,
+                           label=name, alpha=0.8)
 
-            bars = ax1.bar(range(len(weights)), weights, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
-            ax1.set_xticks(range(len(weights)))
-            ax1.set_xticklabels(channel_names, rotation=45, ha='right')
-            ax1.set_ylabel('注意力权重', fontsize=12, fontweight='bold')
-            ax1.set_title('通道注意力权重分布', fontsize=14, fontweight='bold', pad=15)
-            ax1.grid(axis='y', alpha=0.3, linestyle='--')
-            ax1.set_ylim(0, 1.0)
-
-            # 在柱子上方标注数值
-            for bar, weight in zip(bars, weights):
-                height = bar.get_height()
-                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.02,
-                        f'{weight:.3f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
-
-            # === 子图2: 热力图（仅Wavelet模式）===
-            if mode == 'wavelet' and ax2 is not None:
-                # 重塑为 [频率, 频带] 矩阵
-                num_freqs = len(weights) // 4
-                weights_matrix = weights.reshape(num_freqs, 4)
-
-                im = ax2.imshow(weights_matrix, cmap='RdYlBu_r', aspect='auto', vmin=0, vmax=1)
-                ax2.set_xticks(range(4))
-                ax2.set_xticklabels(['LL', 'LH', 'HL', 'HH'])
-                ax2.set_yticks(range(num_freqs))
-                ax2.set_yticklabels([f'频率{i+1}' for i in range(num_freqs)])
-                ax2.set_xlabel('小波频带', fontsize=12, fontweight='bold')
-                ax2.set_ylabel('频率', fontsize=12, fontweight='bold')
-                ax2.set_title('通道注意力热力图', fontsize=14, fontweight='bold', pad=15)
-
-                # 在每个cell中标注数值
-                for i in range(num_freqs):
-                    for j in range(4):
-                        text = ax2.text(j, i, f'{weights_matrix[i, j]:.3f}',
-                                      ha="center", va="center", color="black", fontsize=10, fontweight='bold')
-
-                # 添加颜色条
-                cbar = self.vis_fig.colorbar(im, ax=ax2)
-                cbar.set_label('注意力权重', fontsize=11)
+                ax.set_xlabel('Epoch', fontsize=12, fontweight='bold')
+                ax.set_ylabel('注意力权重', fontsize=12, fontweight='bold')
+                ax.set_title('通道注意力权重演化', fontsize=14, fontweight='bold')
+                ax.legend(loc='best', fontsize=10)
+                ax.grid(True, alpha=0.3, linestyle='--')
+                ax.set_ylim(0, 1.0)
 
             self.vis_fig.tight_layout()
             self.vis_canvas.draw()
 
-            # 打印统计信息到日志
+            # 打印统计信息
             self.log_message("\n" + "="*60)
-            self.log_message("📊 通道注意力权重统计")
+            self.log_message("📊 注意力权重演化统计")
             self.log_message("="*60)
-            for name, weight in zip(channel_names, weights):
-                bar = '█' * int(weight * 30)
-                self.log_message(f"  {name:12s}: {weight:.4f}  {bar}")
+            self.log_message(f"记录点数: {len(epochs)}")
+            self.log_message(f"Epoch范围: {epochs[0]} - {epochs[-1]}")
 
-            self.log_message(f"\n  最大权重: {weights.max():.4f} ({channel_names[np.argmax(weights)]})")
-            self.log_message(f"  最小权重: {weights.min():.4f} ({channel_names[np.argmin(weights)]})")
-            self.log_message(f"  平均权重: {weights.mean():.4f}")
-            self.log_message(f"  标准差:   {weights.std():.4f}")
+            # 显示初始和最终权重对比
+            self.log_message(f"\n初始权重 (Epoch {epochs[0]}):")
+            for name, w in zip(channel_names, weights_list[0]):
+                self.log_message(f"  {name:12s}: {w:.4f}")
 
-            if mode == 'wavelet':
-                ll_weights = weights[::4]
-                hf_weights = np.delete(weights, np.arange(0, len(weights), 4))
-                self.log_message(f"\n  🔷 LL通道平均权重: {ll_weights.mean():.4f}")
-                self.log_message(f"  🔶 高频通道平均权重: {hf_weights.mean():.4f}")
-                if hf_weights.mean() > 0:
-                    self.log_message(f"  📈 LL/高频比值: {ll_weights.mean() / hf_weights.mean():.2f}:1")
+            self.log_message(f"\n最终权重 (Epoch {epochs[-1]}):")
+            for name, w in zip(channel_names, weights_list[-1]):
+                self.log_message(f"  {name:12s}: {w:.4f}")
+
+            # 计算权重变化
+            self.log_message(f"\n权重变化量:")
+            for i, name in enumerate(channel_names):
+                change = weights_list[-1][i] - weights_list[0][i]
+                self.log_message(f"  {name:12s}: {change:+.4f}")
 
             self.log_message("="*60 + "\n")
-            self.log_message("✅ 注意力权重可视化完成！")
+            self.log_message("✅ 注意力权重历史可视化完成！")
 
         except Exception as e:
             error_msg = f"可视化失败: {str(e)}"
             self.log_message(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("错误", error_msg)
 
     def _plot_wavelet_coefficients_comparison(self):

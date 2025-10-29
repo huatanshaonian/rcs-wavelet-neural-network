@@ -354,6 +354,48 @@ class WaveletAutoEncoder(nn.Module):
             'use_channel_attention': self.use_channel_attention
         }
 
+    def get_channel_attention_weights(self):
+        """
+        获取输入层通道注意力权重
+
+        Returns:
+            dict: 包含权重信息的字典，如果未启用注意力则返回None
+                {
+                    'weights': np.ndarray,  # [C] 每个通道的权重
+                    'channel_names': list,  # 通道名称（如['LL_1.5GHz', 'LH_1.5GHz', ...]）
+                    'enabled': bool  # 是否启用了注意力机制
+                }
+
+        Example:
+            >>> # 训练或推理后
+            >>> weights_info = model.get_channel_attention_weights()
+            >>> if weights_info and weights_info['enabled']:
+            >>>     for name, weight in zip(weights_info['channel_names'], weights_info['weights']):
+            >>>         print(f"{name}: {weight:.4f}")
+        """
+        if not self.use_channel_attention or self.channel_attention is None:
+            return {'enabled': False, 'weights': None, 'channel_names': None}
+
+        weights = self.channel_attention.get_attention_weights()
+        if weights is None:
+            return {'enabled': True, 'weights': None, 'channel_names': None,
+                   'message': '请先运行一次前向传播（encode或forward）'}
+
+        # 生成通道名称（对于小波系数）
+        # 格式：[LL_freq1, LH_freq1, HL_freq1, HH_freq1, LL_freq2, ...]
+        channel_names = []
+        bands = ['LL', 'LH', 'HL', 'HH']
+        for freq_idx in range(self.num_frequencies):
+            freq_label = f"F{freq_idx+1}"
+            for band in bands:
+                channel_names.append(f"{band}_{freq_label}")
+
+        return {
+            'enabled': True,
+            'weights': weights,
+            'channel_names': channel_names
+        }
+
 
 class ParameterMapper(nn.Module):
     """

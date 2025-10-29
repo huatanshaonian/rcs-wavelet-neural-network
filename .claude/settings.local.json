@@ -8,7 +8,13 @@
       "Bash(python:*)",
       "Bash(awk:*)",
       "Bash(rm:*)",
-      "Read(//g//**)"
+      "Read(//g//**)",
+      "Bash(cat:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(git rm:*)",
+      "Bash(git push:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

@@ -39,7 +39,8 @@ class DeepWaveletAutoEncoder(nn.Module):
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
                  use_attention: bool = True,
-                 input_size: int = 49):
+                 input_size: int = 49,
+                 use_channel_attention: bool = False):
         """
         初始化Deep Wavelet AutoEncoder
 
@@ -48,8 +49,9 @@ class DeepWaveletAutoEncoder(nn.Module):
             num_frequencies: 频率数量
             wavelet_bands: 小波频带数
             dropout_rate: Dropout比率
-            use_attention: 是否使用通道注意力
+            use_attention: 是否使用中间层通道注意力 (Deep架构固有特性)
             input_size: 小波系数尺寸 (49)
+            use_channel_attention: 是否在输入层使用通道注意力 (用户可配置)
         """
         super().__init__()
 
@@ -60,6 +62,17 @@ class DeepWaveletAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.use_attention = use_attention
         self.input_size = input_size
+        self.use_channel_attention = use_channel_attention
+
+        # ===== 输入层通道注意力（可选，用户可配置） =====
+        if self.use_channel_attention:
+            reduction = get_recommended_reduction(self.input_channels)
+            self.input_channel_attention = ChannelAttention(
+                num_channels=self.input_channels,
+                reduction=reduction
+            )
+        else:
+            self.input_channel_attention = None
 
         # ===== 深度Encoder架构（4层，双卷积） =====
         # 输入: [B, 49, 49, 8] → permute → [B, 8, 49, 49]
@@ -208,6 +221,10 @@ class DeepWaveletAutoEncoder(nn.Module):
         # 调整维度: [B, 49, 49, 8] → [B, 8, 49, 49]
         x = x.permute(0, 3, 1, 2)
 
+        # 应用输入层通道注意力（如果启用）
+        if self.use_channel_attention and self.input_channel_attention is not None:
+            x = self.input_channel_attention(x)
+
         # 逐层编码（双卷积设计）
         x1 = self.conv1(x)      # [B, 32, 49, 49]
         x2 = self.conv2(x1)     # [B, 64, 25, 25]
@@ -323,7 +340,8 @@ class DeepDirectAutoEncoder(nn.Module):
                  num_frequencies: int = 2,
                  dropout_rate: float = 0.2,
                  use_attention: bool = True,
-                 input_size: int = 91):
+                 input_size: int = 91,
+                 use_channel_attention: bool = False):
         """
         初始化Deep Direct AutoEncoder
 
@@ -331,8 +349,9 @@ class DeepDirectAutoEncoder(nn.Module):
             latent_dim: 隐空间维度
             num_frequencies: 频率数量
             dropout_rate: Dropout比率
-            use_attention: 是否使用通道注意力
+            use_attention: 是否使用中间层通道注意力 (Deep架构固有特性)
             input_size: RCS数据尺寸 (91)
+            use_channel_attention: 是否在输入层使用通道注意力 (用户可配置)
         """
         super().__init__()
 
@@ -342,6 +361,17 @@ class DeepDirectAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.use_attention = use_attention
         self.input_size = input_size
+        self.use_channel_attention = use_channel_attention
+
+        # ===== 输入层通道注意力（可选，用户可配置） =====
+        if self.use_channel_attention:
+            reduction = get_recommended_reduction(self.input_channels)
+            self.input_channel_attention = ChannelAttention(
+                num_channels=self.input_channels,
+                reduction=reduction
+            )
+        else:
+            self.input_channel_attention = None
 
         # ===== 深度Encoder架构（4层） =====
         # 91 → 91 → 46 → 23 → 12
@@ -477,6 +507,10 @@ class DeepDirectAutoEncoder(nn.Module):
         """编码: RCS → 隐空间"""
         # [B, 91, 91, 2] → [B, 2, 91, 91]
         x = x.permute(0, 3, 1, 2)
+
+        # 应用输入层通道注意力（如果启用）
+        if self.use_channel_attention and self.input_channel_attention is not None:
+            x = self.input_channel_attention(x)
 
         x1 = self.conv1(x)
         x2 = self.conv2(x1)

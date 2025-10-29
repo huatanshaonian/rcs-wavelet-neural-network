@@ -1538,6 +1538,13 @@ class TrainingManager:
             train_losses = []
             val_losses = []
 
+            # 注意力权重历史记录
+            attention_history = {
+                'epochs': [],
+                'weights': [],
+                'channel_names': None
+            }
+
             for epoch in range(epochs):
                 # 训练
                 autoencoder.train()
@@ -1598,6 +1605,10 @@ class TrainingManager:
                 if (epoch + 1) % 10 == 0:
                     self.gui._ae_log_training_progress(epoch, epochs, avg_train_loss, avg_val_loss, current_lr, "阶段1")
 
+                # 每100 epoch记录注意力权重
+                if (epoch + 1) % 100 == 0 or epoch == 0:
+                    self._record_attention_weights(autoencoder, input_data[:8].to(device), attention_history, epoch + 1)
+
                 # 早停
                 if patience_counter >= patience:
                     self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
@@ -1610,7 +1621,8 @@ class TrainingManager:
                 'train_losses': train_losses,
                 'val_losses': val_losses,
                 'best_val_loss': best_val_loss,
-                'best_epoch': best_epoch
+                'best_epoch': best_epoch,
+                'attention_history': attention_history
             }
 
         except Exception as e:
@@ -2262,6 +2274,62 @@ class TrainingManager:
         lr_str = f", LR={lr:.2e}" if lr is not None else ""
         self.gui.ae_log(f"  {stage_name} Epoch {epoch+1:4d}/{total_epochs}: Train={train_loss:.6f}, Val={val_loss:.6f}{lr_str}")
         self.gui.root.update_idletasks()
+
+    def _record_attention_weights(self, autoencoder, sample_data, attention_history, epoch):
+        """
+        记录通道注意力权重历史
+
+        Args:
+            autoencoder: AutoEncoder模型
+            sample_data: 样本数据（已在正确设备上）
+            attention_history: 历史记录字典
+            epoch: 当前epoch数
+        """
+        import torch
+        import numpy as np
+
+        # 检查模型是否支持通道注意力
+        if not hasattr(autoencoder, 'get_channel_attention_weights'):
+            return
+
+        try:
+            # 运行前向传播获取注意力权重
+            autoencoder.eval()
+            with torch.no_grad():
+                _ = autoencoder.encode(sample_data)
+
+            # 获取注意力权重
+            weights_info = autoencoder.get_channel_attention_weights()
+
+            # 检查是否启用了注意力机制
+            if not weights_info.get('enabled', False):
+                return
+
+            weights = weights_info.get('weights', None)
+            channel_names = weights_info.get('channel_names', None)
+
+            if weights is None or channel_names is None:
+                return
+
+            # 保存通道名称（只需保存一次）
+            if attention_history['channel_names'] is None:
+                attention_history['channel_names'] = channel_names
+
+            # 记录当前epoch的权重
+            attention_history['epochs'].append(epoch)
+            attention_history['weights'].append(weights.copy())
+
+            # 简洁输出权重数值
+            self.gui.ae_log(f"\n  [Epoch {epoch}] 通道注意力权重:")
+            weight_str = ", ".join([f"{name}={w:.4f}" for name, w in zip(channel_names, weights)])
+            self.gui.ae_log(f"    {weight_str}")
+
+            # 恢复训练模式
+            autoencoder.train()
+
+        except Exception as e:
+            # 静默失败，不影响训练
+            self.gui.ae_log(f"  ⚠️ 注意力权重记录失败: {e}")
 
     def _print_channel_attention_weights(self, rcs_data):
         """打印通道注意力权重（如果启用）"""

@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(__file__))
 import rcs_data_reader as rdr
 
 
-def two_level_wavelet_decomposition(data, wavelet='db4'):
+def two_level_wavelet_decomposition(data, wavelet='haar'):
     """
     二级小波分解
 
@@ -54,7 +54,7 @@ def two_level_wavelet_decomposition(data, wavelet='db4'):
 
 
 def plot_two_level_wavelet(original_data, coeffs, model_id='001', frequency='1.5G',
-                           wavelet='db4', data_type='dB'):
+                           wavelet='haar', data_type='dB'):
     """
     绘制二级小波分解结果
 
@@ -265,7 +265,7 @@ def main():
     # 参数配置
     model_id = '001'
     frequency = '1.5G'
-    wavelet_type = 'db4'
+    wavelet_type = 'haar'
     rcs_data_dir = '../parameter/csv_output'
 
     print(f"正在读取模型 {model_id} @ {frequency} 的RCS数据...")
