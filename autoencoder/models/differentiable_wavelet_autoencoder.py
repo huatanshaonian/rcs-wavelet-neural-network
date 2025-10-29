@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from differentiable_wavelet_transform import DifferentiableWaveletTransform
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
+from autoencoder.utils.activation_factory import get_activation, get_activation_name
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -91,7 +92,8 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  wavelet_type: str = 'db4',
                  input_size: int = 49,
-                 use_channel_attention: bool = False):
+                 use_channel_attention: bool = False,
+                 activation: str = 'relu'):
         """
         初始化可微分小波CNN AutoEncoder
 
@@ -103,6 +105,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             wavelet_type: 小波类型（db4, haar等）
             input_size: 小波系数尺寸（自动从wavelet_type计算）
             use_channel_attention: 是否使用通道注意力机制 (默认: False)
+            activation: 激活函数类型 ('relu', 'sin', 'gelu', 'swish'等，默认: 'relu')
         """
         super().__init__()
 
@@ -114,6 +117,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         self.wavelet_type = wavelet_type
         self.input_size = input_size
         self.use_channel_attention = use_channel_attention
+        self.activation_type = get_activation_name(activation)  # 标准化激活函数名称
 
         # ===== 关键：集成可微分小波变换 =====
         self.wavelet_transform = DifferentiableWaveletTransform(
@@ -138,22 +142,22 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             # 输入: [B, 8, input_size, input_size]
             nn.Conv2d(self.input_channels, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
         )
 
         # ⚠️ 自动计算flatten维度（根据input_size动态调整）
@@ -186,7 +190,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         for intermediate_dim in self.intermediate_dims:
             encoder_fc_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -204,7 +208,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         for intermediate_dim in reversed(self.intermediate_dims):
             decoder_fc_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -212,7 +216,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
         # 最后一层到flatten_dim
         decoder_fc_layers.extend([
             nn.Linear(current_dim, self.flatten_dim),
-            nn.ReLU(inplace=True)
+            get_activation(activation)
         ])
         self.fc_decoder = nn.Sequential(*decoder_fc_layers)
 
@@ -225,17 +229,17 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             # [B, 256, 4, 4]
             nn.ConvTranspose2d(256, 256, kernel_size=4, stride=2, padding=1),  # → [B, 256, 8, 8]
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),  # → [B, 128, 16, 16]
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),  # → [B, 64, 31, 31]
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             nn.ConvTranspose2d(64, self.input_channels, kernel_size=3, stride=2, padding=1),  # → [B, 8, 61, 61]
@@ -349,6 +353,7 @@ class DifferentiableWaveletAutoEncoder(nn.Module):
             'latent_dim': self.latent_dim,
             'num_frequencies': self.num_frequencies,
             'wavelet_type': self.wavelet_type,
+            'activation': self.activation_type,  # 激活函数类型
             'differentiable': True,
             'input_shape': f'[B, 91, 91, {self.num_frequencies}]',
             'output_shape': f'[B, 91, 91, {self.num_frequencies}]',
@@ -377,7 +382,8 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  wavelet_type: str = 'db4',
                  input_size: int = 49,
-                 use_channel_attention: bool = False):
+                 use_channel_attention: bool = False,
+                 activation: str = 'relu'):
         super().__init__()
 
         self.latent_dim = latent_dim
@@ -387,6 +393,7 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
         self.wavelet_type = wavelet_type
         self.input_size = input_size
         self.use_channel_attention = use_channel_attention
+        self.activation_type = get_activation_name(activation)
         self.input_channels = num_frequencies * wavelet_bands
 
         # 可微分小波变换
@@ -414,17 +421,17 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
             nn.Flatten(),
             nn.Linear(self.input_dim, 4096),
             nn.BatchNorm1d(4096),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(4096, 1024),
             nn.BatchNorm1d(1024),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(1024, 512),
             nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(512, latent_dim)
@@ -434,17 +441,17 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, 512),
             nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(512, 1024),
             nn.BatchNorm1d(1024),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(1024, 4096),
             nn.BatchNorm1d(4096),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(4096, self.input_dim)
@@ -500,6 +507,7 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
             'type': 'DifferentiableWaveletMLPAutoEncoder',
             'latent_dim': self.latent_dim,
             'num_frequencies': self.num_frequencies,
+            'activation': self.activation_type,  # 激活函数类型
             'total_params': total_params,
             'wavelet_type': self.wavelet_type,
             'differentiable': True,
@@ -541,93 +549,19 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
 
 class DifferentiableSineWaveletMLPAutoEncoder(DifferentiableWaveletMLPAutoEncoder):
     """
-    可微分Sine激活MLP AutoEncoder
+    可微分Sine激活MLP AutoEncoder (向后兼容别名)
 
     使用sin激活函数代替ReLU
     可能更适合周期性信号
+
+    注意：这个类现在是DifferentiableWaveletMLPAutoEncoder(activation='sin')的别名。
+    推荐直接使用父类并指定activation参数。
     """
 
     def __init__(self, *args, **kwargs):
-        # 先不调用父类初始化，我们要自定义
-        nn.Module.__init__(self)
-
-        latent_dim = kwargs.get('latent_dim', 256)
-        num_frequencies = kwargs.get('num_frequencies', 2)
-        wavelet_bands = kwargs.get('wavelet_bands', 4)
-        dropout_rate = kwargs.get('dropout_rate', 0.2)
-        wavelet_type = kwargs.get('wavelet_type', 'db4')
-        input_size = kwargs.get('input_size', 49)
-        use_channel_attention = kwargs.get('use_channel_attention', False)
-
-        self.latent_dim = latent_dim
-        self.num_frequencies = num_frequencies
-        self.wavelet_bands = wavelet_bands
-        self.dropout_rate = dropout_rate
-        self.wavelet_type = wavelet_type
-        self.input_size = input_size
-        self.use_channel_attention = use_channel_attention
-        self.input_channels = num_frequencies * wavelet_bands
-
-        # 可微分小波变换
-        self.wavelet_transform = DifferentiableWaveletTransform(
-            wavelet=wavelet_type,
-            mode='symmetric',
-            level=1
-        )
-
-        # ===== 通道注意力模块（可选） =====
-        if self.use_channel_attention:
-            reduction = get_recommended_reduction(self.input_channels)
-            self.channel_attention = ChannelAttention(
-                num_channels=self.input_channels,
-                reduction=reduction
-            )
-        else:
-            self.channel_attention = None
-
-        # 计算输入维度
-        self.input_dim = input_size * input_size * num_frequencies * wavelet_bands
-
-        # MLP Encoder (使用Sin激活)
-        self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.input_dim, 4096),
-            nn.BatchNorm1d(4096),
-            SinActivation(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(4096, 1024),
-            nn.BatchNorm1d(1024),
-            SinActivation(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(1024, 512),
-            nn.BatchNorm1d(512),
-            SinActivation(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(512, latent_dim)
-        )
-
-        # MLP Decoder (使用Sin激活)
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.BatchNorm1d(512),
-            SinActivation(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(512, 1024),
-            nn.BatchNorm1d(1024),
-            SinActivation(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(1024, 4096),
-            nn.BatchNorm1d(4096),
-            SinActivation(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(4096, self.input_dim)
-        )
+        # 强制设置activation='sin'，其他参数传递给父类
+        kwargs['activation'] = 'sin'
+        super().__init__(*args, **kwargs)
 
     def get_model_info(self) -> Dict[str, Any]:
         """获取模型信息（重写以返回正确类型名）"""
