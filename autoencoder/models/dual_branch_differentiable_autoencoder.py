@@ -17,7 +17,6 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from typing import Tuple, Dict, Any, List
 import numpy as np
 
@@ -27,6 +26,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from differentiable_wavelet_transform import DifferentiableWaveletTransform
 from autoencoder.utils.adaptive_layers import get_structure_info
+from autoencoder.utils.activation_factory import get_activation, get_activation_name
 
 # 从dual_branch_autoencoder导入工具函数
 from .dual_branch_autoencoder import calculate_branch_latent_dims
@@ -103,7 +103,8 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  wavelet_type: str = 'db4',
                  input_size: int = 49,
-                 ll_ratio: float = 0.7):
+                 ll_ratio: float = 0.7,
+                 activation: str = 'relu'):
         """
         初始化双分支可微分Wavelet CNN AutoEncoder
 
@@ -114,6 +115,7 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
             wavelet_type: 小波类型（db4, haar等）
             input_size: 小波系数空间尺寸（默认49）
             ll_ratio: LL分支latent占比（默认0.7）
+            activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
         """
         super().__init__()
 
@@ -122,6 +124,7 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.wavelet_type = wavelet_type
         self.input_size = input_size
+        self.activation_type = get_activation_name(activation)
 
         # 计算各分支latent维度
         self.ll_latent_dim, self.hf_latent_dim = calculate_branch_latent_dims(latent_dim, ll_ratio)
@@ -139,18 +142,18 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
             # 第一层：大卷积核捕捉全局特征
             nn.Conv2d(num_frequencies, 16, kernel_size=7, padding=3),
             nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
 
             # 下采样1: [49, 49] → [25, 25]
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 下采样2: [25, 25] → [13, 13]
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
         )
 
@@ -160,18 +163,18 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
             # 第一层：小卷积核捕捉细节
             nn.Conv2d(num_frequencies * 3, 16, kernel_size=3, padding=1),
             nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
 
             # 下采样1: [49, 49] → [25, 25]
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 下采样2: [25, 25] → [13, 13]
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
         )
 
@@ -180,13 +183,13 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
         self.fusion = nn.Sequential(
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 下采样3: [13, 13] → [7, 7]
             nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
 
             # 全局池化: [7, 7] → [1, 1]
             nn.AdaptiveAvgPool2d(1),
@@ -205,7 +208,7 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
         for intermediate_dim in self.intermediate_dims:
             encoder_fc_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -220,14 +223,14 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
         for intermediate_dim in reversed(self.intermediate_dims):
             decoder_fc_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
 
         decoder_fc_layers.extend([
             nn.Linear(current_dim, self.flatten_dim),
-            nn.ReLU(inplace=True)
+            get_activation(activation)
         ])
         self.decoder_fc = nn.Sequential(*decoder_fc_layers)
 
@@ -237,19 +240,19 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
             # 上采样1: [1, 1] → [7, 7]
             nn.ConvTranspose2d(128, 128, kernel_size=7, stride=1, padding=0),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 上采样2: [7, 7] → [13, 13]
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 上采样3: [13, 13] → [25, 25]
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 上采样4: [25, 25] → [49, 49]
@@ -445,6 +448,7 @@ class DualBranchDifferentiableWaveletAutoEncoder(nn.Module):
             },
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
             'fc_structure': fc_structure_str,
             'intermediate_dims': self.intermediate_dims,
             **self.structure_info
@@ -480,7 +484,8 @@ class DualBranchDifferentiableWaveletMLPAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  wavelet_type: str = 'db4',
                  input_size: int = 49,
-                 ll_ratio: float = 0.7):
+                 ll_ratio: float = 0.7,
+                 activation: str = 'relu'):
         """初始化双分支可微分Wavelet MLP AutoEncoder"""
         super().__init__()
 
@@ -489,6 +494,7 @@ class DualBranchDifferentiableWaveletMLPAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.wavelet_type = wavelet_type
         self.input_size = input_size
+        self.activation_type = get_activation_name(activation)
 
         # 计算各分支latent维度
         self.ll_latent_dim, self.hf_latent_dim = calculate_branch_latent_dims(latent_dim, ll_ratio)
@@ -507,37 +513,37 @@ class DualBranchDifferentiableWaveletMLPAutoEncoder(nn.Module):
         # ===== LL分支 =====
         self.ll_branch = nn.Sequential(
             nn.Linear(ll_input_dim, 512),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(512, 256),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(256, 128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
         )
 
         # ===== HF分支 =====
         self.hf_branch = nn.Sequential(
             nn.Linear(hf_input_dim, 512),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(512, 256),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(256, 128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
         )
 
         # ===== 融合层 =====
         self.fusion = nn.Sequential(
             nn.Linear(256, 128),  # 128(LL) + 128(HF) = 256
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(128, latent_dim),
@@ -546,15 +552,15 @@ class DualBranchDifferentiableWaveletMLPAutoEncoder(nn.Module):
         # ===== 解码器 =====
         self.decoder_fc = nn.Sequential(
             nn.Linear(latent_dim, 128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(128, 256),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(256, 512),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout(dropout_rate),
 
             nn.Linear(512, ll_input_dim + hf_input_dim),  # 完整小波系数
@@ -706,6 +712,7 @@ class DualBranchDifferentiableWaveletMLPAutoEncoder(nn.Module):
             },
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
         }
 
 

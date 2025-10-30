@@ -9,6 +9,7 @@ import torch.nn as nn
 from typing import Tuple, Dict, Any, List
 import numpy as np
 from autoencoder.utils.adaptive_layers import get_structure_info
+from autoencoder.utils.activation_factory import get_activation, get_activation_name
 
 
 def calculate_mlp_dims(input_dim: int, latent_dim: int, max_ratio: int = 4, min_layers: int = 3) -> List[int]:
@@ -88,16 +89,18 @@ class WaveletMLPAutoEncoder(nn.Module):
                  num_frequencies: int = 2,
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
-                 input_size: int = 49):
+                 input_size: int = 49,
+                 activation: str = 'relu'):
         """
         初始化小波MLP-AutoEncoder
 
         Args:
             latent_dim: 隐空间维度
             num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
-            wavelet_bands: 小波频带数 (通常为4: LL,LH,HL,HH)
-            dropout_rate: Dropout比率
+            wavelet_bands: 小波频带数 (通常为4: LL, LH, HL, HH)
+            dropout_rate: Dropout比例
             input_size: 输入小波系数尺寸 (49 for db4小波变换后的尺寸)
+            activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
         """
         super().__init__()
 
@@ -107,6 +110,7 @@ class WaveletMLPAutoEncoder(nn.Module):
         self.input_channels = num_frequencies * wavelet_bands
         self.dropout_rate = dropout_rate
         self.input_size = input_size
+        self.activation_type = get_activation_name(activation)
 
         # 计算展平后的输入维度
         self.input_dim = input_size * input_size * self.input_channels  # 49×49×8 = 19,208
@@ -128,7 +132,7 @@ class WaveletMLPAutoEncoder(nn.Module):
             encoder_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
                 nn.BatchNorm1d(intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -147,7 +151,7 @@ class WaveletMLPAutoEncoder(nn.Module):
             decoder_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
                 nn.BatchNorm1d(intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -272,6 +276,7 @@ class WaveletMLPAutoEncoder(nn.Module):
             'num_mlp_layers': len(mlp_structure) - 1,
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
             'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1',
             'compression_ratios': self.structure_info['compression_ratios']
         }
@@ -289,14 +294,16 @@ class DirectMLPAutoEncoder(nn.Module):
     def __init__(self,
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
-                 dropout_rate: float = 0.2):
+                 dropout_rate: float = 0.2,
+                 activation: str = 'relu'):
         """
         初始化直接MLP-AutoEncoder
 
         Args:
             latent_dim: 隐空间维度
             num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
-            dropout_rate: Dropout比率
+            dropout_rate: Dropout比例
+            activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
         """
         super().__init__()
 
@@ -304,6 +311,7 @@ class DirectMLPAutoEncoder(nn.Module):
         self.num_frequencies = num_frequencies
         self.dropout_rate = dropout_rate
         self.input_channels = num_frequencies
+        self.activation_type = get_activation_name(activation)
 
         # 计算展平后的输入维度
         self.input_dim = 91 * 91 * num_frequencies  # 91×91×2 = 16,562 或 91×91×3 = 24,843
@@ -325,7 +333,7 @@ class DirectMLPAutoEncoder(nn.Module):
             encoder_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
                 nn.BatchNorm1d(intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -344,7 +352,7 @@ class DirectMLPAutoEncoder(nn.Module):
             decoder_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
                 nn.BatchNorm1d(intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -466,6 +474,7 @@ class DirectMLPAutoEncoder(nn.Module):
             'num_mlp_layers': len(mlp_structure) - 1,
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
             'compression_ratio': f'{self.input_dim}:{self.latent_dim} = {(self.input_dim/self.latent_dim):.1f}:1',
             'compression_ratios': self.structure_info['compression_ratios']
         }

@@ -263,64 +263,70 @@ def get_model_info(self) -> Dict[str, Any]:
 
 ---
 
-### 步骤5: 处理Sine系列模型（别名化）
+### 步骤5: 删除Sine系列文件（不需要重构）
 
-对于已存在的Sine系列模型（如SinWaveletAutoEncoder），将其简化为向后兼容的别名。
+Sine系列模型完全不需要保留，因为用户可以通过`activation='sin'`参数使用。
 
-#### 5.1 简化__init__方法
+#### 5.1 删除Sine文件
 
-**原始代码** (完整重复实现，80-100行):
-```python
-class SinWaveletAutoEncoder(nn.Module):
-    def __init__(self, *args, **kwargs):
-        nn.Module.__init__(self)
-
-        # 大量重复的初始化代码...
-        self.encoder = nn.Sequential(
-            nn.Conv2d(...),
-            nn.BatchNorm2d(...),
-            SinActivation(),  # 硬编码
-            ...
-        )
+**删除以下文件**:
+```bash
+rm autoencoder/models/sine_cnn_autoencoder.py
+rm autoencoder/models/sine_mlp_autoencoder.py
 ```
 
-**重构后** (3行):
+**从models/__init__.py中删除导入**:
 ```python
-class SinWaveletAutoEncoder(WaveletAutoEncoder):
-    """Sin激活CNN AutoEncoder (向后兼容别名)"""
+# 删除这些行
+from .sine_cnn_autoencoder import SinWaveletAutoEncoder, SinDirectAutoEncoder
+from .sine_mlp_autoencoder import SinWaveletMLPAutoEncoder, SinDirectMLPAutoEncoder
 
-    def __init__(self, *args, **kwargs):
-        # 强制设置activation='sin'，其他参数传递给父类
-        kwargs['activation'] = 'sin'
-        super().__init__(*args, **kwargs)
+# 从__all__中删除
+__all__ = [
+    ...
+    # 'SinWaveletAutoEncoder',  # ← 删除
+    # 'SinDirectAutoEncoder',   # ← 删除
+    # 'SinWaveletMLPAutoEncoder',  # ← 删除
+    # 'SinDirectMLPAutoEncoder',   # ← 删除
+    ...
+]
 ```
 
-#### 5.2 重写get_model_info（可选）
+#### 5.2 删除DifferentiableSineWaveletMLPAutoEncoder类
 
-如果需要保持旧的类型名：
+在`differentiable_wavelet_autoencoder.py`中，完全删除这个类定义（约30-50行）：
 
 ```python
-def get_model_info(self) -> Dict[str, Any]:
-    """获取模型信息（重写以返回正确类型名）"""
-    info = super().get_model_info()
-    info['type'] = 'SinWaveletAutoEncoder'  # 保持旧类型名
-    return info
-```
-
-**示例** (differentiable_wavelet_autoencoder.py line 550-577):
-```python
+# 删除这整个类
 class DifferentiableSineWaveletMLPAutoEncoder(DifferentiableWaveletMLPAutoEncoder):
-    """可微分Sine激活MLP AutoEncoder (向后兼容别名)"""
-
-    def __init__(self, *args, **kwargs):
-        kwargs['activation'] = 'sin'
-        super().__init__(*args, **kwargs)
-
-    def get_model_info(self) -> Dict[str, Any]:
-        info = super().get_model_info()
-        info['type'] = 'DifferentiableSineWaveletMLPAutoEncoder'
-        return info
+    ...  # 全部删除
 ```
+
+**从文件末尾的__all__中删除**:
+```python
+__all__ = [
+    'DifferentiableWaveletAutoEncoder',
+    'DifferentiableWaveletMLPAutoEncoder',
+    # 'DifferentiableSineWaveletMLPAutoEncoder'  # ← 删除这行
+]
+```
+
+#### 5.3 用户迁移指南
+
+旧代码：
+```python
+model = SinWaveletAutoEncoder(latent_dim=32, num_frequencies=2)
+```
+
+新代码：
+```python
+model = WaveletAutoEncoder(latent_dim=32, num_frequencies=2, activation='sin')
+```
+
+**优点**:
+- ✅ 代码更清晰，减少类数量
+- ✅ 支持更多激活函数（gelu, swish等）
+- ✅ 维护成本更低
 
 ---
 
@@ -396,9 +402,9 @@ self.encoder = nn.Sequential(
 )
 ```
 
-### 示例2: sine_cnn_autoencoder.py (Sine CNN) → 别名化
+### 示例2: sine_cnn_autoencoder.py (Sine CNN) → 直接删除
 
-#### 重构前 (完整文件，200+行):
+#### 原文件 (完整文件，200+行):
 ```python
 """Sin激活CNN AutoEncoder"""
 import torch
@@ -418,21 +424,14 @@ class SinWaveletAutoEncoder(nn.Module):
         )
 ```
 
-#### 重构后 (10行):
-```python
-"""Sin激活CNN AutoEncoder (向后兼容别名)"""
-from .cnn_autoencoder import WaveletAutoEncoder
-
-class SinWaveletAutoEncoder(WaveletAutoEncoder):
-    """Sin激活CNN AutoEncoder (向后兼容别名)
-
-    注意：现在是WaveletAutoEncoder(activation='sin')的别名。
-    推荐直接使用父类并指定activation参数。
-    """
-    def __init__(self, *args, **kwargs):
-        kwargs['activation'] = 'sin'
-        super().__init__(*args, **kwargs)
+#### 重构后：
+```bash
+# 直接删除整个文件
+rm autoencoder/models/sine_cnn_autoencoder.py
+rm autoencoder/models/sine_mlp_autoencoder.py
 ```
+
+**理由**: 用户可以用`WaveletAutoEncoder(activation='sin')`替代，不需要保留独立文件。
 
 ---
 
@@ -601,44 +600,45 @@ def get_model_info(self) -> Dict[str, Any]:
    - DeepWaveletAutoEncoder (CNN)
    - DeepDirectAutoEncoder (CNN)
 
-### 低优先级（别名化）
+### 待删除（不需要重构）
 
-9. **sine_cnn_autoencoder.py**
-   - SinWaveletAutoEncoder → 别名
-   - SinDirectAutoEncoder → 别名
+9. **sine_cnn_autoencoder.py** ❌
+   - 整个文件删除（用户可用WaveletAutoEncoder(activation='sin')替代）
 
-10. **sine_mlp_autoencoder.py**
-    - SinWaveletMLPAutoEncoder → 别名
-    - SinDirectMLPAutoEncoder → 别名
+10. **sine_mlp_autoencoder.py** ❌
+    - 整个文件删除（用户可用WaveletMLPAutoEncoder(activation='sin')替代）
+
+11. **DifferentiableSineWaveletMLPAutoEncoder** ❌
+    - 从differentiable_wavelet_autoencoder.py中删除类定义
 
 ---
 
 ## 📊 进度追踪
 
-### 已完成 ✅ (3/19)
+### 已完成 ✅ (2/12)
 - [x] DifferentiableWaveletAutoEncoder (CNN)
 - [x] DifferentiableWaveletMLPAutoEncoder (MLP)
-- [x] DifferentiableSineWaveletMLPAutoEncoder (别名)
 
-### 待重构 ⏳ (16/19)
+### 待删除 ❌ (5个Sine系列文件，不需要重构)
+- [ ] sine_cnn_autoencoder.py (整个文件删除)
+- [ ] sine_mlp_autoencoder.py (整个文件删除)
+- [ ] DifferentiableSineWaveletMLPAutoEncoder (删除类定义)
+
+### 待重构 ⏳ (10/12)
 
 #### 可微分小波系列 (2个)
 - [ ] DualBranchDifferentiableWaveletAutoEncoder (CNN)
 - [ ] DualBranchDifferentiableWaveletMLPAutoEncoder (MLP)
 
-#### Wavelet模式 (6个)
+#### Wavelet模式 (4个)
 - [ ] WaveletAutoEncoder (CNN)
 - [ ] WaveletMLPAutoEncoder (MLP)
-- [ ] SinWaveletAutoEncoder (别名)
-- [ ] SinWaveletMLPAutoEncoder (别名)
 - [ ] DualBranchWaveletAutoEncoder (CNN)
 - [ ] DualBranchWaveletMLPAutoEncoder (MLP)
 
-#### Direct模式 (4个)
+#### Direct模式 (2个)
 - [ ] DirectAutoEncoder (CNN)
 - [ ] DirectMLPAutoEncoder (MLP)
-- [ ] SinDirectAutoEncoder (别名)
-- [ ] SinDirectMLPAutoEncoder (别名)
 
 #### Enhanced系列 (2个)
 - [ ] EnhancedWaveletAutoEncoder (CNN)

@@ -669,3 +669,4 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 **维护者**: Claude Code
 **项目路径**: `G:\feko_data\wavelet`
 **Python环境**: RCS_OP1 (Conda)
+- 在本项目中优先使用可微分小波变换

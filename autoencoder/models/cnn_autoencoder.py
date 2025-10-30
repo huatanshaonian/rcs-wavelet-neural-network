@@ -13,6 +13,7 @@ import numpy as np
 
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
+from autoencoder.utils.activation_factory import get_activation, get_activation_name
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -72,17 +73,19 @@ class WaveletAutoEncoder(nn.Module):
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
                  input_size: int = 49,
-                 use_channel_attention: bool = False):
+                 use_channel_attention: bool = False,
+                 activation: str = 'relu'):
         """
         初始化AutoEncoder
 
         Args:
             latent_dim: 隐空间维度
             num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
-            wavelet_bands: 小波频带数 (通常为4: LL,LH,HL,HH)
-            dropout_rate: Dropout比率
+            wavelet_bands: 小波频带数 (通常为4: LL, LH, HL, HH)
+            dropout_rate: Dropout比例
             input_size: 输入小波系数尺寸 (49 for db4小波变换后的尺寸)
             use_channel_attention: 是否使用通道注意力机制 (默认: False)
+            activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
         """
         super().__init__()
 
@@ -93,6 +96,7 @@ class WaveletAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.input_size = input_size
         self.use_channel_attention = use_channel_attention
+        self.activation_type = get_activation_name(activation)
 
         # ===== 通道注意力模块（可选） =====
         if self.use_channel_attention:
@@ -109,24 +113,24 @@ class WaveletAutoEncoder(nn.Module):
             # 第一层: 动态小波通道输入 [B, num_freq*4, input_size, input_size]
             nn.Conv2d(self.input_channels, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
 
             # 下采样层1: [49, 49] → [25, 25]
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 下采样层2: [25, 25] → [13, 13]
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 下采样层3: [13, 13] → [7, 7]
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 全局平均池化: [7, 7] → [4, 4]
@@ -152,7 +156,7 @@ class WaveletAutoEncoder(nn.Module):
         for intermediate_dim in self.intermediate_dims:
             encoder_fc_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -170,7 +174,7 @@ class WaveletAutoEncoder(nn.Module):
         for intermediate_dim in reversed(self.intermediate_dims):
             decoder_fc_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                get_activation(activation),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -178,7 +182,7 @@ class WaveletAutoEncoder(nn.Module):
         # 最后一层到flattened_size
         decoder_fc_layers.extend([
             nn.Linear(current_dim, self.flattened_size),
-            nn.ReLU(inplace=True)
+            get_activation(activation)
         ])
         self.decoder_fc = nn.Sequential(*decoder_fc_layers)
 
@@ -195,19 +199,19 @@ class WaveletAutoEncoder(nn.Module):
             # 上采样层1: [4, 4] → [8, 8]
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 上采样层2: [8, 8] → [16, 16]
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            get_activation(activation),
             nn.Dropout2d(dropout_rate),
 
             # 上采样层3: [16, 16] → [32, 32]
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True)
+            get_activation(activation)
         )
 
         # 最终卷积层
@@ -350,6 +354,7 @@ class WaveletAutoEncoder(nn.Module):
             'compression_ratios': self.structure_info['compression_ratios'],
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
             'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1',
             'use_channel_attention': self.use_channel_attention
         }

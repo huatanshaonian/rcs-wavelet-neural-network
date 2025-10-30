@@ -17,35 +17,30 @@
 ### 网络架构全览
 
 #### Wavelet模式 (小波增强)
-| 架构 | 模型类 | 参数量 | 通道注意力 | 双分支 | 小隐空间 | 推荐场景 |
-|------|--------|--------|-----------|--------|---------|---------|
-| **CNN** | WaveletAutoEncoder | ~1.2M | ✅ | ❌ | ✅ | 通用，推荐默认 |
-| **Enhanced_CNN** | EnhancedWaveletAutoEncoder | ~11M | ✅ | ❌ | ✅ | 多尺度+大感受野 |
-| **Deep_CNN** | DeepWaveletAutoEncoder | ~29M | ✅ | ❌ | ✅ | 最强表达力 |
-| **MLP** | WaveletMLPAutoEncoder | ~3M | ❌ | ❌ | ✅ | 参数敏感性分析 |
-| **Sine_CNN** | SinWaveletAutoEncoder | ~1.2M | ❌ | ❌ | ✅ | 周期性激活实验 |
-| **Sine_MLP** | SinWaveletMLPAutoEncoder | ~3M | ❌ | ❌ | ✅ | 周期性激活+MLP |
-| **Dual_Branch_CNN** | DualBranchWaveletAutoEncoder | ~1.25M | ❌ | ✅ | ✅ | LL/HF分离处理 ⭐ |
-| **Dual_Branch_MLP** | DualBranchWaveletMLPAutoEncoder | ~20M | ❌ | ✅ | ✅ | LL/HF分离+MLP |
+| 架构 | 模型类 | 参数量 | 通道注意力 | 双分支 | 小隐空间 | 激活函数 | 推荐场景 |
+|------|--------|--------|-----------|--------|---------|---------|---------|
+| **CNN** | WaveletAutoEncoder | ~1.2M | ✅ | ❌ | ✅ | 可配置 | 通用，推荐默认 |
+| **Enhanced_CNN** | EnhancedWaveletAutoEncoder | ~11M | ✅ | ❌ | ✅ | 可配置 | 多尺度+大感受野 |
+| **Deep_CNN** | DeepWaveletAutoEncoder | ~29M | ✅ | ❌ | ✅ | 可配置 | 最强表达力 |
+| **MLP** | WaveletMLPAutoEncoder | ~3M | ❌ | ❌ | ✅ | 可配置 | 参数敏感性分析 |
+| **Dual_Branch_CNN** | DualBranchWaveletAutoEncoder | ~1.25M | ❌ | ✅ | ✅ | 可配置 | LL/HF分离处理 ⭐ |
+| **Dual_Branch_MLP** | DualBranchWaveletMLPAutoEncoder | ~20M | ❌ | ✅ | ✅ | 可配置 | LL/HF分离+MLP |
 
 #### Direct模式 (直接处理)
-| 架构 | 模型类 | 参数量 | 通道注意力 | 双分支 | 小隐空间 | 推荐场景 |
-|------|--------|--------|-----------|--------|---------|---------|
-| **CNN** | DirectAutoEncoder | ~2.5M | ✅ | ❌ | ✅ | 无小波开销 |
-| **Enhanced_CNN** | EnhancedDirectAutoEncoder | ~25M | ✅ | ❌ | ✅ | 最强Direct表达力 |
-| **Deep_CNN** | DeepDirectAutoEncoder | ~79M | ✅ | ❌ | ✅ | 计算密集型 |
-| **MLP** | DirectMLPAutoEncoder | ~5M | ❌ | ❌ | ✅ | 全连接Direct |
-| **Sine_CNN** | SinDirectAutoEncoder | ~2.5M | ❌ | ❌ | ✅ | 周期性激活Direct |
-| **Sine_MLP** | SinDirectMLPAutoEncoder | ~5M | ❌ | ❌ | ✅ | 周期性激活+MLP Direct |
+| 架构 | 模型类 | 参数量 | 通道注意力 | 双分支 | 小隐空间 | 激活函数 | 推荐场景 |
+|------|--------|--------|-----------|--------|---------|---------|---------|
+| **CNN** | DirectAutoEncoder | ~2.5M | ✅ | ❌ | ✅ | 可配置 | 无小波开销 |
+| **Enhanced_CNN** | EnhancedDirectAutoEncoder | ~25M | ✅ | ❌ | ✅ | 可配置 | 最强Direct表达力 |
+| **Deep_CNN** | DeepDirectAutoEncoder | ~79M | ✅ | ❌ | ✅ | 可配置 | 计算密集型 |
+| **MLP** | DirectMLPAutoEncoder | ~5M | ❌ | ❌ | ✅ | 可配置 | 全连接Direct |
 
 #### Differentiable Wavelet模式 (可微分小波)
-| 架构 | 模型类 | 参数量 | 通道注意力 | 双分支 | 小隐空间 | 推荐场景 |
-|------|--------|--------|-----------|--------|---------|---------|
-| **CNN** | DifferentiableWaveletAutoEncoder | ~1.2M | ✅ | ❌ | ✅ | 端到端小波学习 |
-| **MLP** | DifferentiableWaveletMLPAutoEncoder | ~3M | ✅ | ❌ | ✅ | 端到端+MLP |
-| **Sine_MLP** | DifferentiableSineWaveletMLPAutoEncoder | ~3M | ✅ | ❌ | ✅ | 端到端+Sine+MLP |
-| **Dual_Branch_CNN** | DualBranchDifferentiableWaveletAutoEncoder | ~1.25M | ❌ | ✅ | ✅ | 端到端+LL/HF分离 ⭐ |
-| **Dual_Branch_MLP** | DualBranchDifferentiableWaveletMLPAutoEncoder | ~3M | ❌ | ✅ | ✅ | 端到端+MLP+分离 |
+| 架构 | 模型类 | 参数量 | 通道注意力 | 双分支 | 小隐空间 | 激活函数 | 推荐场景 |
+|------|--------|--------|-----------|--------|---------|---------|---------|
+| **CNN** | DifferentiableWaveletAutoEncoder | ~1.2M | ✅ | ❌ | ✅ | 可配置 | 端到端小波学习 |
+| **MLP** | DifferentiableWaveletMLPAutoEncoder | ~3M | ✅ | ❌ | ✅ | 可配置 | 端到端+MLP |
+| **Dual_Branch_CNN** | DualBranchDifferentiableWaveletAutoEncoder | ~1.25M | ❌ | ✅ | ✅ | 可配置 | 端到端+LL/HF分离 ⭐ |
+| **Dual_Branch_MLP** | DualBranchDifferentiableWaveletMLPAutoEncoder | ~3M | ❌ | ✅ | ✅ | 可配置 | 端到端+MLP+分离 |
 
 ### 功能说明
 
@@ -75,6 +70,14 @@
 - **支持网络**: Differentiable Wavelet模式
 - **功能**: 小波变换集成在模型中，支持端到端梯度传播
 - **特点**: 损失在RCS空间计算，小波参数可学习
+
+#### 🎨 激活函数参数化
+- **支持网络**: 所有网络（12个核心模型）
+- **可选激活函数**: relu (默认), sin, gelu, swish, tanh, sigmoid, mish, elu, leaky_relu, prelu
+- **使用方式**:
+  - **GUI**: 在模型配置中选择"激活函数"下拉框
+  - **代码**: `create_autoencoder_system(..., activation='sin')`
+- **特点**: 统一接口，无需为每个激活函数维护单独的模型类
 
 ### 智能数据处理
 - **Mode-aware自动预处理**: 根据模式自动选择预处理策略

@@ -241,6 +241,7 @@ class RCSWaveletGUI:
         self.ae_dropout_rate = tk.StringVar(value="0.2")
         self.ae_wavelet_type = tk.StringVar(value="db4")
         self.ae_architecture_type = tk.StringVar(value="CNN")  # 架构类型: CNN或MLP
+        self.ae_activation = tk.StringVar(value="relu")  # 激活函数类型
 
         # 训练配置
         self.ae_batch_size = tk.StringVar(value="16")
@@ -2712,6 +2713,7 @@ class RCSWaveletGUI:
                 # 获取mode和architecture参数（如果存在）
                 mode = self.ae_mode.get() if hasattr(self, 'ae_mode') else 'wavelet'
                 architecture = self.ae_architecture_type.get().lower() if hasattr(self, 'ae_architecture_type') else 'cnn'
+                activation = self.ae_activation.get() if hasattr(self, 'ae_activation') else 'relu'
 
                 # 移除重复的预处理配置，直接使用数据管理的预处理结果
                 normalize = True  # 数据管理页面已经处理过标准化
@@ -2724,7 +2726,8 @@ class RCSWaveletGUI:
                     wavelet=wavelet_type,
                     normalize=normalize,
                     mode=mode,
-                    architecture=architecture
+                    architecture=architecture,
+                    activation=activation
                 )
 
                 # 存储数据引用，便于训练使用
@@ -2794,7 +2797,8 @@ class RCSWaveletGUI:
                     'normalize': self.ae_normalize.get(),  # 从GUI读取
                     'db_transform': self.ae_db_transform.get(),  # 从GUI读取
                     'mode': self.ae_system.get('mode', 'wavelet'),  # 从系统字典获取
-                    'architecture': self.ae_system.get('architecture', 'cnn')  # 从系统字典获取
+                    'architecture': self.ae_system.get('architecture', 'cnn'),  # 从系统字典获取
+                    'activation': self.ae_activation.get() if hasattr(self, 'ae_activation') else 'relu'  # 激活函数
                 })
 
                 # 保存data_adapter统计信息（用于inverse_adapt还原数据）
@@ -2918,6 +2922,7 @@ class RCSWaveletGUI:
 
                 # 自动创建系统
                 self.ae_log("🔧 正在自动重建AutoEncoder系统...")
+                activation = checkpoint.get('activation', 'relu')  # 从checkpoint获取，默认relu
                 self.ae_system = create_autoencoder_system(
                     config_name=freq_config,
                     latent_dim=latent_dim,
@@ -2925,7 +2930,8 @@ class RCSWaveletGUI:
                     wavelet=wavelet_type,
                     normalize=normalize,
                     mode=mode,
-                    architecture=architecture
+                    architecture=architecture,
+                    activation=activation
                 )
 
                 # 加载模型权重

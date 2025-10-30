@@ -17,6 +17,7 @@ from autoencoder.utils.adaptive_layers import (
     get_structure_info,
 )
 from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
+from autoencoder.utils.activation_factory import get_activation, get_activation_name
 
 
 class DeepWaveletAutoEncoder(nn.Module):
@@ -40,7 +41,8 @@ class DeepWaveletAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  use_attention: bool = True,
                  input_size: int = 49,
-                 use_channel_attention: bool = False):
+                 use_channel_attention: bool = False,
+                 activation: str = 'relu'):
         """
         初始化Deep Wavelet AutoEncoder
 
@@ -63,6 +65,32 @@ class DeepWaveletAutoEncoder(nn.Module):
         self.use_attention = use_attention
         self.input_size = input_size
         self.use_channel_attention = use_channel_attention
+        self.activation_type = get_activation_name(activation)
+
+        def activation_layer():
+            return get_activation(self.activation_type)
+
+        def replace_activation_layers(seq: nn.Sequential) -> nn.Sequential:
+            layers = []
+            for module in seq:
+                if isinstance(module, nn.ReLU):
+                    layers.append(activation_layer())
+                else:
+                    layers.append(module)
+            return nn.Sequential(*layers)
+        self.activation_type = get_activation_name(activation)
+
+        def activation_layer():
+            return get_activation(self.activation_type)
+
+        def replace_activation_layers(seq: nn.Sequential) -> nn.Sequential:
+            layers = []
+            for module in seq:
+                if isinstance(module, nn.ReLU):
+                    layers.append(activation_layer())
+                else:
+                    layers.append(module)
+            return nn.Sequential(*layers)
 
         # ===== 输入层通道注意力（可选，用户可配置） =====
         if self.use_channel_attention:
@@ -81,20 +109,20 @@ class DeepWaveletAutoEncoder(nn.Module):
         self.conv1 = nn.Sequential(
             nn.Conv2d(self.input_channels, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),  # 双卷积
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         # Stage 2: [32, 49, 49] → [64, 25, 25]
         self.conv2 = nn.Sequential(
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),  # 双卷积
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate)
         )
 
@@ -102,10 +130,10 @@ class DeepWaveletAutoEncoder(nn.Module):
         self.conv3 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),  # 双卷积
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate)
         )
 
@@ -113,10 +141,10 @@ class DeepWaveletAutoEncoder(nn.Module):
         self.conv4 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),  # 双卷积
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate)
         )
 
@@ -135,7 +163,9 @@ class DeepWaveletAutoEncoder(nn.Module):
             dropout_rate=dropout_rate,
             arch_type='cnn',
         )
-        self.decoder_fc = nn.Sequential(*decoder_fc, nn.ReLU(inplace=True))
+        self.encoder_fc = replace_activation_layers(self.encoder_fc)
+        decoder_fc = replace_activation_layers(decoder_fc)
+        self.decoder_fc = nn.Sequential(*list(decoder_fc.children()), activation_layer())
         self.structure_info = get_structure_info(
             self.final_conv_size, latent_dim, self.intermediate_dims
         )
@@ -146,37 +176,37 @@ class DeepWaveletAutoEncoder(nn.Module):
         self.deconv4 = nn.Sequential(
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),  # 双卷积
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         # Stage 3 逆向: [128, 13, 13] → [64, 25, 25]
         self.deconv3 = nn.Sequential(
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),  # 双卷积
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         # Stage 2 逆向: [64, 25, 25] → [32, 49, 49]
         self.deconv2 = nn.Sequential(
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),  # 双卷积
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         # Stage 1 逆向: [32, 49, 49] → [8, 49, 49]
         self.deconv1 = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(32, self.input_channels, kernel_size=3, padding=1)
             # 不使用Tanh，允许小波系数任意值
         )
@@ -308,6 +338,7 @@ class DeepWaveletAutoEncoder(nn.Module):
             'parameters': param_count,
             'use_attention': self.use_attention,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
             'fc_structure': self.structure_info['fc_structure'],
             'intermediate_dims': self.structure_info['intermediate_dims'],
             'num_fc_layers': self.structure_info['num_fc_layers'],
@@ -341,7 +372,8 @@ class DeepDirectAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  use_attention: bool = True,
                  input_size: int = 91,
-                 use_channel_attention: bool = False):
+                 use_channel_attention: bool = False,
+                 activation: str = 'relu'):
         """
         初始化Deep Direct AutoEncoder
 
@@ -362,6 +394,10 @@ class DeepDirectAutoEncoder(nn.Module):
         self.use_attention = use_attention
         self.input_size = input_size
         self.use_channel_attention = use_channel_attention
+        self.activation_type = get_activation_name(activation)
+
+        def activation_layer():
+            return get_activation(self.activation_type)
 
         # ===== 输入层通道注意力（可选，用户可配置） =====
         if self.use_channel_attention:
@@ -380,20 +416,20 @@ class DeepDirectAutoEncoder(nn.Module):
         self.conv1 = nn.Sequential(
             nn.Conv2d(self.input_channels, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         # Stage 2: [32, 91, 91] → [64, 46, 46]
         self.conv2 = nn.Sequential(
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate)
         )
 
@@ -401,10 +437,10 @@ class DeepDirectAutoEncoder(nn.Module):
         self.conv3 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate)
         )
 
@@ -412,10 +448,10 @@ class DeepDirectAutoEncoder(nn.Module):
         self.conv4 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate)
         )
 
@@ -434,7 +470,9 @@ class DeepDirectAutoEncoder(nn.Module):
             dropout_rate=dropout_rate,
             arch_type='cnn',
         )
-        self.decoder_fc = nn.Sequential(*decoder_fc, nn.ReLU(inplace=True))
+        self.encoder_fc = replace_activation_layers(self.encoder_fc)
+        decoder_fc = replace_activation_layers(decoder_fc)
+        self.decoder_fc = nn.Sequential(*list(decoder_fc.children()), activation_layer())
         self.structure_info = get_structure_info(
             self.final_conv_size, latent_dim, self.intermediate_dims
         )
@@ -445,34 +483,34 @@ class DeepDirectAutoEncoder(nn.Module):
         self.deconv4 = nn.Sequential(
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         self.deconv3 = nn.Sequential(
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         self.deconv2 = nn.Sequential(
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True)
+            activation_layer()
         )
 
         self.deconv1 = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Conv2d(32, self.input_channels, kernel_size=3, padding=1)
         )
 
@@ -567,6 +605,7 @@ class DeepDirectAutoEncoder(nn.Module):
             'parameters': param_count,
             'use_attention': self.use_attention,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
             'fc_structure': self.structure_info['fc_structure'],
             'intermediate_dims': self.structure_info['intermediate_dims'],
             'num_fc_layers': self.structure_info['num_fc_layers'],
@@ -591,6 +630,7 @@ if __name__ == "__main__":
     print(f"隐空间: {latent_wavelet.shape}")
     info_wavelet = model_wavelet.get_model_info()
     print(f"参数量: {info_wavelet['parameters']['total']:,}")
+    print(f"激活函数: {info_wavelet['activation']}")
 
     print("\n=== 测试DeepDirectAutoEncoder ===")
     model_direct = DeepDirectAutoEncoder(latent_dim=256, num_frequencies=2)
@@ -601,3 +641,4 @@ if __name__ == "__main__":
     print(f"隐空间: {latent_direct.shape}")
     info_direct = model_direct.get_model_info()
     print(f"参数量: {info_direct['parameters']['total']:,}")
+    print(f"激活函数: {info_direct['activation']}")

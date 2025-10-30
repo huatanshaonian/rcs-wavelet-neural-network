@@ -12,6 +12,7 @@ from typing import Tuple, Dict, Any, List
 import numpy as np
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
+from autoencoder.utils.activation_factory import get_activation, get_activation_name
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -69,7 +70,8 @@ class DirectAutoEncoder(nn.Module):
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
                  dropout_rate: float = 0.2,
-                 use_channel_attention: bool = False):
+                 use_channel_attention: bool = False,
+                 activation: str = 'relu'):
         """
         初始化直接AutoEncoder
 
@@ -78,6 +80,7 @@ class DirectAutoEncoder(nn.Module):
             num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
             dropout_rate: Dropout比率
             use_channel_attention: 是否使用通道注意力机制 (默认: False)
+            activation: 激活函数类型（'relu', 'sin', 'gelu', 'swish'等，默认: 'relu'）
         """
         super().__init__()
 
@@ -86,6 +89,10 @@ class DirectAutoEncoder(nn.Module):
         self.dropout_rate = dropout_rate
         self.input_channels = num_frequencies  # 直接使用频率数量作为通道数
         self.use_channel_attention = use_channel_attention
+        self.activation_type = get_activation_name(activation)
+
+        def activation_layer():
+            return get_activation(self.activation_type)
 
         # ===== 通道注意力模块（可选） =====
         if self.use_channel_attention:
@@ -102,30 +109,30 @@ class DirectAutoEncoder(nn.Module):
             # 第一层: 直接RCS输入 [B, num_freq, 91, 91]
             nn.Conv2d(self.input_channels, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
 
             # 下采样层1: [91, 91] → [46, 46]
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 下采样层2: [46, 46] → [23, 23]
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 下采样层3: [23, 23] → [12, 12]
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 下采样层4: [12, 12] → [6, 6]
             nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 全局平均池化: [6, 6] → [1, 1]
@@ -151,7 +158,7 @@ class DirectAutoEncoder(nn.Module):
         for intermediate_dim in self.intermediate_dims:
             to_latent_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                activation_layer(),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -170,7 +177,7 @@ class DirectAutoEncoder(nn.Module):
         for intermediate_dim in reversed(self.intermediate_dims):
             from_latent_layers.extend([
                 nn.Linear(current_dim, intermediate_dim),
-                nn.ReLU(inplace=True),
+                activation_layer(),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
@@ -178,7 +185,7 @@ class DirectAutoEncoder(nn.Module):
         # 最后一层到encoder_output_size
         from_latent_layers.extend([
             nn.Linear(current_dim, self.encoder_output_size),
-            nn.ReLU(inplace=True)
+            activation_layer()
         ])
         self.from_latent = nn.Sequential(*from_latent_layers)
 
@@ -187,25 +194,25 @@ class DirectAutoEncoder(nn.Module):
             # 上采样层1: [1, 1] → [6, 6]
             nn.ConvTranspose2d(512, 256, kernel_size=6, stride=1, padding=0),
             nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 上采样层2: [6, 6] → [12, 12]
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 上采样层3: [12, 12] → [23, 23]
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=0),
             nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 上采样层4: [23, 23] → [46, 46]
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            activation_layer(),
             nn.Dropout2d(dropout_rate),
 
             # 最终层: [46, 46] → [91, 91]
@@ -349,6 +356,7 @@ class DirectAutoEncoder(nn.Module):
             'num_fc_layers': len(fc_structure) - 1,
             'parameters': param_count,
             'dropout_rate': self.dropout_rate,
+            'activation': self.activation_type,
             'compression_ratio': f'{input_size}:{self.latent_dim} = {(input_size/self.latent_dim):.1f}:1',
             'compression_ratios': self.structure_info['compression_ratios'],
             'use_channel_attention': self.use_channel_attention
@@ -357,7 +365,8 @@ class DirectAutoEncoder(nn.Module):
 
 def create_direct_autoencoder(latent_dim: int = 256,
                             num_frequencies: int = 2,
-                            dropout_rate: float = 0.2) -> DirectAutoEncoder:
+                            dropout_rate: float = 0.2,
+                            activation: str = 'relu') -> DirectAutoEncoder:
     """
     创建直接AutoEncoder模型
 
@@ -365,6 +374,7 @@ def create_direct_autoencoder(latent_dim: int = 256,
         latent_dim: 隐空间维度
         num_frequencies: 频率数量
         dropout_rate: Dropout比率
+        activation: 激活函数类型
 
     Returns:
         模型实例和信息
@@ -372,7 +382,8 @@ def create_direct_autoencoder(latent_dim: int = 256,
     model = DirectAutoEncoder(
         latent_dim=latent_dim,
         num_frequencies=num_frequencies,
-        dropout_rate=dropout_rate
+        dropout_rate=dropout_rate,
+        activation=activation
     )
 
     model_info = model.get_model_info()
@@ -380,6 +391,7 @@ def create_direct_autoencoder(latent_dim: int = 256,
     print(f"创建直接AutoEncoder:")
     print(f"  - 隐空间维度: {model_info['latent_dim']}")
     print(f"  - 输入通道数: {model_info['input_channels']}")
+    print(f"  - 激活函数: {model_info['activation']}")
     print(f"  - 参数量: {model_info['total_parameters']:,}")
     print(f"  - 架构: 直接RCS输入，无小波变换")
 
