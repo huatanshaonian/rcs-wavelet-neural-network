@@ -43,13 +43,29 @@ class VisualizationManager:
             phi_values = data['phi_values']
             theta_values = data['theta_values']
 
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                # 限制范围在0.5-3.0之间
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
             im = ax.imshow(data['rcs_db'], cmap='jet', aspect='equal',
                           extent=[phi_values.min(), phi_values.max(),
                                  theta_values.max(), theta_values.min()])
-            ax.set_title(f'模型 {model_id} - {freq} RCS分布')
-            ax.set_xlabel('φ (方位角, 度)')
-            ax.set_ylabel('θ (俯仰角, 度)')
-            self.gui.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
+            ax.set_title(f'模型 {model_id} - {freq} RCS分布',
+                        fontsize=int(24*fontsize_scale), fontweight='bold')
+            ax.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_ylabel('θ (俯仰角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+
+            # 设置刻度标签字号
+            ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+            # 添加colorbar并设置字号
+            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
+            cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
