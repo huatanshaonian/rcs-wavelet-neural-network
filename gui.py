@@ -2137,18 +2137,17 @@ class RCSWaveletGUI:
 
             params = np.array(params).reshape(1, -1)
 
-            # 标准化参数 (使用训练时的scaler)
-            if hasattr(self, 'param_data'):
-                from sklearn.preprocessing import StandardScaler
-                scaler = StandardScaler()
-                scaler.fit(self.param_data)
-                params_scaled = scaler.transform(params)
-            else:
-                params_scaled = params
-
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
             if model_type == "传统网络":
+                # 传统网络需要标准化参数
+                if hasattr(self, 'param_data'):
+                    from sklearn.preprocessing import StandardScaler
+                    scaler = StandardScaler()
+                    scaler.fit(self.param_data)
+                    params_scaled = scaler.transform(params)
+                else:
+                    params_scaled = params
                 # 使用传统神经网络预测
                 self.current_model.to(device)
                 self.current_model.eval()
@@ -2163,6 +2162,8 @@ class RCSWaveletGUI:
 
             elif model_type == "AutoEncoder":
                 # 使用AutoEncoder预测
+                # ⚠️ 注意：AutoEncoder的ParameterMapper在训练时接收的是**未标准化的原始参数**
+                # 因此预测时也必须使用未标准化的参数，与训练时保持一致
                 autoencoder = self.ae_system['autoencoder']
                 parameter_mapper = self.ae_system['parameter_mapper']
                 wavelet_transform = self.ae_system.get('wavelet_transform', None)
@@ -2175,8 +2176,8 @@ class RCSWaveletGUI:
                 parameter_mapper.to(device).eval()
 
                 with torch.no_grad():
-                    # Step 1: 参数 → 隐空间
-                    params_tensor = torch.tensor(params_scaled, dtype=torch.float32).to(device)
+                    # Step 1: 参数 → 隐空间（使用未标准化的原始参数）
+                    params_tensor = torch.tensor(params, dtype=torch.float32).to(device)
                     predicted_latents = parameter_mapper(params_tensor)
 
                     # Step 2: 隐空间 → 重建输出
