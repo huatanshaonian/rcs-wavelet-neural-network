@@ -2247,7 +2247,11 @@ class RCSWaveletGUI:
 
         # 绘制每个频率的结果
         for idx, ax in enumerate(axes):
-            im = ax.imshow(prediction[:, :, idx], cmap='jet', aspect='equal',
+            # ⚠️ 重要：prediction是线性值，需要转换为dB显示
+            # AutoEncoder的inverse_adapt输出是线性域RCS
+            prediction_db = 10 * np.log10(np.clip(prediction[:, :, idx], 1e-10, None))
+
+            im = ax.imshow(prediction_db, cmap='jet', aspect='equal',
                           extent=[phi_range[0], phi_range[1], theta_range[1], theta_range[0]])
             ax.set_title(f'{freq_labels[idx]} RCS预测 ({model_type})',
                         fontsize=int(20*fontsize_scale), fontweight='bold')
