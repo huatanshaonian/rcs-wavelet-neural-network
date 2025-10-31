@@ -1229,13 +1229,29 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             theta_values = np.linspace(45, 135, rcs_2d.shape[0])
             phi_values = np.linspace(-45, 45, rcs_2d.shape[1])
 
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                # 限制范围在0.5-3.0之间
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
             im = ax.imshow(rcs_2d, cmap='jet', aspect='equal',
                           extent=[phi_values.min(), phi_values.max(),
                                  theta_values.max(), theta_values.min()])
-            ax.set_title(f'AutoEncoder预测 - 样本{sample_idx+1} - {freq}Hz RCS分布')
-            ax.set_xlabel('φ (方位角, 度)')
-            ax.set_ylabel('θ (俯仰角, 度)')
-            self.gui.vis_fig.colorbar(im, ax=ax, label='RCS')
+            ax.set_title(f'AutoEncoder预测 - 样本{sample_idx+1} - {freq}Hz RCS分布',
+                        fontsize=int(24*fontsize_scale), fontweight='bold')
+            ax.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_ylabel('θ (俯仰角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+
+            # 设置刻度标签字号
+            ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+            # 添加colorbar并设置字号
+            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label='RCS')
+            cbar.set_label('RCS', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
@@ -1264,12 +1280,28 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
             extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
 
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                # 限制范围在0.5-3.0之间
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
             # 绘制原始数据热图
             im = ax.imshow(data, cmap='jet', aspect='equal', extent=extent)
-            ax.set_title(f'原始RCS数据 - 模型 {model_id} - {freq}Hz\n(AutoEncoder模型未加载，显示原始数据)')
-            ax.set_xlabel('φ (方位角, 度)')
-            ax.set_ylabel('θ (俯仰角, 度)')
-            self.gui.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
+            ax.set_title(f'原始RCS数据 - 模型 {model_id} - {freq}Hz\n(AutoEncoder模型未加载，显示原始数据)',
+                        fontsize=int(24*fontsize_scale), fontweight='bold')
+            ax.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_ylabel('θ (俯仰角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+
+            # 设置刻度标签字号
+            ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+            # 添加colorbar并设置字号
+            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
+            cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()

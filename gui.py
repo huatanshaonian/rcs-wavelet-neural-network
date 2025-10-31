@@ -1070,6 +1070,13 @@ class RCSWaveletGUI:
         ttk.Button(control_frame, text="💾 保存图片", command=self.save_current_visualization,
                   width=12).grid(row=0, column=4, padx=5, pady=2)
 
+        # 字号缩放因子
+        ttk.Label(control_frame, text="字号缩放:").grid(row=0, column=5, sticky=tk.W, padx=5, pady=2)
+        self.fontsize_scale_var = tk.DoubleVar(value=1.0)
+        fontsize_entry = ttk.Entry(control_frame, textvariable=self.fontsize_scale_var, width=6)
+        fontsize_entry.grid(row=0, column=6, padx=5, pady=2)
+        ttk.Label(control_frame, text="(0.5-3.0)").grid(row=0, column=7, sticky=tk.W, padx=0, pady=2)
+
         # 可视化类型选择
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.vis_type_var = tk.StringVar(value="2D热图")
