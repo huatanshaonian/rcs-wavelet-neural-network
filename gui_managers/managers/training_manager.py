@@ -15,6 +15,11 @@ from datetime import datetime
 from tkinter import messagebox
 import tkinter as tk
 
+# 导入训练相关模块
+from training import CrossValidationTrainer, RCSDataset
+from wavelet_network import create_model, create_loss_function
+from configurable_loss import create_loss_function as create_configurable_loss
+
 
 class TrainingManager:
     """训练管理器 - 负责所有训练相关功能"""
