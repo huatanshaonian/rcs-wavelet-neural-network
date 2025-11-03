@@ -185,11 +185,11 @@ class AutoEncoderExtension:
         ttk.Label(preprocess_frame, text="   • Z-score标准化，每个频率独立",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
-        # dB变换选项（只读显示，由系统根据模式自动决定）
+        # dB变换选项（手动控制）
         self.db_checkbox = ttk.Checkbutton(preprocess_frame, text="📊 dB变换 (10*log10)",
-                       variable=self.main_gui.ae_db_transform, state='disabled')
+                       variable=self.main_gui.ae_db_transform)
         self.db_checkbox.pack(anchor=tk.W)
-        ttk.Label(preprocess_frame, text="   • 系统根据模式自动决定 (Direct模式自动启用)",
+        ttk.Label(preprocess_frame, text="   • 将线性RCS转换为dB空间 (sign(x)*log10(abs(x)))",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
         # 通道注意力选项
@@ -453,14 +453,15 @@ class AutoEncoderExtension:
         else:
             self.wavelet_combo.configure(state="disabled")
 
-        # 根据模式和标准化选项自动更新dB变换复选框
-        normalize = self.main_gui.ae_normalize.get()
-        if mode == "direct" and normalize:
-            # Direct模式 + 标准化 → 自动启用dB
-            self.main_gui.ae_db_transform.set(True)
-        else:
-            # Wavelet/Differentiable模式或未启用标准化 → 不使用dB
-            self.main_gui.ae_db_transform.set(False)
+        # dB变换现在改为手动控制，用户可根据需要自行选择
+        # 注释掉原来的自动设置逻辑，允许用户手动控制
+        # normalize = self.main_gui.ae_normalize.get()
+        # if mode == "direct" and normalize:
+        #     # Direct模式 + 标准化 → 自动启用dB
+        #     self.main_gui.ae_db_transform.set(True)
+        # else:
+        #     # Wavelet/Differentiable模式或未启用标准化 → 不使用dB
+        #     self.main_gui.ae_db_transform.set(False)
 
         # 更新状态显示
         self._update_status_display()
@@ -589,9 +590,9 @@ class AutoEncoderExtension:
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
             use_channel_attention = self.main_gui.ae_use_channel_attention.get()  # 通道注意力开关
+            db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取dB变换开关（手动控制）
 
             # 创建系统（使用frequency_config的扩展参数）
-            # 注意：db_transform由mode自动决定，不需要手动设置
             self.main_gui.ae_system = create_autoencoder_system(
                 config_name=freq_config,
                 latent_dim=latent_dim,
@@ -600,10 +601,9 @@ class AutoEncoderExtension:
                 normalize=normalize,
                 mode=mode,
                 architecture=architecture_type,
-                use_channel_attention=use_channel_attention
+                use_channel_attention=use_channel_attention,
+                db_transform=db_transform
             )
-
-            # data_adapter的normalize和db_transform已由系统自动设置，无需手动覆盖
 
             # 添加数据
             self.main_gui.ae_system['rcs_data'] = self.main_gui.rcs_data
@@ -647,8 +647,7 @@ class AutoEncoderExtension:
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
             normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
 
-            # 创建小波增强系统
-            # 注意：Wavelet模式自动不使用dB变换
+            # 创建小波增强系统（不使用dB变换）
             self.main_gui.ae_log("🌊 创建小波增强系统...")
             self.wavelet_system = create_autoencoder_system(
                 config_name=freq_config,
@@ -657,11 +656,11 @@ class AutoEncoderExtension:
                 wavelet=wavelet_type,
                 normalize=normalize,
                 mode='wavelet',
-                architecture=architecture_type
+                architecture=architecture_type,
+                db_transform=False  # 小波模式通常不使用dB变换
             )
 
-            # 创建直接系统
-            # 注意：Direct模式自动使用dB变换（如果normalize=True）
+            # 创建直接系统（使用dB变换以对比）
             self.main_gui.ae_log("🔄 创建直接系统...")
             self.direct_system = create_autoencoder_system(
                 config_name=freq_config,
@@ -670,7 +669,8 @@ class AutoEncoderExtension:
                 wavelet=wavelet_type,
                 normalize=normalize,
                 mode='direct',
-                architecture=architecture_type
+                architecture=architecture_type,
+                db_transform=True  # Direct模式建议使用dB变换
             )
 
             # 添加数据到两个系统

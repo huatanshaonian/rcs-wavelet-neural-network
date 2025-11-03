@@ -18,27 +18,27 @@ class RCS_DataAdapter:
     def __init__(self,
                  normalize: bool = True,
                  mode: str = 'direct',
-                 expected_frequencies: int = 2):
+                 expected_frequencies: int = 2,
+                 db_transform: bool = False):
         """
         初始化数据适配器
-
-        ⚠️ 自动化策略（mode-aware）：
-        - Direct模式：normalize时自动应用dB变换（压缩541万倍动态范围）
-        - Wavelet模式：只用Z-score标准化（小波系数已压缩，且37%负值）
 
         Args:
             normalize: 是否标准化数据
             mode: 数据模式 ('direct' or 'wavelet')
             expected_frequencies: 预期频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
+            db_transform: 是否使用dB变换（手动控制）
+
+        说明：
+        - Direct模式：RCS原始数据（541万倍动态范围），建议启用dB压缩
+        - Wavelet模式：小波系数（已压缩，37%负值），通常不需要dB变换
         """
         self.normalize = normalize
         self.mode = mode.lower()
         self.expected_frequencies = expected_frequencies
 
-        # 根据模式自动决定是否用dB变换
-        # Direct模式：RCS原始数据（541万倍动态范围）→ 需要dB压缩
-        # Wavelet模式：小波系数（已压缩，37%负值）→ 只用Z-score
-        self.db_transform = (self.mode == 'direct' and self.normalize)
+        # dB变换改为手动控制，由用户通过GUI选择
+        self.db_transform = db_transform
 
         # 数据统计信息
         self.data_stats = {}
