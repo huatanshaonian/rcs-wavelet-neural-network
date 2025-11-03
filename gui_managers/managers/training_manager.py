@@ -1500,6 +1500,14 @@ class TrainingManager:
 
             self.gui.ae_log(f"📊 阶段1数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
 
+            # 输出训练集和验证集的具体样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
+
             # 调整批次大小
             batch_size = training_config['batch_size']
             if batch_size > train_size:
@@ -1693,6 +1701,14 @@ class TrainingManager:
 
             self.gui.ae_log(f"📊 阶段2数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
 
+            # 输出训练集和验证集的具体样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
+
             # 调整批次大小
             batch_size = training_config['batch_size']
             if batch_size > train_size:
@@ -1866,6 +1882,14 @@ class TrainingManager:
             train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
 
             self.gui.ae_log(f"📊 阶段3数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 输出训练集和验证集的具体样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
 
             # 调整批次大小
             batch_size = training_config['batch_size']
