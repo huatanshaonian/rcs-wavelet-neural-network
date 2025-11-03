@@ -76,6 +76,7 @@ data/
 
 # Test files
 test_*.py
+tests/test_*.py
 simple_tkinter_test.py
 web_gui.py
 simple_demo.py
