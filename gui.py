@@ -2880,11 +2880,26 @@ class RCSWaveletGUI:
 
             mode = self.ae_system.get('mode', 'wavelet')
             architecture = self.ae_system.get('architecture', 'cnn')
-            config_name = self.ae_freq_config.get()
-            latent_dim = int(self.ae_latent_dim.get())
 
-            # 格式: {mode}_{architecture}_{config_name}_latent{latent_dim}_{timestamp}.pth
-            suggested_filename = f"{mode}_{architecture}_{config_name}_latent{latent_dim}_{timestamp}.pth"
+            # 获取激活函数
+            activation = self.ae_activation.get() if hasattr(self, 'ae_activation') else 'relu'
+
+            # 获取预处理方式
+            normalize = self.ae_normalize.get()
+            db_transform = self.ae_db_transform.get()
+
+            # 构建预处理标签
+            if normalize and db_transform:
+                preprocess = "norm_db"
+            elif normalize:
+                preprocess = "norm"
+            elif db_transform:
+                preprocess = "db"
+            else:
+                preprocess = "raw"
+
+            # 格式: {mode}_{architecture}_{activation}_{preprocess}_{timestamp}.pth
+            suggested_filename = f"{mode}_{architecture}_{activation}_{preprocess}_{timestamp}.pth"
 
             filename = filedialog.asksaveasfilename(
                 title="保存AutoEncoder模型",
