@@ -214,33 +214,51 @@ class RCSWaveletApp:
 
             # 5. 集成AutoEncoder扩展功能
             try:
-                from gui_autoencoder_extension import integrate_extension_to_gui
+                from gui_autoencoder_extension import AutoEncoderExtension
                 print("正在集成AutoEncoder扩展...")
-                extension = integrate_extension_to_gui(app)
-                print("✅ AutoEncoder扩展功能集成成功")
+                ae_extension = AutoEncoderExtension(app)
+                ae_extension.extend_autoencoder_tab()
+                print("✅ AutoEncoder扩展已加载")
 
-                # 显示启动信息
+            except ImportError as ext_e:
+                print(f"⚠️ AutoEncoder扩展加载失败: {ext_e}")
+                print("将使用基础GUI版本")
+            except Exception as e:
+                print(f"⚠️ AutoEncoder扩展初始化失败: {str(e)}")
+
+            # 6. 集成批量实验扩展功能
+            try:
+                from gui_batch_experiment_extension import BatchExperimentExtension
+                print("正在集成批量实验扩展...")
+                batch_extension = BatchExperimentExtension(app)
+                batch_extension.extend_batch_experiment_tab()
+                print("✅ 批量实验扩展已加载")
+
+            except ImportError as ext_e:
+                print(f"⚠️ 批量实验扩展加载失败: {ext_e}")
+            except Exception as e:
+                print(f"⚠️ 批量实验扩展初始化失败: {str(e)}")
+
+            # 显示启动信息
+            if hasattr(app, 'log_message'):
                 startup_message = '''🎊 增强版GUI启动成功！
 
 新增功能:
 ✨ 双模式AutoEncoder支持
+✨ 批量对比实验系统
 ✨ 性能对比分析
 ✨ 小波变换可视化
 ✨ 优化的用户界面
 
 使用步骤:
-1. 切换到AutoEncoder标签页
-2. 选择模式 (小波增强/直接模式)
-3. 加载数据并创建系统
-4. 运行分析和对比
+1. 切换到AutoEncoder标签页 - 配置和训练模型
+2. 切换到批量实验标签页 - 自动化超参数搜索
+3. 选择模式 (小波增强/直接模式)
+4. 加载数据并运行实验
 
 享受使用吧！🚀'''
 
                 app.log_message(startup_message)
-
-            except ImportError as ext_e:
-                print(f"⚠️ AutoEncoder扩展加载失败: {ext_e}")
-                print("将使用基础GUI版本")
 
             print("启动主循环...")
             root.mainloop()
