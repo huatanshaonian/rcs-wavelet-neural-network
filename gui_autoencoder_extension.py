@@ -42,8 +42,11 @@ class AutoEncoderExtension:
         self.main_gui.ae_mode = tk.StringVar(value="wavelet")
 
         # 数据预处理设置
-        self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
+        self.main_gui.ae_normalization_method = tk.StringVar(value="zscore")  # 标准化方法：none, zscore, minmax
         self.main_gui.ae_db_transform = tk.BooleanVar(value=False)  # 默认关闭dB变换
+
+        # 向后兼容：保留 ae_normalize 变量（从 normalization_method 派生）
+        self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
 
         # 通道注意力设置
         self.main_gui.ae_use_channel_attention = tk.BooleanVar(value=False)  # 默认关闭通道注意力
@@ -179,11 +182,27 @@ class AutoEncoderExtension:
         preprocess_frame = ttk.Frame(preprocess_group)
         preprocess_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 标准化选项
-        ttk.Checkbutton(preprocess_frame, text="✅ 数据标准化 (Normalize)",
-                       variable=self.main_gui.ae_normalize).pack(anchor=tk.W)
-        ttk.Label(preprocess_frame, text="   • Z-score标准化，每个频率独立",
-                 font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
+        # 标准化选项（下拉选择）
+        norm_frame = ttk.Frame(preprocess_frame)
+        norm_frame.pack(fill=tk.X, anchor=tk.W, pady=(0, 5))
+
+        ttk.Label(norm_frame, text="📊 标准化方法:", font=self.main_gui.font_small).pack(side=tk.LEFT)
+        norm_combo = ttk.Combobox(norm_frame,
+                                 textvariable=self.main_gui.ae_normalization_method,
+                                 values=["none", "zscore", "minmax"],
+                                 state="readonly",
+                                 width=12)
+        norm_combo.pack(side=tk.LEFT, padx=(5, 0))
+
+        # 标准化方法说明
+        norm_help_frame = ttk.Frame(preprocess_frame)
+        norm_help_frame.pack(fill=tk.X, anchor=tk.W, pady=(0, 5))
+        ttk.Label(norm_help_frame, text="   • none: 不标准化",
+                 font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W)
+        ttk.Label(norm_help_frame, text="   • zscore: Z-score标准化 (均值0, 标准差1)",
+                 font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W)
+        ttk.Label(norm_help_frame, text="   • minmax: Min-Max标准化 [0, 1]",
+                 font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W)
 
         # dB变换选项（手动控制）
         self.db_checkbox = ttk.Checkbutton(preprocess_frame, text="📊 dB变换 (10*log10)",
@@ -588,9 +607,12 @@ class AutoEncoderExtension:
             dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
-            normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
+            normalization_method = self.main_gui.ae_normalization_method.get()  # 从GUI读取标准化方法
             use_channel_attention = self.main_gui.ae_use_channel_attention.get()  # 通道注意力开关
             db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取dB变换开关（手动控制）
+
+            # 向后兼容：更新 ae_normalize 变量
+            self.main_gui.ae_normalize.set(normalization_method != 'none')
 
             # 创建系统（使用frequency_config的扩展参数）
             self.main_gui.ae_system = create_autoencoder_system(
@@ -598,11 +620,12 @@ class AutoEncoderExtension:
                 latent_dim=latent_dim,
                 dropout_rate=dropout_rate,
                 wavelet=wavelet_type,
-                normalize=normalize,
+                normalize=(normalization_method != 'none'),
                 mode=mode,
                 architecture=architecture_type,
                 use_channel_attention=use_channel_attention,
-                db_transform=db_transform
+                db_transform=db_transform,
+                normalization_method=normalization_method
             )
 
             # 添加数据
@@ -645,7 +668,7 @@ class AutoEncoderExtension:
             dropout_rate = float(self.main_gui.ae_dropout_rate.get())
             wavelet_type = self.main_gui.ae_wavelet_type.get()
             architecture_type = self.main_gui.ae_architecture_type.get().lower()
-            normalize = self.main_gui.ae_normalize.get()  # 从GUI读取
+            normalization_method = self.main_gui.ae_normalization_method.get()  # 从GUI读取标准化方法
 
             # 创建小波增强系统（不使用dB变换）
             self.main_gui.ae_log("🌊 创建小波增强系统...")
@@ -654,10 +677,11 @@ class AutoEncoderExtension:
                 latent_dim=latent_dim,
                 dropout_rate=dropout_rate,
                 wavelet=wavelet_type,
-                normalize=normalize,
+                normalize=(normalization_method != 'none'),
                 mode='wavelet',
                 architecture=architecture_type,
-                db_transform=False  # 小波模式通常不使用dB变换
+                db_transform=False,  # 小波模式通常不使用dB变换
+                normalization_method=normalization_method
             )
 
             # 创建直接系统（使用dB变换以对比）
@@ -667,10 +691,11 @@ class AutoEncoderExtension:
                 latent_dim=latent_dim,
                 dropout_rate=dropout_rate,
                 wavelet=wavelet_type,
-                normalize=normalize,
+                normalize=(normalization_method != 'none'),
                 mode='direct',
                 architecture=architecture_type,
-                db_transform=True  # Direct模式建议使用dB变换
+                db_transform=True,  # Direct模式建议使用dB变换
+                normalization_method=normalization_method
             )
 
             # 添加数据到两个系统
@@ -716,6 +741,7 @@ class AutoEncoderExtension:
                 },
                 "preprocessing": {
                     "normalize": self.main_gui.ae_normalize.get(),
+                    "normalization_method": self.main_gui.ae_normalization_method.get(),
                     "db_transform": self.main_gui.ae_db_transform.get()
                 },
                 "training": {
@@ -805,6 +831,17 @@ class AutoEncoderExtension:
             preprocess_config = config_data.get("preprocessing", {})
             if "normalize" in preprocess_config:
                 self.main_gui.ae_normalize.set(preprocess_config["normalize"])
+            if "normalization_method" in preprocess_config:
+                # 加载标准化方法（新版本）
+                self.main_gui.ae_normalization_method.set(preprocess_config["normalization_method"])
+                # 同步更新 ae_normalize（向后兼容）
+                self.main_gui.ae_normalize.set(preprocess_config["normalization_method"] != 'none')
+            elif "normalize" in preprocess_config:
+                # 向后兼容旧配置：没有normalization_method字段时根据normalize推断
+                if preprocess_config["normalize"]:
+                    self.main_gui.ae_normalization_method.set("zscore")  # 旧版默认是zscore
+                else:
+                    self.main_gui.ae_normalization_method.set("none")
             if "db_transform" in preprocess_config:
                 self.main_gui.ae_db_transform.set(preprocess_config["db_transform"])
 

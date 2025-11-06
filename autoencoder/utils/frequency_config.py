@@ -146,14 +146,16 @@ class FrequencyConfig:
     def create_data_adapter(self,
                           normalize: bool = True,
                           mode: str = 'direct',
-                          db_transform: bool = False) -> RCS_DataAdapter:
+                          db_transform: bool = False,
+                          normalization_method: str = 'zscore') -> RCS_DataAdapter:
         """
         创建对应配置的数据适配器
 
         Args:
-            normalize: 是否标准化
+            normalize: 是否标准化（向后兼容）
             mode: 数据模式 ('direct' or 'wavelet')
             db_transform: 是否使用dB变换（手动控制）
+            normalization_method: 标准化方法 ('none', 'zscore', 'minmax')
 
         Returns:
             RCS_DataAdapter实例
@@ -162,11 +164,12 @@ class FrequencyConfig:
             normalize=normalize,
             mode=mode,
             expected_frequencies=self.config['num_frequencies'],
-            db_transform=db_transform
+            db_transform=db_transform,
+            normalization_method=normalization_method
         )
 
         print(f"创建{self.config_name}配置的数据适配器:")
-        print(f"  - 标准化: {normalize}")
+        print(f"  - 标准化方法: {normalization_method}")
         print(f"  - dB变换: {db_transform}")
         print(f"  - 模式: {mode}")
         print(f"  - 预期频率数: {self.config['num_frequencies']}")
@@ -215,7 +218,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                             architecture: str = 'cnn',
                             use_channel_attention: bool = False,
                             activation: str = 'relu',
-                            db_transform: bool = False) -> Dict[str, Any]:
+                            db_transform: bool = False,
+                            normalization_method: str = 'zscore') -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -224,12 +228,13 @@ def create_autoencoder_system(config_name: str = '2freq',
         latent_dim: 隐空间维度
         dropout_rate: Dropout比率
         wavelet: 小波类型
-        normalize: 是否标准化数据
+        normalize: 是否标准化数据（向后兼容）
         mode: 'wavelet' 或 'direct' 模式
         architecture: 'cnn' 或 'mlp' 架构
         use_channel_attention: 是否在输入层使用通道注意力机制 (默认: False)
         activation: 激活函数类型 ('relu', 'sin', 'gelu', 'swish'等，默认: 'relu')
         db_transform: 是否使用dB变换（手动控制，默认: False）
+        normalization_method: 标准化方法 ('none', 'zscore', 'minmax'，默认: 'zscore')
 
     Returns:
         包含所有组件的字典
@@ -438,7 +443,7 @@ def create_autoencoder_system(config_name: str = '2freq',
     else:
         raise ValueError(f"未知的模式: {mode}. 支持的模式: 'wavelet', 'direct', 'differentiable_wavelet'")
 
-    data_adapter = freq_config.create_data_adapter(normalize, mode=mode if mode != 'differentiable_wavelet' else 'wavelet', db_transform=db_transform)
+    data_adapter = freq_config.create_data_adapter(normalize, mode=mode if mode != 'differentiable_wavelet' else 'wavelet', db_transform=db_transform, normalization_method=normalization_method)
     parameter_mapper = freq_config.create_parameter_mapper(latent_dim=latent_dim)
 
     # 打印模型参数信息

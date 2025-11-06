@@ -19,26 +19,38 @@ class RCS_DataAdapter:
                  normalize: bool = True,
                  mode: str = 'direct',
                  expected_frequencies: int = 2,
-                 db_transform: bool = False):
+                 db_transform: bool = False,
+                 normalization_method: str = 'zscore'):
         """
         初始化数据适配器
 
         Args:
-            normalize: 是否标准化数据
+            normalize: 是否标准化数据（向后兼容参数）
             mode: 数据模式 ('direct' or 'wavelet')
             expected_frequencies: 预期频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
             db_transform: 是否使用dB变换（手动控制）
+            normalization_method: 标准化方法
+                - 'none': 不标准化
+                - 'zscore': Z-score标准化 (均值0, 标准差1)
+                - 'minmax': Min-Max标准化 [0, 1]
 
         说明：
         - Direct模式：RCS原始数据（541万倍动态范围），建议启用dB压缩
         - Wavelet模式：小波系数（已压缩，37%负值），通常不需要dB变换
+        - 向后兼容：normalize=False 等同于 normalization_method='none'
         """
-        self.normalize = normalize
         self.mode = mode.lower()
         self.expected_frequencies = expected_frequencies
-
-        # dB变换改为手动控制，由用户通过GUI选择
         self.db_transform = db_transform
+
+        # 标准化方法处理（向后兼容）
+        if not normalize:
+            self.normalization_method = 'none'
+        else:
+            self.normalization_method = normalization_method.lower()
+
+        # 为了向后兼容，保留 normalize 属性
+        self.normalize = (self.normalization_method != 'none')
 
         # 数据统计信息
         self.data_stats = {}
@@ -75,15 +87,16 @@ class RCS_DataAdapter:
             # 小值权重提升：0.00000009 → -70dB（获得合理表示）
             data = 10 * np.log10(np.clip(data, 1e-10, None))
 
-        # Step 2: Z-score标准化
-        if self.normalize:
-            # 计算统计信息（每个通道独立）
+        # Step 2: 标准化（根据选择的方法）
+        if self.normalization_method == 'zscore':
+            # Z-score标准化：(x - μ) / σ
             mean = np.mean(data, axis=(0, 1, 2), keepdims=True)
             std = np.std(data, axis=(0, 1, 2), keepdims=True)
             std = np.where(std == 0, 1, std)  # 避免除零
 
             # 保存统计信息（用于逆变换）
             self.data_stats = {
+                'method': 'zscore',
                 'mean': mean,
                 'std': std,
                 'db_transform': self.db_transform
@@ -92,6 +105,32 @@ class RCS_DataAdapter:
             # 标准化
             data = (data - mean) / std
 
+        elif self.normalization_method == 'minmax':
+            # Min-Max标准化：(x - min) / (max - min) → [0, 1]
+            data_min = np.min(data, axis=(0, 1, 2), keepdims=True)
+            data_max = np.max(data, axis=(0, 1, 2), keepdims=True)
+            data_range = data_max - data_min
+            data_range = np.where(data_range == 0, 1, data_range)  # 避免除零
+
+            # 保存统计信息（用于逆变换）
+            self.data_stats = {
+                'method': 'minmax',
+                'min': data_min,
+                'max': data_max,
+                'range': data_range,
+                'db_transform': self.db_transform
+            }
+
+            # 标准化
+            data = (data - data_min) / data_range
+
+        elif self.normalization_method == 'none':
+            # 不标准化
+            self.data_stats = {
+                'method': 'none',
+                'db_transform': self.db_transform
+            }
+
         return torch.FloatTensor(data)
 
     def inverse_adapt(self,
@@ -99,7 +138,7 @@ class RCS_DataAdapter:
         """
         逆适配：将处理后的数据转回线性域格式
 
-        执行顺序：Z-score逆标准化 → dB逆变换
+        执行顺序：逆标准化 → 逆dB变换
 
         Args:
             adapted_data: [N, H, W, C] 处理后的数据
@@ -109,11 +148,32 @@ class RCS_DataAdapter:
         """
         data = adapted_data.detach().cpu().numpy()
 
-        # Step 1: 逆Z-score标准化
-        if self.normalize and 'mean' in self.data_stats:
-            mean = self.data_stats['mean']
-            std = self.data_stats['std']
-            data = data * std + mean
+        # Step 1: 逆标准化（根据方法）
+        if 'method' in self.data_stats:
+            method = self.data_stats['method']
+
+            if method == 'zscore':
+                # 逆Z-score：x = x' * σ + μ
+                if 'mean' in self.data_stats:
+                    mean = self.data_stats['mean']
+                    std = self.data_stats['std']
+                    data = data * std + mean
+
+            elif method == 'minmax':
+                # 逆Min-Max：x = x' * (max - min) + min
+                if 'min' in self.data_stats:
+                    data_min = self.data_stats['min']
+                    data_range = self.data_stats['range']
+                    data = data * data_range + data_min
+
+            # method == 'none' 不需要逆变换
+
+        else:
+            # 向后兼容：旧版本没有 method 字段，默认为 zscore
+            if self.normalize and 'mean' in self.data_stats:
+                mean = self.data_stats['mean']
+                std = self.data_stats['std']
+                data = data * std + mean
 
         # Step 2: 逆dB变换（仅Direct模式）
         if self.db_transform:
