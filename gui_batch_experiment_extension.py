@@ -352,9 +352,9 @@ class BatchExperimentExtension:
                 'learning_rate': float(gui.ae_learning_rate.get()),
                 'training_mode': self._map_training_mode(gui.ae_training_mode.get()),
                 'epochs': {
-                    'stage1': int(gui.ae_stage1_epochs.get()),
-                    'stage2': int(gui.ae_stage2_epochs.get()),
-                    'stage3': int(gui.ae_stage3_epochs.get()),
+                    'stage1': int(gui.ae_epochs_stage1.get()),
+                    'stage2': int(gui.ae_epochs_stage2.get()),
+                    'stage3': int(gui.ae_epochs_stage3.get()),
                 }
             }
 
