@@ -436,6 +436,11 @@ class RCSWaveletGUI:
         self.notebook.add(self.visualization_frame, text="可视化")
         self.create_visualization_tab()
 
+        # 标签页8: 批量实验
+        self.batch_experiment_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.batch_experiment_frame, text="批量实验")
+        self.create_batch_experiment_tab()
+
     def create_data_tab(self):
         """创建数据管理标签页"""
 
@@ -1110,6 +1115,30 @@ class RCSWaveletGUI:
         # 添加工具栏
         vis_toolbar = NavigationToolbar2Tk(self.vis_canvas, chart_group)
         vis_toolbar.update()
+
+    def create_batch_experiment_tab(self):
+        """
+        创建批量实验标签页（占位方法）
+
+        此标签页的内容由 BatchExperimentExtension 覆盖。
+        在启动时，应该调用：
+            from gui_batch_experiment_extension import BatchExperimentExtension
+            batch_ext = BatchExperimentExtension(gui)
+            batch_ext.extend_batch_experiment_tab()
+        """
+        # 占位内容
+        main_frame = ttk.Frame(self.batch_experiment_frame)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        info_label = ttk.Label(
+            main_frame,
+            text="🧪 批量实验功能\n\n" +
+                 "此页面由 BatchExperimentExtension 提供。\n" +
+                 "请确保已正确初始化扩展模块。",
+            font=self.font_large,
+            justify=tk.CENTER
+        )
+        info_label.pack(expand=True)
 
     def setup_layout(self):
         """设置布局"""

@@ -79,8 +79,10 @@ input_channels = 12  # 3频率 × 4小波带
 wavelet/
 ├── gui.py                          # 主GUI（6000+行，核心界面）
 ├── gui_autoencoder_extension.py   # AutoEncoder GUI扩展（包含所有AE配置）
+├── gui_batch_experiment_extension.py  # 批量实验GUI扩展（新增）
 ├── wavelet_gui_helper.py          # 小波分析辅助工具
 ├── main.py                         # 命令行入口
+├── test_batch_experiment.py       # 批量实验测试启动脚本（新增）
 ├── CLAUDE.md                       # 本文档
 ├── README.md                       # 完整项目文档
 │
@@ -104,7 +106,8 @@ wavelet/
 │   │   ├── frequency_config.py    # 创建AutoEncoder系统（核心）
 │   │   ├── correct_wavelet_transform.py  # 小波变换
 │   │   ├── data_adapter.py        # 数据预处理
-│   │   └── comparison_system.py   # 网络对比框架
+│   │   ├── comparison_system.py   # 网络对比框架
+│   │   └── batch_experiment.py    # 批量实验管理器（新增）
 │   │
 │   └── training/
 │       └── ae_trainer.py          # 训练器（独立训练脚本用）
@@ -113,9 +116,19 @@ wavelet/
 │   ├── data_loader.py             # 数据加载
 │   └── data_preprocessor.py       # 预处理
 │
-└── network_system/
-    ├── network_interface.py       # 网络接口基类
-    └── network_registry.py        # 网络注册系统
+├── network_system/
+│   ├── network_interface.py       # 网络接口基类
+│   └── network_registry.py        # 网络注册系统
+│
+└── batch_experiments/             # 批量实验结果目录（新增）
+    └── experiment_name_timestamp/
+        ├── experiment_config.json
+        ├── results_summary.csv
+        ├── detailed_results.json
+        ├── comparison_plots/      # 对比图表
+        ├── models/                # 所有模型文件
+        ├── visualizations/        # 单模型可视化
+        └── training_logs/         # 训练日志
 ```
 
 ---
@@ -680,6 +693,137 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
    - 创建MODEL_INVENTORY.md
    - 移动实验性模型到experimental/子目录
    - 明确6个核心网络和4个实验性网络
+
+---
+
+## 🧪 批量实验功能
+
+### 概述
+
+批量实验功能支持自动化对比不同配置的AutoEncoder模型性能，用于超参数搜索、架构对比和消融实验。
+
+### 核心特性
+
+1. **参数继承机制**
+   - 从AE标签页读取当前配置作为基准
+   - 选择要变化的维度（架构、激活函数、预处理等）
+   - 自动生成所有配置组合
+
+2. **支持的对比维度**
+   - **架构类型**: CNN, Enhanced_CNN, Deep_CNN, MLP, Dual_Branch_CNN, Dual_Branch_MLP
+   - **激活函数**: relu, sin, gelu, swish, tanh, mish, elu, leaky_relu, prelu
+   - **数据预处理**: 标准化方法(none/zscore/minmax) × dB变换(开/关)
+   - **小波类型**: db4, db8, haar, bior2.2（仅Wavelet模式）
+   - **计划支持**: 学习率调度、优化器配置
+
+3. **自动评估和可视化**
+   - 每个模型在训练集和测试集上评估（MSE, RMSE, MAE）
+   - 从训练集和测试集各选3个样本生成可视化
+   - 自动生成对比图表（训练曲线、指标柱状图、雷达图等）
+
+### 使用流程
+
+1. **启动系统**
+   ```bash
+   python test_batch_experiment.py
+   ```
+
+2. **配置基准参数**
+   - 在【AutoEncoder】页面设置所有训练参数
+   - 在【批量实验】页面点击"从AE页面读取配置"
+
+3. **选择对比维度**
+   - 勾选要对比的维度（如"激活函数"）
+   - 选择具体的值（如relu, sin, gelu）
+   - 可同时选择多个维度（会生成笛卡尔积）
+
+4. **执行实验**
+   - 点击"开始批量训练"
+   - 系统自动训练所有配置组合
+   - 实时显示训练进度
+
+5. **查看结果**
+   - 点击"查看结果"打开实验目录
+   - 查看对比图表和评估结果
+
+### 实验结果文件结构
+
+```
+batch_experiments/
+└── experiment_name_20250107_143000/
+    ├── experiment_config.json          # 实验总配置
+    ├── results_summary.csv             # 结果汇总表
+    ├── detailed_results.json           # 详细结果
+    ├── comparison_plots/               # 对比图表
+    │   ├── loss_curves.png            # 训练曲线对比
+    │   ├── metrics_bar.png            # 指标柱状图
+    │   ├── radar_chart.png            # 综合性能雷达图
+    │   ├── error_distribution_box.png  # 误差分布
+    │   ├── convergence_comparison.png  # 收敛速度对比
+    │   └── training_time_comparison.png # 训练时间对比
+    ├── models/                         # 所有模型文件
+    │   ├── relu_model.pth
+    │   ├── relu_model_config.json
+    │   ├── relu_evaluation.json       # 评估结果
+    │   ├── sin_model.pth
+    │   └── ...
+    ├── visualizations/                 # 单模型可视化
+    │   ├── relu/
+    │   │   ├── relu_train_sample0_heatmap.png
+    │   │   ├── relu_train_sample0_residual.png
+    │   │   ├── relu_test_sample0_heatmap.png
+    │   │   └── ...
+    │   └── sin/
+    │       └── ...
+    └── training_logs/                  # 训练日志
+        ├── experiment_summary.txt
+        └── ...
+```
+
+### 技术实现
+
+**核心模块**:
+- `autoencoder/utils/batch_experiment.py`: BatchExperimentManager类
+- `gui_batch_experiment_extension.py`: GUI扩展
+
+**关键方法**:
+```python
+# 创建批量实验管理器
+manager = BatchExperimentManager(
+    base_config=base_config,
+    compare_dimensions={'activation': ['relu', 'sin', 'gelu']},
+    experiment_name='activation_comparison'
+)
+
+# 执行批量训练
+results = manager.run_batch_experiments(
+    training_func=training_wrapper,
+    rcs_data=rcs_data,
+    param_data=param_data,
+    ae_system_creator=create_ae_system,
+    evaluator_func=evaluate_model,      # 自动评估
+    visualizer_func=visualize_model,    # 自动可视化
+    n_samples_visualize=3
+)
+
+# 获取最佳配置
+best_result = manager.get_best_config(metric='mse', lower_is_better=True)
+```
+
+### 注意事项
+
+1. **训练时长**: 批量实验可能需要较长时间，建议先用较少epochs测试
+2. **存储空间**: 每个模型会保存完整权重和可视化，注意磁盘空间
+3. **数据集划分**: 自动按80/20划分训练集和测试集
+4. **配置继承**: 确保在AE页面正确配置所有参数后再读取
+5. **中途停止**: 当前版本不支持优雅停止，需等待当前实验完成
+
+### 典型应用场景
+
+1. **激活函数对比**: 固定架构，对比不同激活函数的性能
+2. **架构选择**: 对比CNN vs MLP vs Enhanced_CNN
+3. **预处理方案**: 对比是否使用dB变换、不同标准化方法
+4. **消融实验**: 逐步添加/移除组件，观察性能变化
 
 ---
 
