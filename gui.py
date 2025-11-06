@@ -3610,6 +3610,28 @@ def main():
     # 创建应用
     app = RCSWaveletGUI(root)
 
+    # 初始化AutoEncoder扩展（如果可用）
+    try:
+        from gui_autoencoder_extension import AutoEncoderExtension
+        ae_extension = AutoEncoderExtension(app)
+        ae_extension.extend_autoencoder_tab()
+        print("✓ AutoEncoder扩展已加载")
+    except ImportError:
+        print("⚠ AutoEncoderExtension未找到")
+    except Exception as e:
+        print(f"⚠ AutoEncoder扩展初始化失败: {str(e)}")
+
+    # 初始化批量实验扩展（如果可用）
+    try:
+        from gui_batch_experiment_extension import BatchExperimentExtension
+        batch_extension = BatchExperimentExtension(app)
+        batch_extension.extend_batch_experiment_tab()
+        print("✓ 批量实验扩展已加载")
+    except ImportError:
+        print("⚠ BatchExperimentExtension未找到")
+    except Exception as e:
+        print(f"⚠ 批量实验扩展初始化失败: {str(e)}")
+
     # 运行主循环
     root.mainloop()
 
