@@ -79,6 +79,28 @@
   - **代码**: `create_autoencoder_system(..., activation='sin')`
 - **特点**: 统一接口，无需为每个激活函数维护单独的模型类
 
+#### 🧪 批量对比实验系统
+- **用途**: 自动化对比不同配置的模型性能，支持超参数搜索、架构对比、消融实验
+- **核心功能**:
+  - **参数继承**: 从AE页面一键读取基准配置
+  - **多维度对比**: 同时对比架构类型、激活函数、预处理方案、小波类型
+  - **自动评估**: 在训练集/测试集上计算MSE/RMSE/MAE
+  - **丰富可视化**: 6种对比图表 + 单模型热图/残差图
+- **支持对比维度**:
+  - 架构类型：CNN, Enhanced_CNN, Deep_CNN, MLP, Dual_Branch_CNN, Dual_Branch_MLP
+  - 激活函数：relu, sin, gelu, swish, tanh, mish, elu, leaky_relu, prelu
+  - 数据预处理：标准化方法(none/zscore/minmax) × dB变换(开/关)
+  - 小波类型：db4, db8, haar, bior2.2（仅Wavelet模式）
+- **生成内容**:
+  - **对比图表**: 训练曲线、指标柱状图、综合性能雷达图、误差分布、收敛速度、训练时间对比
+  - **单模型可视化**: 从训练/测试集各选3样本生成RCS热图对比和残差分布
+  - **结果文件**: JSON配置、CSV汇总表、模型权重、评估指标
+- **典型应用**:
+  - 激活函数性能对比（哪个激活函数最适合RCS预测？）
+  - 架构选择（CNN vs MLP vs Enhanced_CNN？）
+  - 预处理方案评估（dB变换+标准化效果如何？）
+  - 消融实验（逐步添加/移除组件观察性能变化）
+
 ### 智能数据处理
 - **Mode-aware自动预处理**: 根据模式自动选择预处理策略
   - Direct模式：自动应用dB变换压缩动态范围（5.4M倍 → 67dB）
@@ -233,6 +255,155 @@ python gui.py
 - 评估重建质量（MSE/RMSE/MAE）
 - 可视化隐空间分布
 - 对比不同架构性能
+
+#### 5. **批量对比实验**（推荐用于超参数搜索）
+
+批量实验系统可以自动对比不同配置的模型性能，节省大量手动调参时间。
+
+##### 启动方式
+```bash
+python test_batch_experiment.py
+```
+
+##### 操作步骤
+
+**Step 1: 配置基准参数**
+- 在【AutoEncoder】页面设置所有训练参数（这些参数作为基准）
+- 包括：模式、架构、epochs、batch_size、learning_rate、数据预处理等
+
+**Step 2: 读取基准配置**
+- 切换到【批量实验】标签页
+- 点击 "🔄 从AE页面读取配置" 按钮
+- 确认基准配置显示正确
+
+**Step 3: 选择对比维度**
+- 勾选要对比的维度（可多选）：
+  - ☑️ **架构类型**：对比CNN vs Enhanced_CNN vs Deep_CNN vs MLP等
+  - ☑️ **激活函数**：对比relu vs sin vs gelu vs swish vs mish等
+  - ☑️ **数据预处理**：对比标准化方法(zscore/minmax/none) × dB变换(开/关)
+  - ☑️ **小波类型**：对比db4 vs db8 vs haar vs bior2.2（仅Wavelet模式）
+
+- 在每个维度下勾选要测试的具体值
+- 点击 "🔢 计算实验数量" 查看将要运行的实验数量
+
+**示例配置**:
+```
+基准配置: mode=wavelet, latent_dim=256, epochs=(50,30,20), batch_size=8
+对比维度:
+  ☑ 激活函数: ☑relu ☑sin ☑gelu
+  → 将运行3个实验
+```
+
+**Step 4: 执行批量训练**
+- 点击 "▶ 开始批量训练"
+- 系统自动循环训练所有配置组合
+- 实时显示进度：当前实验ID、总体进度、训练日志
+
+**Step 5: 查看结果**
+- 训练完成后，点击 "📊 查看结果" 打开实验目录
+- 或手动打开：`batch_experiments/experiment_name_timestamp/`
+
+##### 结果文件说明
+
+实验完成后会生成完整的结果文件夹：
+
+```
+batch_experiments/activation_comparison_20250107_143000/
+├── experiment_config.json          # 实验总配置
+├── results_summary.csv             # 结果汇总表（可用Excel打开）
+├── detailed_results.json           # 详细JSON结果
+│
+├── comparison_plots/               # 对比图表（6张）
+│   ├── loss_curves.png            # 三阶段训练曲线对比
+│   ├── metrics_bar.png            # MSE/RMSE/MAE柱状图
+│   ├── radar_chart.png            # 综合性能雷达图
+│   ├── error_distribution_box.png # 测试误差分布
+│   ├── convergence_comparison.png # 收敛速度对比
+│   └── training_time_comparison.png # 训练时间对比
+│
+├── models/                         # 所有模型文件
+│   ├── relu_model.pth             # 模型权重
+│   ├── relu_model_config.json     # 模型配置
+│   ├── relu_evaluation.json       # 评估结果（Train/Test MSE/RMSE/MAE）
+│   ├── sin_model.pth
+│   ├── sin_model_config.json
+│   └── ...
+│
+├── visualizations/                 # 单模型可视化
+│   ├── relu/                      # 每个模型一个子目录
+│   │   ├── relu_train_sample0_heatmap.png   # 训练集样本0热图
+│   │   ├── relu_train_sample0_residual.png  # 训练集样本0残差
+│   │   ├── relu_train_sample1_heatmap.png
+│   │   ├── relu_train_sample1_residual.png
+│   │   ├── relu_train_sample2_heatmap.png
+│   │   ├── relu_train_sample2_residual.png
+│   │   ├── relu_test_sample0_heatmap.png    # 测试集样本0热图
+│   │   ├── relu_test_sample0_residual.png   # 测试集样本0残差
+│   │   ├── relu_test_sample1_heatmap.png
+│   │   └── ...
+│   ├── sin/
+│   │   └── ...
+│   └── gelu/
+│       └── ...
+│
+└── training_logs/                  # 训练日志（可选）
+```
+
+##### 典型应用场景
+
+**场景1: 激活函数性能对比**
+```
+目标: 找出最适合RCS预测的激活函数
+配置:
+  - 基准: wavelet + cnn + 256维隐空间
+  - 对比维度: 激活函数
+  - 测试值: relu, sin, gelu, swish, mish
+结果: 查看metrics_bar.png和loss_curves.png决策
+```
+
+**场景2: 架构选择**
+```
+目标: 对比CNN vs MLP vs Enhanced_CNN
+配置:
+  - 基准: wavelet + relu激活 + zscore标准化
+  - 对比维度: 架构类型
+  - 测试值: CNN, MLP, Enhanced_CNN, Deep_CNN
+结果: 根据性能和训练时间权衡选择
+```
+
+**场景3: 预处理方案评估**
+```
+目标: 验证dB变换和标准化方法的效果
+配置:
+  - 基准: wavelet + cnn + relu
+  - 对比维度: 数据预处理
+  - 测试值: none, zscore, minmax, zscore+db, minmax+db
+结果: 评估预处理对收敛速度和最终性能的影响
+```
+
+**场景4: 消融实验**
+```
+目标: 研究通道注意力、双分支的作用
+配置:
+  - 基准: wavelet + 32维隐空间
+  - 对比维度: 架构类型
+  - 测试值: CNN, Dual_Branch_CNN
+结果: 验证双分支在小隐空间场景的优势
+```
+
+##### 注意事项
+
+⚠️ **训练时长**: 批量实验可能需要较长时间，建议：
+- 先用少量epochs（如10,10,10）测试配置是否正确
+- 确认无误后再用正式epochs（如50,30,20）
+
+⚠️ **存储空间**: 每个模型约200-500MB（含权重和可视化），注意磁盘空间
+
+⚠️ **数据集划分**: 系统自动按80/20划分训练集和测试集
+
+⚠️ **中途停止**: 当前版本不支持优雅停止，建议等待当前实验完成
+
+💡 **提示**: 批量实验结束后，可以将最佳模型的.pth文件复制到主目录，在【AutoEncoder】页面加载使用
 
 ---
 
