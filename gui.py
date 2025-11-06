@@ -2874,9 +2874,22 @@ class RCSWaveletGUI:
                 messagebox.showwarning("警告", "没有可保存的模型!")
                 return
 
+            # 生成预设文件名
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            mode = self.ae_system.get('mode', 'wavelet')
+            architecture = self.ae_system.get('architecture', 'cnn')
+            config_name = self.ae_freq_config.get()
+            latent_dim = int(self.ae_latent_dim.get())
+
+            # 格式: {mode}_{architecture}_{config_name}_latent{latent_dim}_{timestamp}.pth
+            suggested_filename = f"{mode}_{architecture}_{config_name}_latent{latent_dim}_{timestamp}.pth"
+
             filename = filedialog.asksaveasfilename(
                 title="保存AutoEncoder模型",
                 defaultextension=".pth",
+                initialfile=suggested_filename,
                 filetypes=[("PyTorch模型", "*.pth"), ("所有文件", "*.*")]
             )
 
@@ -2925,10 +2938,52 @@ class RCSWaveletGUI:
 
                 torch.save(model_state, filename)
                 self.ae_log(f"💾 模型保存成功: {filename}")
+
+                # 保存详细配置JSON文件
+                import json
+                import os
+                config_filename = os.path.splitext(filename)[0] + "_config.json"
+
+                # 构建可读的配置信息（不包含state_dict等二进制数据）
+                readable_config = {
+                    "model_info": {
+                        "mode": complete_config['mode'],
+                        "architecture": complete_config['architecture'],
+                        "config_name": complete_config.get('config_name', 'N/A'),
+                        "latent_dim": complete_config.get('latent_dim', 'N/A'),
+                        "dropout_rate": complete_config.get('dropout_rate', 'N/A'),
+                        "activation": complete_config.get('activation', 'relu')
+                    },
+                    "frequency_config": {
+                        "num_frequencies": complete_config.get('num_frequencies', 'N/A'),
+                        "frequency_labels": complete_config.get('frequency_labels', []),
+                        "frequency_values": complete_config.get('frequency_values', [])
+                    },
+                    "data_preprocessing": {
+                        "wavelet_type": complete_config.get('wavelet', 'db4'),
+                        "normalize": complete_config.get('normalize', False),
+                        "db_transform": complete_config.get('db_transform', False),
+                        "adapter_stats": adapter_stats if adapter_stats else "Not used"
+                    },
+                    "training_info": {
+                        "training_mode": training_mode,
+                        "training_history": self.ae_training_history if self.ae_training_history else "No training history"
+                    },
+                    "save_info": {
+                        "saved_at": timestamp,
+                        "file_name": os.path.basename(filename)
+                    }
+                }
+
+                with open(config_filename, 'w', encoding='utf-8') as f:
+                    json.dump(readable_config, f, indent=2, ensure_ascii=False)
+
+                self.ae_log(f"📄 配置文件保存成功: {config_filename}")
                 self.ae_log(f"  保存配置: mode={complete_config['mode']}, arch={complete_config['architecture']}")
                 self.ae_log(f"  频率配置: {complete_config.get('num_frequencies', 'N/A')}频 {complete_config.get('frequency_labels', [])}")
                 messagebox.showinfo("成功",
-                    f"模型已保存到: {filename}\n\n"
+                    f"模型已保存到: {filename}\n"
+                    f"配置文件: {config_filename}\n\n"
                     f"频率配置: {complete_config.get('num_frequencies')}频 {complete_config.get('frequency_labels', [])}")
 
         except Exception as e:

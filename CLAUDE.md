@@ -529,6 +529,31 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 
 ## 🔄 最近更新记录
 
+### 2025-01-06
+
+1. **模型保存功能增强** (用户体验改进)
+   - **需求**: 用户希望保存模型时能快速识别模型配置
+   - **实现**:
+     - **预设文件名**: 自动生成包含关键参数的文件名
+       - 格式: `{mode}_{architecture}_{config_name}_latent{latent_dim}_{timestamp}.pth`
+       - 例如: `wavelet_cnn_2freq_latent256_20250106_143022.pth`
+     - **自动生成JSON配置文件**: 保存.pth时同步生成同名_config.json文件
+       - 包含完整的模型信息、频率配置、数据预处理设置、训练历史
+       - 文件名: `{model_name}_config.json`
+   - **优点**:
+     - 文件名即可快速识别模型类型，无需打开文件
+     - JSON配置文件提供完整详细信息，便于查看和对比
+     - 两个文件同名（除扩展名），便于一起管理
+   - **影响文件**:
+     - `gui.py:2870-2993` - 修改save_ae_model函数
+   - **JSON配置文件内容**:
+     - model_info: mode, architecture, latent_dim, dropout_rate等
+     - frequency_config: 频率数量、频率标签、频率值
+     - data_preprocessing: 小波类型、是否标准化、是否dB变换、统计信息
+     - training_info: 训练模式（three_stage/stage1_only）、训练历史
+     - save_info: 保存时间、文件名
+   - **Commits**: (待提交)
+
 ### 2025-01-18
 
 1. **decoder输出缺少逆标准化步骤** (数据后处理Bug修复)
