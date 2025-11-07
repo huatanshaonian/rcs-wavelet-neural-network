@@ -705,6 +705,7 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 - `gui_batch_experiment_extension.py`: GUI扩展
 
 **支持对比维度**:
+- AE模式（wavelet/direct/differentiable_wavelet）
 - 架构类型（CNN/Enhanced_CNN/Deep_CNN/MLP等）
 - 激活函数（relu/sin/gelu/swish/tanh/mish等）
 - 数据预处理（标准化方法×dB变换）
@@ -722,7 +723,7 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 3. 执行批量训练（自动循环所有配置组合）
 4. 查看结果目录：`batch_experiments/experiment_name_timestamp/`
 
-**典型场景**: 激活函数对比、架构选择、预处理方案对比、消融实验
+**典型场景**: AE模式对比、激活函数对比、架构选择、预处理方案对比、消融实验
 
 详细文档见 `README.md`
 

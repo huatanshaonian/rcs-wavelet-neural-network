@@ -83,10 +83,11 @@
 - **用途**: 自动化对比不同配置的模型性能，支持超参数搜索、架构对比、消融实验
 - **核心功能**:
   - **参数继承**: 从AE页面一键读取基准配置
-  - **多维度对比**: 同时对比架构类型、激活函数、预处理方案、小波类型
+  - **多维度对比**: 同时对比AE模式、架构类型、激活函数、预处理方案、小波类型
   - **自动评估**: 在训练集/测试集上计算MSE/RMSE/MAE
   - **丰富可视化**: 6种对比图表 + 单模型热图/残差图
 - **支持对比维度**:
+  - AE模式：wavelet, direct, differentiable_wavelet
   - 架构类型：CNN, Enhanced_CNN, Deep_CNN, MLP, Dual_Branch_CNN, Dual_Branch_MLP
   - 激活函数：relu, sin, gelu, swish, tanh, mish, elu, leaky_relu, prelu
   - 数据预处理：标准化方法(none/zscore/minmax) × dB变换(开/关)
@@ -278,6 +279,7 @@ python test_batch_experiment.py
 
 **Step 3: 选择对比维度**
 - 勾选要对比的维度（可多选）：
+  - ☑️ **AE模式**：对比wavelet vs direct vs differentiable_wavelet
   - ☑️ **架构类型**：对比CNN vs Enhanced_CNN vs Deep_CNN vs MLP等
   - ☑️ **激活函数**：对比relu vs sin vs gelu vs swish vs mish等
   - ☑️ **数据预处理**：对比标准化方法(zscore/minmax/none) × dB变换(开/关)
@@ -381,7 +383,17 @@ batch_experiments/activation_comparison_20250107_143000/
 结果: 评估预处理对收敛速度和最终性能的影响
 ```
 
-**场景4: 消融实验**
+**场景4: AE模式对比**
+```
+目标: 对比小波变换vs直接输入vs可微分小波的性能
+配置:
+  - 基准: cnn + relu激活 + zscore标准化 + 256维隐空间
+  - 对比维度: AE模式
+  - 测试值: wavelet, direct, differentiable_wavelet
+结果: 评估不同输入方式对模型性能和训练效率的影响
+```
+
+**场景5: 消融实验**
 ```
 目标: 研究通道注意力、双分支的作用
 配置:
