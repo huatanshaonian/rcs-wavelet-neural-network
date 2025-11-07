@@ -621,15 +621,30 @@ class BatchExperimentExtension:
 
     def _training_wrapper(self, rcs_data, param_data, training_config, ae_system):
         """训练包装器（调用主GUI的训练函数）"""
-        # 调用主GUI的三阶段训练函数
-        training_history = self.main_gui._run_three_stage_training_v2(
-            rcs_data=rcs_data,
-            param_data=param_data,
-            training_config=training_config,
-            ae_system=ae_system
-        )
+        # ⚠️ 关键: 训练函数期望通过self.gui.ae_system访问系统
+        # 需要临时设置ae_system到主GUI中
+        original_ae_system = self.main_gui.ae_system
 
-        return training_history
+        try:
+            # 设置当前实验的ae_system
+            self.main_gui.ae_system = ae_system
+
+            # 将数据集成到ae_system中（训练函数期望）
+            self.main_gui.ae_system['rcs_data'] = rcs_data
+            self.main_gui.ae_system['param_data'] = param_data
+
+            # 调用主GUI的三阶段训练函数（只传3个参数）
+            training_history = self.main_gui._run_three_stage_training_v2(
+                rcs_data=rcs_data,
+                param_data=param_data,
+                training_config=training_config
+            )
+
+            return training_history
+
+        finally:
+            # 恢复原始ae_system
+            self.main_gui.ae_system = original_ae_system
 
     def _on_experiment_start(self, index: int, total: int, config: Dict):
         """实验开始回调"""
