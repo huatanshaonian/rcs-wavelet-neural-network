@@ -50,12 +50,14 @@ class BatchExperimentExtension:
         self.batch_generate_plots = tk.BooleanVar(value=True)
 
         # 对比维度选择（布尔型，表示是否启用该维度）
+        self.compare_mode = tk.BooleanVar(value=False)
         self.compare_architecture = tk.BooleanVar(value=False)
         self.compare_activation = tk.BooleanVar(value=False)
         self.compare_preprocessing = tk.BooleanVar(value=False)
         self.compare_wavelet_type = tk.BooleanVar(value=False)
 
         # 各维度的值选择（字典：值名 -> BooleanVar）
+        self.mode_values = {}
         self.architecture_values = {}
         self.activation_values = {}
         self.preprocessing_values = {}
@@ -163,45 +165,56 @@ class BatchExperimentExtension:
         main_frame = ttk.Frame(group)
         main_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 1. 架构类型
+        # 1. AE模式
+        self._create_dimension_selector(
+            main_frame,
+            dimension_name="AE模式",
+            dimension_var=self.compare_mode,
+            values=['Wavelet模式', 'Direct模式', '可微分小波模式'],
+            value_vars=self.mode_values,
+            row=0,
+            help_text="wavelet: 小波变换, direct: 直接输入, differentiable: 可微分小波"
+        )
+
+        # 2. 架构类型
         self._create_dimension_selector(
             main_frame,
             dimension_name="架构类型",
             dimension_var=self.compare_architecture,
             values=['CNN', 'Enhanced_CNN', 'Deep_CNN', 'MLP', 'Dual_Branch_CNN', 'Dual_Branch_MLP'],
             value_vars=self.architecture_values,
-            row=0
+            row=1
         )
 
-        # 2. 激活函数
+        # 3. 激活函数
         self._create_dimension_selector(
             main_frame,
             dimension_name="激活函数",
             dimension_var=self.compare_activation,
             values=['relu', 'sin', 'gelu', 'swish', 'tanh', 'mish', 'elu', 'leaky_relu', 'prelu'],
             value_vars=self.activation_values,
-            row=1
+            row=2
         )
 
-        # 3. 数据预处理
+        # 4. 数据预处理
         self._create_dimension_selector(
             main_frame,
             dimension_name="数据预处理",
             dimension_var=self.compare_preprocessing,
             values=['none', 'zscore', 'minmax', 'zscore+db', 'minmax+db'],
             value_vars=self.preprocessing_values,
-            row=2,
+            row=3,
             help_text="格式: 标准化方法 或 标准化方法+db（含dB变换）"
         )
 
-        # 4. 小波类型（仅Wavelet模式）
+        # 5. 小波类型（仅Wavelet模式）
         self._create_dimension_selector(
             main_frame,
             dimension_name="小波类型",
             dimension_var=self.compare_wavelet_type,
             values=['db4', 'db8', 'haar', 'bior2.2'],
             value_vars=self.wavelet_type_values,
-            row=3,
+            row=4,
             help_text="仅在Wavelet模式下有效"
         )
 
@@ -394,6 +407,15 @@ class BatchExperimentExtension:
         }
         return mapping.get(gui_architecture, gui_architecture.lower())
 
+    def _map_mode(self, gui_mode: str) -> str:
+        """映射GUI模式名称到内部名称"""
+        mapping = {
+            'Wavelet模式': 'wavelet',
+            'Direct模式': 'direct',
+            '可微分小波模式': 'differentiable_wavelet'
+        }
+        return mapping.get(gui_mode, gui_mode.lower())
+
     def _map_training_mode(self, gui_mode: str) -> str:
         """映射GUI训练模式到内部名称"""
         mapping = {
@@ -408,6 +430,11 @@ class BatchExperimentExtension:
             count = 1
 
             # 统计各维度选择的值数量
+            if self.compare_mode.get():
+                selected = sum(1 for var in self.mode_values.values() if var.get())
+                if selected > 0:
+                    count *= selected
+
             if self.compare_architecture.get():
                 selected = sum(1 for var in self.architecture_values.values() if var.get())
                 if selected > 0:
@@ -432,8 +459,9 @@ class BatchExperimentExtension:
 
             # 如果count == 1说明没有选择任何对比维度
             if count == 1:
-                if not any([self.compare_architecture.get(), self.compare_activation.get(),
-                           self.compare_preprocessing.get(), self.compare_wavelet_type.get()]):
+                if not any([self.compare_mode.get(), self.compare_architecture.get(),
+                           self.compare_activation.get(), self.compare_preprocessing.get(),
+                           self.compare_wavelet_type.get()]):
                     messagebox.showwarning("警告", "请至少选择一个对比维度！")
 
         except Exception as e:
@@ -480,6 +508,13 @@ class BatchExperimentExtension:
     def _collect_compare_dimensions(self) -> Dict[str, List[Any]]:
         """收集启用的对比维度和选择的值"""
         dimensions = {}
+
+        if self.compare_mode.get():
+            selected = [name for name, var in self.mode_values.items() if var.get()]
+            if selected:
+                # 映射到内部名称
+                selected = [self._map_mode(name) for name in selected]
+                dimensions['mode'] = selected
 
         if self.compare_architecture.get():
             selected = [name for name, var in self.architecture_values.items() if var.get()]
