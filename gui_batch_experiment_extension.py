@@ -626,6 +626,27 @@ class BatchExperimentExtension:
         original_ae_system = self.main_gui.ae_system
 
         try:
+            # ⚠️ Bug修复2: data_adapter需要fit数据来计算统计信息
+            data_adapter = ae_system.get('data_adapter', None)
+            if data_adapter is not None:
+                mode = ae_system.get('mode', 'direct')
+
+                # 根据模式决定fit的数据
+                if mode == 'wavelet':
+                    # Wavelet模式: 先小波变换，再fit小波系数
+                    import torch
+                    wavelet_transform = ae_system.get('wavelet_transform', None)
+                    if wavelet_transform:
+                        rcs_tensor = torch.FloatTensor(rcs_data)
+                        wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                        data_adapter.fit(wavelet_coeffs.numpy())
+                    else:
+                        # 如果没有wavelet_transform，直接fit RCS
+                        data_adapter.fit(rcs_data)
+                else:
+                    # Direct模式: 直接fit RCS数据
+                    data_adapter.fit(rcs_data)
+
             # 设置当前实验的ae_system
             self.main_gui.ae_system = ae_system
 
@@ -633,11 +654,19 @@ class BatchExperimentExtension:
             self.main_gui.ae_system['rcs_data'] = rcs_data
             self.main_gui.ae_system['param_data'] = param_data
 
+            # ⚠️ Bug修复1: training_config是experiment config，需要构建完整的training_config
+            # 从主GUI读取基础训练配置（包含lr_scheduler等必需字段）
+            full_training_config = self.main_gui._create_ae_training_config()
+
+            # 用experiment config覆盖training_mode（如果存在）
+            if 'training_mode' in training_config:
+                full_training_config['training_mode'] = training_config['training_mode']
+
             # 调用主GUI的三阶段训练函数（只传3个参数）
             training_history = self.main_gui._run_three_stage_training_v2(
                 rcs_data=rcs_data,
                 param_data=param_data,
-                training_config=training_config
+                training_config=full_training_config
             )
 
             return training_history
