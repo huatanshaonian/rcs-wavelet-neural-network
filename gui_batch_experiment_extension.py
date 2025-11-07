@@ -610,11 +610,11 @@ class BatchExperimentExtension:
             mode=config['mode'],
             architecture=config['architecture'],
             latent_dim=config['latent_dim'],
-            wavelet_type=config.get('wavelet_type', 'db4'),
+            wavelet=config.get('wavelet_type', 'db4'),  # 修正参数名: wavelet而非wavelet_type
             dropout_rate=0.2,
             activation=config.get('activation', 'relu'),
             normalization_method=normalization_method,
-            log_transform=db_transform
+            db_transform=db_transform  # 修正参数名: db_transform而非log_transform
         )
 
         return ae_system
