@@ -86,6 +86,7 @@ wavelet/
 ├── CLAUDE.md                       # 本文档
 ├── README.md                       # 完整项目文档
 ├── PARAMETERS_REFERENCE.md        # 参数参考文档（新增⚠️重要）
+├── DESIGN_ANALYSIS.md             # 设计分析文档（新增 - 架构决策参考）
 │
 ├── autoencoder/
 │   ├── models/                     # 网络定义
@@ -536,6 +537,7 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 
 - **项目README**: `README.md` - 完整项目文档
 - **参数参考文档**: `PARAMETERS_REFERENCE.md` - ⚠️ 所有参数命名规范（必看）
+- **设计分析文档**: `DESIGN_ANALYSIS.md` - 架构设计问题分析与重构方案
 - **模型清单**: `autoencoder/models/MODEL_INVENTORY.md`
 - **实验性模型**: `autoencoder/models/experimental/README.md`
 - **改进方案**: `CNN感受野分析与改进方案.md`, `MLP架构详解.md`
