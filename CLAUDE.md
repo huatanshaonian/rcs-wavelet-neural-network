@@ -85,6 +85,7 @@ wavelet/
 ├── test_batch_experiment.py       # 批量实验测试启动脚本（新增）
 ├── CLAUDE.md                       # 本文档
 ├── README.md                       # 完整项目文档
+├── PARAMETERS_REFERENCE.md        # 参数参考文档（新增⚠️重要）
 │
 ├── autoencoder/
 │   ├── models/                     # 网络定义
@@ -534,6 +535,7 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 ## 🎓 学习资源
 
 - **项目README**: `README.md` - 完整项目文档
+- **参数参考文档**: `PARAMETERS_REFERENCE.md` - ⚠️ 所有参数命名规范（必看）
 - **模型清单**: `autoencoder/models/MODEL_INVENTORY.md`
 - **实验性模型**: `autoencoder/models/experimental/README.md`
 - **改进方案**: `CNN感受野分析与改进方案.md`, `MLP架构详解.md`
@@ -746,3 +748,5 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 **项目路径**: `G:\feko_data\wavelet`
 **Python环境**: RCS_OP1 (Conda)
 - 在本项目中优先使用可微分小波变换
+- 在创建新接口或调用老接口时，首先参考PARAMETERS_REFERENCE.md文件
+- 在创建新接口或调用老接口时，首先参考PARAMETERS_REFERENCE.md文件
