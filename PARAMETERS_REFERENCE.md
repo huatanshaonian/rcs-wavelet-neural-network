@@ -64,27 +64,72 @@ def create_autoencoder_system(
 
 ---
 
-### 2. 三阶段训练函数 (gui.py)
+### 2. 三阶段训练函数 (training_manager.py)
 
-#### `_train_autoencoder_stage1_v2()`
-**关键参数**:
-- `ae_system`: create_autoencoder_system()返回的字典
-- `rcs_data`: RCS数据 [N, 91, 91, num_freq]
-- `epochs`: Stage 1训练轮数
-- `batch_size`: 批次大小
-- `learning_rate`: 学习率
+⚠️ **重要调用约定**:
+- 所有训练函数通过`self.gui.ae_system`访问AutoEncoder系统
+- **不要**将`ae_system`作为参数传递
+- 批量实验需要临时设置`self.main_gui.ae_system`
 
-#### `_train_parameter_mapping_stage2_v2()`
-**关键参数**:
-- `ae_system`: 已训练Stage 1的系统
-- `param_data`: 参数数据 [N, param_dim]
-- `epochs`: Stage 2训练轮数
+#### `_run_three_stage_training_v2()`
+**完整签名**:
+```python
+def _run_three_stage_training_v2(self, rcs_data, param_data, training_config):
+```
 
-#### `_train_end_to_end_stage3_v2()`
-**关键参数**:
-- `ae_system`: 已训练Stage 1+2的系统
-- `rcs_data`, `param_data`: 训练数据
-- `epochs`: Stage 3训练轮数
+**参数说明**:
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| `rcs_data` | np.ndarray | RCS数据 [N, 91, 91, num_freq] |
+| `param_data` | np.ndarray | 参数数据 [N, param_dim] |
+| `training_config` | dict | 训练配置（见下方结构） |
+
+**访问ae_system**: 函数内部通过`self.gui.ae_system`访问
+- ⚠️ 调用前必须设置`gui.ae_system`
+- ⚠️ 必须设置`gui.ae_system['rcs_data']`和`gui.ae_system['param_data']`
+
+**training_config结构**:
+```python
+{
+    'batch_size': int,
+    'learning_rate': float,
+    'min_lr': float,
+    'lr_scheduler': str,  # 'reduce_on_plateau', 'cosine', 'step', ...
+    'epochs': {
+        'stage1': int,
+        'stage2': int,
+        'stage3': int
+    },
+    'patience': {
+        'stage1': int,
+        'stage2': int,
+        'stage3': int
+    },
+    'training_mode': str,  # 'three_stage', 'stage1_only'
+    'use_custom_loss': bool,
+    'loss_config': dict  # 自定义损失配置
+}
+```
+
+#### 批量实验调用示例
+```python
+# ❌ 错误：直接传递ae_system
+training_history = gui._run_three_stage_training_v2(
+    rcs_data, param_data, training_config, ae_system=ae_system
+)
+
+# ✅ 正确：临时设置ae_system
+original_ae_system = gui.ae_system
+try:
+    gui.ae_system = ae_system
+    gui.ae_system['rcs_data'] = rcs_data
+    gui.ae_system['param_data'] = param_data
+    training_history = gui._run_three_stage_training_v2(
+        rcs_data, param_data, training_config
+    )
+finally:
+    gui.ae_system = original_ae_system
+```
 
 ---
 
@@ -391,6 +436,27 @@ create_autoencoder_system(mode='direct', architecture='dual_branch_cnn')
 # ✅ 正确：检查兼容性
 if mode == 'direct' and architecture.startswith('dual_branch'):
     raise ValueError("Direct模式不支持双分支架构")
+```
+
+### 错误6: 训练函数调用约定错误
+```python
+# ❌ 错误：传递ae_system作为参数
+training_history = gui._run_three_stage_training_v2(
+    rcs_data, param_data, training_config, ae_system=ae_system
+)
+# 错误信息: got an unexpected keyword argument 'ae_system'
+
+# ✅ 正确：临时设置到gui.ae_system
+original_ae_system = gui.ae_system
+try:
+    gui.ae_system = ae_system
+    gui.ae_system['rcs_data'] = rcs_data
+    gui.ae_system['param_data'] = param_data
+    training_history = gui._run_three_stage_training_v2(
+        rcs_data, param_data, training_config
+    )
+finally:
+    gui.ae_system = original_ae_system
 ```
 
 ---
