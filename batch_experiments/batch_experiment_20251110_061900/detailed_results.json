@@ -1,0 +1,113 @@
+{
+  "experiment_name": "batch_experiment",
+  "experiment_dir": "batch_experiments\\batch_experiment_20251110_061900",
+  "total_experiments": 4,
+  "successful_experiments": 0,
+  "failed_experiments": 4,
+  "results": [
+    {
+      "experiment_id": "direct_cnn",
+      "config": {
+        "mode": "direct",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "direct_cnn"
+      },
+      "training_time": 8.236432313919067,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'mean'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "direct_mlp",
+      "config": {
+        "mode": "direct",
+        "architecture": "mlp",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "direct_mlp"
+      },
+      "training_time": 6.946943044662476,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'mean'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "differentiable_wavelet_cnn",
+      "config": {
+        "mode": "differentiable_wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "differentiable_wavelet_cnn"
+      },
+      "training_time": 15.358736753463745,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'mean'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "differentiable_wavelet_mlp",
+      "config": {
+        "mode": "differentiable_wavelet",
+        "architecture": "mlp",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "differentiable_wavelet_mlp"
+      },
+      "training_time": 9.143897294998169,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'mean'",
+      "model_path": ""
+    }
+  ]
+}

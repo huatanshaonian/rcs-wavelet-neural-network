@@ -1,0 +1,61 @@
+{
+  "experiment_name": "batch_experiment_test",
+  "experiment_dir": "batch_experiments\\batch_experiment_test_20251107_163535",
+  "total_experiments": 2,
+  "successful_experiments": 0,
+  "failed_experiments": 2,
+  "results": [
+    {
+      "experiment_id": "direct",
+      "config": {
+        "mode": "direct",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "direct"
+      },
+      "training_time": 0.0002772808074951172,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "create_autoencoder_system() got an unexpected keyword argument 'wavelet_type'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "differentiable_wavelet",
+      "config": {
+        "mode": "differentiable_wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "differentiable_wavelet"
+      },
+      "training_time": 1.2636184692382812e-05,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "create_autoencoder_system() got an unexpected keyword argument 'wavelet_type'",
+      "model_path": ""
+    }
+  ]
+}

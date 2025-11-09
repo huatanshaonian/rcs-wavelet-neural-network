@@ -1,0 +1,113 @@
+{
+  "experiment_name": "batch_experiment",
+  "experiment_dir": "batch_experiments\\batch_experiment_20251110_061446",
+  "total_experiments": 4,
+  "successful_experiments": 0,
+  "failed_experiments": 4,
+  "results": [
+    {
+      "experiment_id": "direct_relu",
+      "config": {
+        "mode": "direct",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "direct_relu"
+      },
+      "training_time": 0.06601238250732422,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'fit'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "direct_sin",
+      "config": {
+        "mode": "direct",
+        "architecture": "cnn",
+        "activation": "sin",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "direct_sin"
+      },
+      "training_time": 0.06489801406860352,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'fit'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "differentiable_wavelet_relu",
+      "config": {
+        "mode": "differentiable_wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "differentiable_wavelet_relu"
+      },
+      "training_time": 0.05179429054260254,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'fit'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "differentiable_wavelet_sin",
+      "config": {
+        "mode": "differentiable_wavelet",
+        "architecture": "cnn",
+        "activation": "sin",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "differentiable_wavelet_sin"
+      },
+      "training_time": 0.05191493034362793,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'RCS_DataAdapter' object has no attribute 'fit'",
+      "model_path": ""
+    }
+  ]
+}

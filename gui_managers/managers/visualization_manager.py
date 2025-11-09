@@ -83,6 +83,13 @@ class VisualizationManager:
             self.gui.vis_fig.clear()
             self.gui.log_message(f"绘制模型 {model_id} - {freq} 的3D表面图...")
 
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
             # 获取RCS数据
             data = rv.get_rcs_matrix(model_id, freq, self.gui.data_config['rcs_data_dir'])
             rcs_data = data['rcs_db']  # dB值
@@ -101,16 +108,21 @@ class VisualizationManager:
                                  linewidth=0, antialiased=True)
 
             # 设置标签和标题
-            ax.set_xlabel('θ (俯仰角, °)')
-            ax.set_ylabel('φ (偏航角, °)')
-            ax.set_zlabel('RCS (dB)')
-            ax.set_title(f'模型 {model_id} - {freq} RCS 3D表面图')
+            ax.set_xlabel('θ (俯仰角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_ylabel('φ (偏航角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_zlabel('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_title(f'模型 {model_id} - {freq} RCS 3D表面图',
+                         fontsize=int(24*fontsize_scale), fontweight='bold')
 
             # 添加颜色条
-            self.gui.vis_fig.colorbar(surf, ax=ax, shrink=0.5, aspect=20, label='RCS (dB)')
+            cbar = self.gui.vis_fig.colorbar(surf, ax=ax, shrink=0.5, aspect=20, label='RCS (dB)')
+            cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             # 设置视角
             ax.view_init(elev=30, azim=45)
+            ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax.zaxis.set_tick_params(labelsize=int(16*fontsize_scale))
 
             self.gui.vis_canvas.draw()
             self.gui.log_message("3D表面图绘制完成")
@@ -129,6 +141,13 @@ class VisualizationManager:
 
             self.gui.vis_fig.clear()
             self.gui.log_message(f"绘制模型 {model_id} - {freq} 的球坐标图...")
+
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
 
             # 获取RCS数据
             data = rv.get_rcs_matrix(model_id, freq, self.gui.data_config['rcs_data_dir'])
@@ -164,10 +183,11 @@ class VisualizationManager:
                                  alpha=0.8, linewidth=0, antialiased=True)
 
             # 设置坐标轴
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title(f'模型 {model_id} - {freq} RCS 球坐标图')
+            ax.set_xlabel('X', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_ylabel('Y', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_zlabel('Z', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_title(f'模型 {model_id} - {freq} RCS 球坐标图',
+                         fontsize=int(24*fontsize_scale), fontweight='bold')
 
             # 设置等比例坐标轴
             max_range = np.max([np.max(np.abs(X)), np.max(np.abs(Y)), np.max(np.abs(Z))])
@@ -179,10 +199,13 @@ class VisualizationManager:
             sm = plt.cm.ScalarMappable(cmap='jet')
             sm.set_array(data['rcs_db'])
             cbar = self.gui.vis_fig.colorbar(sm, ax=ax, shrink=0.5, aspect=20)
-            cbar.set_label('RCS (dB)')
+            cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             # 设置视角
             ax.view_init(elev=20, azim=30)
+            ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax.zaxis.set_tick_params(labelsize=int(16*fontsize_scale))
 
             self.gui.vis_canvas.draw()
             self.gui.log_message("球坐标图绘制完成")
@@ -204,6 +227,13 @@ class VisualizationManager:
 
             # 清除当前图形
             self.gui.vis_fig.clear()
+
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
 
             # 获取原始RCS数据
             print(f"加载模型 {model_id} 的原始RCS数据...")
@@ -271,39 +301,47 @@ class VisualizationManager:
             ax1 = fig.add_subplot(2, 2, 1)
             im1 = ax1.imshow(original_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_1_5g, vmax=vmax_1_5g)
-            ax1.set_title(f'原始RCS - 1.5GHz (模型{model_id})')
-            ax1.set_xlabel('φ (方位角, 度)')
-            ax1.set_ylabel('θ (俯仰角, 度)')
+            ax1.set_title(f'原始RCS - 1.5GHz (模型{model_id})',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel('θ (俯仰角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar1 = plt.colorbar(im1, ax=ax1, shrink=0.8)
-            cbar1.set_label('RCS (dB)')
+            cbar1.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             ax2 = fig.add_subplot(2, 2, 2)
             im2 = ax2.imshow(predicted_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_1_5g, vmax=vmax_1_5g)
-            ax2.set_title(f'神经网络预测RCS - 1.5GHz')
-            ax2.set_xlabel('φ (方位角, 度)')
-            ax2.set_ylabel('θ (俯仰角, 度)')
+            ax2.set_title(f'神经网络预测RCS - 1.5GHz',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('θ (俯仰角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar2 = plt.colorbar(im2, ax=ax2, shrink=0.8)
-            cbar2.set_label('RCS (dB)')
+            cbar2.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             # 3GHz频率对比 (dB显示) - 使用统一的colorbar范围
             ax3 = fig.add_subplot(2, 2, 3)
             im3 = ax3.imshow(original_rcs_3g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_3g, vmax=vmax_3g)
-            ax3.set_title(f'原始RCS - 3GHz (模型{model_id})')
-            ax3.set_xlabel('φ (方位角, 度)')
-            ax3.set_ylabel('θ (俯仰角, 度)')
+            ax3.set_title(f'原始RCS - 3GHz (模型{model_id})',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('θ (俯仰角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar3 = plt.colorbar(im3, ax=ax3, shrink=0.8)
-            cbar3.set_label('RCS (dB)')
+            cbar3.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar3.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             ax4 = fig.add_subplot(2, 2, 4)
             im4 = ax4.imshow(predicted_rcs_3g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_3g, vmax=vmax_3g)
-            ax4.set_title(f'神经网络预测RCS - 3GHz')
-            ax4.set_xlabel('φ (方位角, 度)')
-            ax4.set_ylabel('θ (俯仰角, 度)')
+            ax4.set_title(f'神经网络预测RCS - 3GHz',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_ylabel('θ (俯仰角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar4 = plt.colorbar(im4, ax=ax4, shrink=0.8)
-            cbar4.set_label('RCS (dB)')
+            cbar4.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar4.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             # 计算并显示误差统计 (dB域)
             mse_db_1_5g = np.mean((original_rcs_1_5g_db - predicted_rcs_1_5g_db) ** 2)
@@ -313,7 +351,10 @@ class VisualizationManager:
 
             # 在图上添加误差信息
             fig.suptitle(f'RCS对比分析 (dB) - 模型{model_id}\n1.5GHz RMSE: {rmse_db_1_5g:.2f} dB, 3GHz RMSE: {rmse_db_3g:.2f} dB',
-                        fontsize=12, y=0.95)
+                        fontsize=int(24*fontsize_scale), fontweight='bold', y=0.95)
+
+            for axis in (ax1, ax2, ax3, ax4):
+                axis.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             plt.tight_layout()
             self.gui.vis_canvas.draw()
@@ -338,6 +379,13 @@ class VisualizationManager:
 
             self.gui.vis_fig.clear()
             print(f"加载模型 {model_id} 进行差值分析...")
+
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
 
             # 获取原始和预测数据
             data_1_5g = rv.get_rcs_matrix(model_id, "1.5G", self.gui.data_config['rcs_data_dir'])
@@ -385,25 +433,30 @@ class VisualizationManager:
             ax1 = self.gui.vis_fig.add_subplot(2, 2, 1)
             im1 = ax1.imshow(diff_1_5g_db, cmap='RdBu_r', aspect='equal',
                             vmin=-max_diff_1_5g, vmax=max_diff_1_5g)
-            ax1.set_title(f'差值图 - 1.5GHz (原始-预测)')
+            ax1.set_title(f'差值图 - 1.5GHz (原始-预测)',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar1 = plt.colorbar(im1, ax=ax1, shrink=0.8)
-            cbar1.set_label('差值 (dB)')
+            cbar1.set_label('差值 (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
             im2 = ax2.imshow(diff_3g_db, cmap='RdBu_r', aspect='equal',
                             vmin=-max_diff_3g, vmax=max_diff_3g)
-            ax2.set_title(f'差值图 - 3GHz (原始-预测)')
+            ax2.set_title(f'差值图 - 3GHz (原始-预测)',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar2 = plt.colorbar(im2, ax=ax2, shrink=0.8)
-            cbar2.set_label('差值 (dB)')
+            cbar2.set_label('差值 (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             # 误差统计
             ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
             ax3.hist(np.abs(diff_1_5g_db).flatten(), bins=30, alpha=0.7, label='1.5GHz', density=True)
             ax3.hist(np.abs(diff_3g_db).flatten(), bins=30, alpha=0.7, label='3GHz', density=True)
-            ax3.set_xlabel('绝对误差 (dB)')
-            ax3.set_ylabel('频率密度')
-            ax3.set_title('误差分布')
-            ax3.legend()
+            ax3.set_xlabel('绝对误差 (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('频率密度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_title('误差分布', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.legend(fontsize=int(14*fontsize_scale))
+            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 统计信息
             ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
@@ -420,7 +473,11 @@ class VisualizationManager:
   RMSE: {np.sqrt(np.mean(diff_3g_db**2)):.6f} dB
   MAE: {np.mean(np.abs(diff_3g_db)):.6f} dB"""
 
-            ax4.text(0.1, 0.9, stats_text, transform=ax4.transAxes, fontsize=10, verticalalignment='top')
+            ax4.text(0.1, 0.9, stats_text, transform=ax4.transAxes,
+                     fontsize=int(20*fontsize_scale), verticalalignment='top')
+
+            for axis in (ax1, ax2):
+                axis.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             plt.tight_layout()
             self.gui.vis_canvas.draw()
@@ -443,6 +500,13 @@ class VisualizationManager:
 
             self.gui.vis_fig.clear()
             print(f"加载模型 {model_id} 进行相关性分析...")
+
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
 
             # 获取数据
             data_1_5g = rv.get_rcs_matrix(model_id, "1.5G", self.gui.data_config['rcs_data_dir'])
@@ -470,18 +534,22 @@ class VisualizationManager:
             ax1.scatter(x1, y1, alpha=0.5, s=1)
             r1, p1 = stats.pearsonr(x1, y1)
             ax1.plot([x1.min(), x1.max()], [x1.min(), x1.max()], 'k-', alpha=0.5)
-            ax1.set_xlabel('原始RCS')
-            ax1.set_ylabel('预测RCS')
-            ax1.set_title(f'1.5GHz 相关性\\nR={r1:.4f}')
+            ax1.set_xlabel('原始RCS', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel('预测RCS', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_title(f'1.5GHz 相关性\\nR={r1:.4f}',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 3GHz散点图
             ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
             ax2.scatter(x2, y2, alpha=0.5, s=1)
             r2, p2 = stats.pearsonr(x2, y2)
             ax2.plot([x2.min(), x2.max()], [x2.min(), x2.max()], 'k-', alpha=0.5)
-            ax2.set_xlabel('原始RCS')
-            ax2.set_ylabel('预测RCS')
-            ax2.set_title(f'3GHz 相关性\\nR={r2:.4f}')
+            ax2.set_xlabel('原始RCS', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('预测RCS', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_title(f'3GHz 相关性\\nR={r2:.4f}',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 残差分析
             ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
@@ -489,10 +557,11 @@ class VisualizationManager:
             ax3.scatter(x1, residuals1, alpha=0.5, s=1, label='1.5GHz')
             ax3.scatter(x2, residuals2, alpha=0.5, s=1, label='3GHz')
             ax3.axhline(y=0, color='k', linestyle='-', alpha=0.5)
-            ax3.set_xlabel('原始RCS')
-            ax3.set_ylabel('残差')
-            ax3.set_title('残差分析')
-            ax3.legend()
+            ax3.set_xlabel('原始RCS', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('残差', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_title('残差分析', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.legend(fontsize=int(14*fontsize_scale))
+            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 统计摘要
             ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
@@ -511,7 +580,8 @@ class VisualizationManager:
 
 质量评估: {'优秀' if min(r1, r2) > 0.9 else '良好' if min(r1, r2) > 0.8 else '一般'}"""
 
-            ax4.text(0.1, 0.9, summary, transform=ax4.transAxes, fontsize=10, verticalalignment='top')
+            ax4.text(0.1, 0.9, summary, transform=ax4.transAxes,
+                     fontsize=int(20*fontsize_scale), verticalalignment='top')
 
             plt.tight_layout()
             self.gui.vis_canvas.draw()
@@ -534,6 +604,13 @@ class VisualizationManager:
             import os
             from datetime import datetime
 
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
             # 确保results目录存在
             results_dir = "results"
             if not os.path.exists(results_dir):
@@ -552,28 +629,36 @@ class VisualizationManager:
 
                 # 为每折创建单独的图表
                 for fold_idx, fold_data in enumerate(fold_details):
-                    self._save_fold_plot(fold_data, fold_idx, results_dir)
+                    self._save_fold_plot(fold_data, fold_idx, results_dir, fontsize_scale=fontsize_scale)
 
                 # 在GUI显示最佳折
                 best_fold_data = fold_details[best_fold_idx]
-                self._display_fold_in_gui(best_fold_data, best_fold_idx)
+                self._display_fold_in_gui(best_fold_data, best_fold_idx, fontsize_scale=fontsize_scale)
 
                 self.gui.log_message(f"已保存{len(fold_details)}折训练图表到{results_dir}目录")
                 self.gui.log_message(f"GUI显示最佳折 {best_fold_idx + 1} 的训练历史")
 
             else:
                 # 单次训练模式：直接显示
-                self._display_simple_training_history()
+                self._display_simple_training_history(fontsize_scale=fontsize_scale)
 
         except Exception as e:
             error_msg = f"绘制训练历史失败: {str(e)}"
             self.gui.log_message(error_msg)
             messagebox.showerror("错误", error_msg)
 
-    def _save_fold_plot(self, fold_data, fold_idx, results_dir):
+    def _save_fold_plot(self, fold_data, fold_idx, results_dir, fontsize_scale=None):
         """保存单个折的训练历史图表"""
         import matplotlib.pyplot as plt
         from datetime import datetime
+
+        # 获取字号缩放因子
+        if fontsize_scale is None:
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
 
         # 设置中文字体
         plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
@@ -581,7 +666,8 @@ class VisualizationManager:
 
         # 创建独立的图表
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        fig.suptitle(f'交叉验证第{fold_idx + 1}折 - 训练历史', fontsize=14)
+        fig.suptitle(f'交叉验证第{fold_idx + 1}折 - 训练历史',
+                     fontsize=int(24*fontsize_scale), fontweight='bold')
 
         epochs = fold_data.get('epochs', [])
         train_losses = fold_data.get('train_losses', [])
@@ -594,34 +680,39 @@ class VisualizationManager:
         axes[0, 0].semilogy(epochs, train_losses, 'b-', label='训练损失', linewidth=2)
         if val_losses:
             axes[0, 0].semilogy(epochs, val_losses, 'r-', label='验证损失', linewidth=2)
-        axes[0, 0].set_xlabel('Epoch')
-        axes[0, 0].set_ylabel('Loss (对数坐标)')
-        axes[0, 0].set_title('训练和验证损失')
-        axes[0, 0].legend()
+        axes[0, 0].set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+        axes[0, 0].set_ylabel('Loss (对数坐标)', fontsize=int(20*fontsize_scale), fontweight='bold')
+        axes[0, 0].set_title('训练和验证损失', fontsize=int(20*fontsize_scale), fontweight='bold')
+        axes[0, 0].legend(fontsize=int(14*fontsize_scale))
         axes[0, 0].grid(True, alpha=0.3)
+        axes[0, 0].tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 分量损失
-        axes[0, 1].set_title('损失组件分析')
+        axes[0, 1].set_title('损失组件分析', fontsize=int(20*fontsize_scale), fontweight='bold')
         if fold_data.get('train_mse'):
             axes[0, 1].semilogy(epochs, fold_data['train_mse'], 'g-', label='MSE', alpha=0.8)
         if fold_data.get('train_symmetry'):
             axes[0, 1].semilogy(epochs, fold_data['train_symmetry'], 'm-', label='对称性', alpha=0.8)
         if fold_data.get('train_multiscale'):
             axes[0, 1].semilogy(epochs, fold_data['train_multiscale'], 'c-', label='多尺度', alpha=0.8)
-        axes[0, 1].set_xlabel('Epoch')
-        axes[0, 1].set_ylabel('损失分量 (对数坐标)')
-        axes[0, 1].legend()
+        axes[0, 1].set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+        axes[0, 1].set_ylabel('损失分量 (对数坐标)', fontsize=int(20*fontsize_scale), fontweight='bold')
+        axes[0, 1].legend(fontsize=int(14*fontsize_scale))
         axes[0, 1].grid(True, alpha=0.3)
+        axes[0, 1].tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 学习率曲线
-        axes[1, 0].set_title('学习率变化')
+        axes[1, 0].set_title('学习率变化', fontsize=int(20*fontsize_scale), fontweight='bold')
         if fold_data.get('learning_rates'):
             axes[1, 0].plot(epochs, fold_data['learning_rates'], 'purple', linewidth=2)
-            axes[1, 0].set_xlabel('Epoch')
-            axes[1, 0].set_ylabel('Learning Rate')
+            axes[1, 0].set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+            axes[1, 0].set_ylabel('Learning Rate', fontsize=int(20*fontsize_scale), fontweight='bold')
             axes[1, 0].grid(True, alpha=0.3)
         else:
-            axes[1, 0].text(0.5, 0.5, '学习率数据不可用', ha='center', va='center', transform=axes[1, 0].transAxes)
+            axes[1, 0].text(0.5, 0.5, '学习率数据不可用', ha='center', va='center',
+                            transform=axes[1, 0].transAxes, fontsize=int(20*fontsize_scale),
+                            fontweight='bold')
+        axes[1, 0].tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 统计摘要
         axes[1, 1].axis('off')
@@ -640,8 +731,9 @@ class VisualizationManager:
 训练完成时间:
 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
 
-        axes[1, 1].text(0.1, 0.9, stats, transform=axes[1, 1].transAxes, fontsize=10,
-                        verticalalignment='top', fontfamily='monospace')
+        axes[1, 1].text(0.1, 0.9, stats, transform=axes[1, 1].transAxes,
+                        fontsize=int(20*fontsize_scale), verticalalignment='top',
+                        fontfamily='monospace', fontweight='bold')
 
         plt.tight_layout()
 
@@ -654,7 +746,7 @@ class VisualizationManager:
 
         print(f"已保存第{fold_idx + 1}折训练历史到: {filepath}")
 
-    def _display_fold_in_gui(self, fold_data, fold_idx):
+    def _display_fold_in_gui(self, fold_data, fold_idx, fontsize_scale=None):
         """在GUI中显示指定折的训练历史"""
         # 设置中文字体
         import matplotlib.pyplot as plt
@@ -663,12 +755,22 @@ class VisualizationManager:
 
         self.gui.vis_fig.clear()
 
+        # 获取字号缩放因子
+        if fontsize_scale is None:
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
         epochs = fold_data.get('epochs', [])
         train_losses = fold_data.get('train_losses', [])
         val_losses = fold_data.get('val_losses', [])
 
         if not epochs or not train_losses:
-            self.gui.vis_fig.text(0.5, 0.5, f'第{fold_idx + 1}折数据不完整', ha='center', va='center')
+            self.gui.vis_fig.text(0.5, 0.5, f'第{fold_idx + 1}折数据不完整',
+                                  ha='center', va='center',
+                                  fontsize=int(20*fontsize_scale), fontweight='bold')
             self.gui.vis_canvas.draw()
             return
 
@@ -677,11 +779,13 @@ class VisualizationManager:
         ax1.semilogy(epochs, train_losses, 'b-', label='训练损失', linewidth=2)
         if val_losses:
             ax1.semilogy(epochs, val_losses, 'r-', label='验证损失', linewidth=2)
-        ax1.set_xlabel('Epoch')
-        ax1.set_ylabel('Loss (对数坐标)')
-        ax1.set_title(f'第{fold_idx + 1}折 - 训练和验证损失')
-        ax1.legend()
+        ax1.set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.set_ylabel('Loss (对数坐标)', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.set_title(f'第{fold_idx + 1}折 - 训练和验证损失',
+                      fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.legend(fontsize=int(14*fontsize_scale))
         ax1.grid(True, alpha=0.3)
+        ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 分量损失
         ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
@@ -691,23 +795,26 @@ class VisualizationManager:
             ax2.semilogy(epochs, fold_data['train_symmetry'], 'm-', label='对称性', alpha=0.8)
         if fold_data.get('train_multiscale'):
             ax2.semilogy(epochs, fold_data['train_multiscale'], 'c-', label='多尺度', alpha=0.8)
-        ax2.set_xlabel('Epoch')
-        ax2.set_ylabel('损失分量 (对数坐标)')
-        ax2.set_title('损失组件分析')
-        ax2.legend()
+        ax2.set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax2.set_ylabel('损失分量 (对数坐标)', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax2.set_title('损失组件分析', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax2.legend(fontsize=int(14*fontsize_scale))
         ax2.grid(True, alpha=0.3)
+        ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 学习率
         ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
         if fold_data.get('learning_rates'):
             ax3.plot(epochs, fold_data['learning_rates'], 'purple', linewidth=2)
-            ax3.set_xlabel('Epoch')
-            ax3.set_ylabel('Learning Rate')
-            ax3.set_title('学习率变化')
+            ax3.set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('Learning Rate', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_title('学习率变化', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax3.grid(True, alpha=0.3)
         else:
-            ax3.text(0.5, 0.5, '学习率数据不可用', ha='center', va='center', transform=ax3.transAxes)
-            ax3.set_title('学习率监控')
+            ax3.text(0.5, 0.5, '学习率数据不可用', ha='center', va='center',
+                     transform=ax3.transAxes, fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_title('学习率监控', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 统计摘要
         ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
@@ -727,13 +834,14 @@ class VisualizationManager:
 
 注: 其他折已保存到results/"""
 
-        ax4.text(0.1, 0.9, stats, transform=ax4.transAxes, fontsize=10,
-                    verticalalignment='top', fontfamily='monospace')
+        ax4.text(0.1, 0.9, stats, transform=ax4.transAxes,
+                 fontsize=int(20*fontsize_scale), verticalalignment='top',
+                 fontfamily='monospace', fontweight='bold')
 
         self.gui.vis_fig.tight_layout()
         self.gui.vis_canvas.draw()
 
-    def _display_simple_training_history(self):
+    def _display_simple_training_history(self, fontsize_scale=None):
         """显示简单训练模式的历史（非交叉验证）"""
         # 设置中文字体
         import matplotlib.pyplot as plt
@@ -742,12 +850,22 @@ class VisualizationManager:
 
         self.gui.vis_fig.clear()
 
+        # 获取字号缩放因子
+        if fontsize_scale is None:
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
         epochs = self.gui.training_history.get('epochs', [])
         train_loss = self.gui.training_history.get('train_loss', [])
         val_loss = self.gui.training_history.get('val_loss', [])
 
         if not epochs or not train_loss:
-            self.gui.vis_fig.text(0.5, 0.5, '训练历史数据不完整', ha='center', va='center')
+            self.gui.vis_fig.text(0.5, 0.5, '训练历史数据不完整',
+                                  ha='center', va='center',
+                                  fontsize=int(20*fontsize_scale), fontweight='bold')
             self.gui.vis_canvas.draw()
             return
 
@@ -756,11 +874,12 @@ class VisualizationManager:
         ax1.semilogy(epochs, train_loss, 'b-', label='训练损失', linewidth=2)
         if val_loss:
             ax1.semilogy(epochs, val_loss, 'r-', label='验证损失', linewidth=2)
-        ax1.set_xlabel('Epoch')
-        ax1.set_ylabel('Loss (对数坐标)')
-        ax1.set_title('训练和验证损失')
-        ax1.legend()
+        ax1.set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.set_ylabel('Loss (对数坐标)', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.set_title('训练和验证损失', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.legend(fontsize=int(14*fontsize_scale))
         ax1.grid(True, alpha=0.3)
+        ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 分量损失
         ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
@@ -770,23 +889,26 @@ class VisualizationManager:
             ax2.semilogy(epochs, self.gui.training_history['train_symmetry'], 'm-', label='对称性', alpha=0.8)
         if self.gui.training_history.get('train_multiscale'):
             ax2.semilogy(epochs, self.gui.training_history['train_multiscale'], 'c-', label='多尺度', alpha=0.8)
-        ax2.set_xlabel('Epoch')
-        ax2.set_ylabel('损失分量 (对数坐标)')
-        ax2.set_title('损失组件分析')
-        ax2.legend()
+        ax2.set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax2.set_ylabel('损失分量 (对数坐标)', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax2.set_title('损失组件分析', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax2.legend(fontsize=int(14*fontsize_scale))
         ax2.grid(True, alpha=0.3)
+        ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # GPU显存监控
         ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
         if self.gui.training_history.get('gpu_memory') and any(x > 0 for x in self.gui.training_history['gpu_memory']):
             ax3.plot(epochs, self.gui.training_history['gpu_memory'], 'orange', linewidth=2)
-            ax3.set_xlabel('Epoch')
-            ax3.set_ylabel('GPU显存 (GB)')
-            ax3.set_title('GPU显存监控')
+            ax3.set_xlabel('Epoch', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('GPU显存 (GB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_title('GPU显存监控', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax3.grid(True, alpha=0.3)
         else:
-            ax3.text(0.5, 0.5, 'GPU显存监控不可用', ha='center', va='center', transform=ax3.transAxes)
-            ax3.set_title('GPU显存监控')
+            ax3.text(0.5, 0.5, 'GPU显存监控不可用', ha='center', va='center',
+                     transform=ax3.transAxes, fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_title('GPU显存监控', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
         # 统计摘要
         ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
@@ -808,14 +930,21 @@ class VisualizationManager:
 最佳验证损失: {min_val:.6f}
 GPU显存峰值: {gpu_peak:.2f} GB"""
 
-        ax4.text(0.1, 0.9, stats, transform=ax4.transAxes, fontsize=10,
-                    verticalalignment='top', fontfamily='monospace')
+        ax4.text(0.1, 0.9, stats, transform=ax4.transAxes,
+                 fontsize=int(20*fontsize_scale), verticalalignment='top',
+                 fontfamily='monospace', fontweight='bold')
 
         self.gui.vis_fig.tight_layout()
         self.gui.vis_canvas.draw()
 
     def _plot_autoencoder_visualization(self, chart_type):
         """绘制AutoEncoder特定可视化图表"""
+        try:
+            fontsize_scale = self.gui.fontsize_scale_var.get()
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
+
         if chart_type == "AE隐空间分析":
             self._plot_ae_latent_space()
         elif chart_type == "AE重建质量":
@@ -824,6 +953,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             self._plot_ae_parameter_mapping()
         elif chart_type == "AE训练进度":
             self._plot_ae_training_progress_vis()
+        else:
+            self.gui.vis_fig.clear()
+            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'未知的可视化类型: {chart_type}',
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
+            self.gui.vis_canvas.draw()
 
     def _plot_ae_latent_space(self):
         """绘制AutoEncoder隐空间分析"""
@@ -831,6 +967,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         import numpy as np
         from sklearn.decomposition import PCA
         from sklearn.manifold import TSNE
+
+        # 获取字号缩放因子
+        try:
+            fontsize_scale = self.gui.fontsize_scale_var.get()
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
 
         try:
             # 获取AutoEncoder组件
@@ -858,9 +1001,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             latent_2d_pca = pca.fit_transform(latent_vectors)
             scatter = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
                                 c=range(len(latent_2d_pca)), cmap='viridis', alpha=0.6)
-            ax1.set_title('隐空间分布 - PCA')
-            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)')
-            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)')
+            ax1.set_title('隐空间分布 - PCA',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)',
+                           fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)',
+                           fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图2: t-SNE降维
             ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
@@ -868,9 +1015,11 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             latent_2d_tsne = tsne.fit_transform(latent_vectors)
             ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
                        c=range(len(latent_2d_tsne)), cmap='viridis', alpha=0.6)
-            ax2.set_title('隐空间分布 - t-SNE')
-            ax2.set_xlabel('t-SNE1')
-            ax2.set_ylabel('t-SNE2')
+            ax2.set_title('隐空间分布 - t-SNE',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_xlabel('t-SNE1', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('t-SNE2', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图3: 隐空间维度分布
             ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
@@ -879,18 +1028,24 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             dims = range(len(latent_means[:20]))  # 只显示前20个维度
             ax3.errorbar(dims, latent_means[:20], yerr=latent_stds[:20],
                         capsize=3, marker='o', markersize=4)
-            ax3.set_title('隐空间维度统计 (前20维)')
-            ax3.set_xlabel('隐空间维度')
-            ax3.set_ylabel('数值')
+            ax3.set_title('隐空间维度统计 (前20维)',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_xlabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
             ax3.grid(True, alpha=0.3)
 
             # 子图4: 隐空间激活热图
             ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
             im = ax4.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
-            ax4.set_title('隐空间激活模式 (前10样本×前20维)')
-            ax4.set_xlabel('样本索引')
-            ax4.set_ylabel('隐空间维度')
-            self.gui.vis_fig.colorbar(im, ax=ax4)
+            ax4.set_title('隐空间激活模式 (前10样本×前20维)',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_xlabel('样本索引', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_ylabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar = self.gui.vis_fig.colorbar(im, ax=ax4)
+            cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
+            cbar.set_label('激活值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
@@ -899,12 +1054,20 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             self.gui.vis_fig.clear()
             ax = self.gui.vis_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'隐空间分析失败:\n{str(e)}',
-                   transform=ax.transAxes, ha='center', va='center')
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
             self.gui.vis_canvas.draw()
 
     def _plot_ae_reconstruction_quality(self):
         """绘制AutoEncoder重建质量分析 - 使用统一重建函数"""
         import numpy as np
+
+        # 获取字号缩放因子
+        try:
+            fontsize_scale = self.gui.fontsize_scale_var.get()
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
 
         try:
             # 获取RCS数据
@@ -947,13 +1110,17 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 # 添加分割线
                 ax.axvline(x=original_2d.shape[1]-0.5, color='white', linewidth=2)
 
-                ax.set_title(f'样本{sample_idx+1} (MSE={mse:.4e})\n左:原始 右:重建')
+                ax.set_title(f'样本{sample_idx+1} (MSE={mse:.4e})\n左:原始 右:重建',
+                             fontsize=int(20*fontsize_scale), fontweight='bold')
                 ax.set_xticks([])
                 ax.set_yticks([])
 
-                self.gui.vis_fig.colorbar(im, ax=ax, shrink=0.6)
+                cbar = self.gui.vis_fig.colorbar(im, ax=ax, shrink=0.6)
+                cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
+                cbar.set_label('RCS 值', fontsize=int(20*fontsize_scale), fontweight='bold')
 
-            self.gui.vis_fig.suptitle('AutoEncoder重建质量对比')
+            self.gui.vis_fig.suptitle('AutoEncoder重建质量对比',
+                                      fontsize=int(24*fontsize_scale), fontweight='bold')
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
 
@@ -961,7 +1128,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             self.gui.vis_fig.clear()
             ax = self.gui.vis_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'重建质量分析失败:\n{str(e)}',
-                   transform=ax.transAxes, ha='center', va='center')
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
             self.gui.vis_canvas.draw()
 
     def _plot_ae_parameter_mapping(self):
@@ -969,6 +1137,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         import torch
         import numpy as np
         from sklearn.decomposition import PCA
+
+        # 获取字号缩放因子
+        try:
+            fontsize_scale = self.gui.fontsize_scale_var.get()
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
 
         try:
             # 获取组件
@@ -992,9 +1167,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 假设前两个参数最重要
             ax1.scatter(param_data[:50, 0], param_data[:50, 1],
                        c=range(50), cmap='viridis', alpha=0.6)
-            ax1.set_title('参数空间分布')
-            ax1.set_xlabel('参数1')
-            ax1.set_ylabel('参数2')
+            ax1.set_title('参数空间分布', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_xlabel('参数1', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel('参数2', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图2: 映射后隐空间分布
             ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
@@ -1002,9 +1178,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             mapped_2d = pca.fit_transform(mapped_latents)
             ax2.scatter(mapped_2d[:, 0], mapped_2d[:, 1],
                        c=range(50), cmap='viridis', alpha=0.6)
-            ax2.set_title('映射后隐空间分布')
-            ax2.set_xlabel('隐空间PC1')
-            ax2.set_ylabel('隐空间PC2')
+            ax2.set_title('映射后隐空间分布', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_xlabel('隐空间PC1', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('隐空间PC2', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图3: 参数-隐空间相关性
             ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
@@ -1016,18 +1193,22 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             param_names = [f'参数{i+1}' for i in range(len(correlations))]
             ax3.bar(param_names, correlations)
-            ax3.set_title('参数与隐空间PC1相关性')
-            ax3.set_ylabel('绝对相关系数')
-            ax3.tick_params(axis='x', rotation=45)
+            ax3.set_title('参数与隐空间PC1相关性',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('绝对相关系数', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.tick_params(axis='x', rotation=45, labelsize=int(16*fontsize_scale))
+            ax3.tick_params(axis='y', labelsize=int(16*fontsize_scale))
 
             # 子图4: 隐空间维度激活强度
             ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
             latent_means = np.mean(np.abs(mapped_latents), axis=0)
             dims = range(len(latent_means[:20]))  # 前20维
             ax4.bar(dims, latent_means[:20])
-            ax4.set_title('隐空间维度激活强度 (前20维)')
-            ax4.set_xlabel('隐空间维度')
-            ax4.set_ylabel('平均激活强度')
+            ax4.set_title('隐空间维度激活强度 (前20维)',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_xlabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_ylabel('平均激活强度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
@@ -1036,18 +1217,28 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             self.gui.vis_fig.clear()
             ax = self.gui.vis_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'参数映射分析失败:\n{str(e)}',
-                   transform=ax.transAxes, ha='center', va='center')
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
             self.gui.vis_canvas.draw()
 
     def _plot_ae_training_progress_vis(self):
         """绘制AutoEncoder训练进度可视化"""
         try:
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
             if not hasattr(self.gui, 'ae_training_history') or not self.gui.ae_training_history:
                 self.gui.vis_fig.clear()
                 ax = self.gui.vis_fig.add_subplot(1, 1, 1)
                 ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(暂无训练历史数据)',
-                       transform=ax.transAxes, ha='center', va='center', fontsize=12)
-                ax.set_title('AutoEncoder训练进度')
+                       transform=ax.transAxes, ha='center', va='center',
+                       fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax.set_title('AutoEncoder训练进度',
+                             fontsize=int(24*fontsize_scale), fontweight='bold')
                 self.gui.vis_canvas.draw()
                 return
 
@@ -1068,8 +1259,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                           '• 或查看"训练历史"图表查看传统模型历史')
                 ax.text(0.5, 0.5, message,
                        transform=ax.transAxes, ha='center', va='center',
-                       fontsize=10, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-                ax.set_title('AutoEncoder训练进度')
+                       fontsize=int(20*fontsize_scale), fontweight='bold',
+                       bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+                ax.set_title('AutoEncoder训练进度',
+                             fontsize=int(24*fontsize_scale), fontweight='bold')
                 ax.axis('off')
                 self.gui.vis_canvas.draw()
                 return
@@ -1087,8 +1280,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             if num_stages == 0:
                 ax = fig.add_subplot(1, 1, 1)
                 ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(暂无阶段历史数据)',
-                       transform=ax.transAxes, ha='center', va='center', fontsize=12)
-                ax.set_title('AutoEncoder训练进度')
+                       transform=ax.transAxes, ha='center', va='center',
+                       fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax.set_title('AutoEncoder训练进度',
+                             fontsize=int(24*fontsize_scale), fontweight='bold')
                 self.gui.vis_canvas.draw()
                 return
 
@@ -1119,19 +1314,24 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 ax.plot(epochs, stage_data['train_losses'], color=color, linestyle='-', label='训练损失', linewidth=2)
                 ax.plot(epochs, stage_data['val_losses'], color=color, linestyle='--', label='验证损失', linewidth=2)
 
-                ax.set_xlabel('训练轮数')
-                ax.set_ylabel('损失值')
-                ax.set_title(f'{stage_names[i] if i < len(stage_names) else stage_name}')
-                ax.legend()
+                ax.set_xlabel('训练轮数', fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax.set_ylabel('损失值', fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax.set_title(f'{stage_names[i] if i < len(stage_names) else stage_name}',
+                             fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax.legend(fontsize=int(14*fontsize_scale))
                 ax.grid(True, alpha=0.3)
                 ax.set_yscale('log')
+                ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
                 # 添加最佳损失标记
                 if 'best_val_loss' in stage_data:
                     best_epoch = stage_data.get('best_epoch', len(stage_data['val_losses']))
-                    ax.axvline(x=best_epoch, color='red', linestyle=':', alpha=0.7, label=f'最佳: Epoch {best_epoch}')
+                    ax.axvline(x=best_epoch, color='red', linestyle=':', alpha=0.7,
+                               label=f'最佳: Epoch {best_epoch}')
+                    ax.legend(fontsize=int(14*fontsize_scale))
 
-            fig.suptitle('AutoEncoder训练进度', fontsize=14, fontweight='bold')
+            fig.suptitle('AutoEncoder训练进度',
+                         fontsize=int(24*fontsize_scale), fontweight='bold')
             fig.tight_layout()
             self.gui.vis_canvas.draw()
 
@@ -1139,8 +1339,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             self.gui.vis_fig.clear()
             ax = self.gui.vis_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'AutoEncoder训练进度可视化失败:\n{str(e)}',
-                   transform=ax.transAxes, ha='center', va='center', fontsize=12)
-            ax.set_title('AutoEncoder训练进度')
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax.set_title('AutoEncoder训练进度',
+                         fontsize=int(24*fontsize_scale), fontweight='bold')
             self.gui.vis_canvas.draw()
 
     def _plot_autoencoder_prediction_visualization(self, chart_type, freq):
@@ -1149,6 +1351,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         import numpy as np
 
         try:
+            # 获取字号缩放因子
+            try:
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
+
             if chart_type == "2D热图":
                 self._plot_ae_2d_heatmap(freq)
             elif chart_type == "对比图":
@@ -1160,14 +1369,16 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 self.gui.vis_fig.clear()
                 ax = self.gui.vis_fig.add_subplot(1, 1, 1)
                 ax.text(0.5, 0.5, f'AutoEncoder暂不支持"{chart_type}"类型\n请选择其他图表类型',
-                       transform=ax.transAxes, ha='center', va='center')
+                       transform=ax.transAxes, ha='center', va='center',
+                       fontsize=int(20*fontsize_scale), fontweight='bold')
                 self.gui.vis_canvas.draw()
 
         except Exception as e:
             self.gui.vis_fig.clear()
             ax = self.gui.vis_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'AutoEncoder预测可视化失败:\n{str(e)}',
-                   transform=ax.transAxes, ha='center', va='center')
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
             self.gui.vis_canvas.draw()
 
     def _plot_ae_2d_heatmap(self, freq):
@@ -1334,6 +1545,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数"""
         import numpy as np
 
+        # 获取字号缩放因子
+        try:
+            fontsize_scale = self.gui.fontsize_scale_var.get()
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
+
         # 检查模型配置
         config_info = self.gui.ae_system.get('config_info', {})
         model_num_freq = config_info.get('num_frequencies', 'unknown')
@@ -1407,14 +1625,17 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 子图1: 原图（真实值）
             ax1 = self.gui.vis_fig.add_subplot(1, 3, 1)
             im1 = ax1.imshow(true_rcs_db, cmap='jet', aspect='equal', extent=extent)
-            ax1.set_title(f'原图（真实RCS）\n模型{model_id_str} @ {freq_str}', fontsize=10)
-            ax1.set_xlabel('φ (方位角, °)', fontsize=9)
-            ax1.set_ylabel('θ (俯仰角, °)', fontsize=9)
+            ax1.set_title(f'原图（真实RCS）\n模型{model_id_str} @ {freq_str}',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_xlabel('φ (方位角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel('θ (俯仰角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
             from mpl_toolkits.axes_grid1 import make_axes_locatable
             divider1 = make_axes_locatable(ax1)
             cax1 = divider1.append_axes("right", size="5%", pad=0.05)
             cbar1 = self.gui.vis_fig.colorbar(im1, cax=cax1)
-            cbar1.set_label('RCS (dB)', fontsize=8)
+            cbar1.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 获取原图的colorbar范围，用于重构图
             vmin, vmax = im1.get_clim()
@@ -1424,13 +1645,16 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             im2 = ax2.imshow(pred_2d_db, cmap='jet', aspect='equal',
                             vmin=vmin, vmax=vmax, extent=extent)
             mse_linear = np.mean((true_rcs_linear - pred_2d)**2)
-            ax2.set_title(f'AE重构图\nMSE={mse_linear:.4e}', fontsize=10)
-            ax2.set_xlabel('φ (方位角, °)', fontsize=9)
-            ax2.set_ylabel('θ (俯仰角, °)', fontsize=9)
+            ax2.set_title(f'AE重构图\nMSE={mse_linear:.4e}',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_xlabel('φ (方位角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('θ (俯仰角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
             divider2 = make_axes_locatable(ax2)
             cax2 = divider2.append_axes("right", size="5%", pad=0.05)
             cbar2 = self.gui.vis_fig.colorbar(im2, cax=cax2)
-            cbar2.set_label('RCS (dB)', fontsize=8)
+            cbar2.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图3: 残差图
             ax3 = self.gui.vis_fig.add_subplot(1, 3, 3)
@@ -1440,13 +1664,16 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             im3 = ax3.imshow(residual_db, cmap='RdBu_r', aspect='equal',
                             vmin=-residual_abs_max, vmax=residual_abs_max, extent=extent)
             mae_db = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
-            ax3.set_title(f'残差图（原图-重构）\nMAE={mae_db:.2f} dB', fontsize=10)
-            ax3.set_xlabel('φ (方位角, °)', fontsize=9)
-            ax3.set_ylabel('θ (俯仰角, °)', fontsize=9)
+            ax3.set_title(f'残差图（原图-重构）\nMAE={mae_db:.2f} dB',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_xlabel('φ (方位角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('θ (俯仰角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
             divider3 = make_axes_locatable(ax3)
             cax3 = divider3.append_axes("right", size="5%", pad=0.05)
             cbar3 = self.gui.vis_fig.colorbar(im3, cax=cax3)
-            cbar3.set_label('残差 (dB)', fontsize=8)
+            cbar3.set_label('残差 (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar3.ax.tick_params(labelsize=int(16*fontsize_scale))
+            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 显示训练模式信息
             mode_display = {
@@ -1455,7 +1682,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             }.get(training_mode, training_mode)
 
             self.gui.vis_fig.suptitle(f'AutoEncoder对比分析 - 模型{model_id_str} @ {freq_str}\n({mode_display})',
-                                 fontsize=12, fontweight='bold')
+                                 fontsize=int(24*fontsize_scale), fontweight='bold')
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
 
@@ -1467,6 +1694,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
     def _plot_wavelet_coefficients_comparison(self):
         """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH）"""
         import numpy as np
+
+        # 获取字号缩放因子
+        try:
+            fontsize_scale = self.gui.fontsize_scale_var.get()
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
 
         # 检查是否是Wavelet或Differentiable Wavelet模式
         mode = self.gui.ae_system.get('mode', 'wavelet')
@@ -1530,19 +1764,27 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 ax1 = self.gui.vis_fig.add_subplot(4, 3, ch_idx*3 + 1)
                 vmin, vmax = orig_ch.min(), orig_ch.max()
                 im1 = ax1.imshow(orig_ch, cmap='viridis', aspect='equal')
-                ax1.set_title(f'{channel_names[ch_idx]}\n原始系数', fontsize=9)
-                ax1.set_ylabel(f'通道{ch_idx+1}', fontsize=8)
+                ax1.set_title(f'{channel_names[ch_idx]}\n原始系数',
+                              fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax1.set_ylabel(f'通道{ch_idx+1}', fontsize=int(20*fontsize_scale), fontweight='bold')
                 if ch_idx == 3:
-                    ax1.set_xlabel('像素', fontsize=8)
-                plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+                    ax1.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
+                cbar1 = plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+                cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
+                cbar1.set_label('系数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
                 # 第二列: 重建系数 (使用相同的colorbar范围)
                 ax2 = self.gui.vis_fig.add_subplot(4, 3, ch_idx*3 + 2)
                 im2 = ax2.imshow(recon_ch, cmap='viridis', aspect='equal', vmin=vmin, vmax=vmax)
-                ax2.set_title(f'重建系数\nMSE={mse:.4e}', fontsize=9)
+                ax2.set_title(f'重建系数\nMSE={mse:.4e}',
+                              fontsize=int(20*fontsize_scale), fontweight='bold')
                 if ch_idx == 3:
-                    ax2.set_xlabel('像素', fontsize=8)
-                plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
+                    ax2.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
+                cbar2 = plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
+                cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
+                cbar2.set_label('系数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
                 # 第三列: 残差
                 ax3 = self.gui.vis_fig.add_subplot(4, 3, ch_idx*3 + 3)
@@ -1554,10 +1796,14 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 im3 = ax3.imshow(residual_ch, cmap='RdBu_r', aspect='equal',
                                vmin=-residual_abs_max, vmax=residual_abs_max)
                 mae = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
-                ax3.set_title(f'残差\nMAE={mae:.4e}', fontsize=9)
+                ax3.set_title(f'残差\nMAE={mae:.4e}',
+                              fontsize=int(20*fontsize_scale), fontweight='bold')
                 if ch_idx == 3:
-                    ax3.set_xlabel('像素', fontsize=8)
-                plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
+                    ax3.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
+                cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
+                cbar3.ax.tick_params(labelsize=int(16*fontsize_scale))
+                cbar3.set_label('残差值', fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 显示训练模式信息
             mode_display = {
@@ -1566,7 +1812,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             }.get(training_mode, training_mode)
 
             self.gui.vis_fig.suptitle(f'小波系数对比分析 - 模型{model_id_str} @ {freq_str}\n({mode_display})',
-                                 fontsize=12, fontweight='bold')
+                                 fontsize=int(24*fontsize_scale), fontweight='bold')
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
 

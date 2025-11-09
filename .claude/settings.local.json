@@ -14,7 +14,8 @@
       "mcp__context7__get-library-docs",
       "Bash(git rm:*)",
       "Bash(git push:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

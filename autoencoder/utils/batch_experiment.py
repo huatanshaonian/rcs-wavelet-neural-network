@@ -252,6 +252,7 @@ class BatchExperimentManager:
 
                 # 保存模型
                 if save_models and ae_system:
+                    print(f"[DEBUG] 准备保存模型...")
                     model_filename = f"{experiment_id}_model.pth"
                     model_path = os.path.join(self.models_dir, model_filename)
                     self._save_model(ae_system, model_path, config)
@@ -260,6 +261,7 @@ class BatchExperimentManager:
 
                 # 评估模型（如果提供了评估函数）
                 if evaluator_func and ae_system:
+                    print(f"[DEBUG] 准备评估模型...")
                     print(f"  正在评估模型...")
                     try:
                         # 划分训练集和测试集（80/20）
@@ -375,6 +377,10 @@ class BatchExperimentManager:
         """保存模型和配置"""
         import torch
 
+        print(f"[DEBUG] 开始保存模型到: {model_path}")
+        print(f"[DEBUG] config内容: {config}")
+        print(f"[DEBUG] config类型: {[(k, type(v).__name__) for k, v in config.items()]}")
+
         # 保存模型权重
         save_dict = {
             'autoencoder_state_dict': ae_system['autoencoder'].state_dict(),
@@ -382,11 +388,16 @@ class BatchExperimentManager:
             'config': config
         }
 
+        print(f"[DEBUG] 基础save_dict已创建")
+
         # 保存data_adapter统计信息
         if 'data_adapter' in ae_system and ae_system['data_adapter'] is not None:
+            print(f"[DEBUG] 发现data_adapter")
             adapter = ae_system['data_adapter']
+
             # RCS_DataAdapter的统计信息保存在data_stats字典中
             if hasattr(adapter, 'data_stats') and adapter.data_stats:
+                print(f"[DEBUG] data_stats存在: {list(adapter.data_stats.keys())}")
                 # 需要将numpy数组转换为列表以便JSON序列化
                 data_stats_serializable = {}
                 for key, value in adapter.data_stats.items():
@@ -400,8 +411,13 @@ class BatchExperimentManager:
                     'db_transform': adapter.db_transform,
                     'mode': adapter.mode
                 }
+                print(f"[DEBUG] data_adapter信息已添加到save_dict")
+            else:
+                print(f"[DEBUG] data_stats为空或不存在")
 
+        print(f"[DEBUG] 准备调用torch.save")
         torch.save(save_dict, model_path)
+        print(f"[DEBUG] torch.save完成")
 
         # 保存配置JSON
         config_path = model_path.replace('.pth', '_config.json')
