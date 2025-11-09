@@ -763,9 +763,9 @@ class BatchExperimentExtension:
                 # Wavelet: 逆标准化 → 逆小波变换 → RCS
                 if data_adapter:
                     print(f"[DEBUG _evaluate_model] Wavelet模式，调用inverse_adapt")
-                    predicted_output_np = predicted_output.cpu().numpy()
-                    predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
-                    predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                    # inverse_adapt期望torch.Tensor输入，内部会转numpy
+                    predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                    predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
                 else:
                     predicted_coeffs = predicted_output
 
@@ -774,9 +774,9 @@ class BatchExperimentExtension:
                 # Direct: 逆标准化 → RCS
                 if data_adapter:
                     print(f"[DEBUG _evaluate_model] Direct模式，调用inverse_adapt")
-                    predicted_output_np = predicted_output.cpu().numpy()
-                    predicted_rcs = data_adapter.inverse_adapt(predicted_output_np)
-                    predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+                    # inverse_adapt期望torch.Tensor输入，内部会转numpy
+                    predicted_rcs_np = data_adapter.inverse_adapt(predicted_output)
+                    predicted_rcs = torch.FloatTensor(predicted_rcs_np).to(device)
                 else:
                     predicted_rcs = predicted_output
 
@@ -839,17 +839,17 @@ class BatchExperimentExtension:
                 # 逆变换到RCS空间
                 if mode == 'wavelet':
                     if data_adapter:
-                        predicted_output_np = predicted_output.cpu().numpy()
-                        predicted_coeffs = data_adapter.inverse_adapt(predicted_output_np)
-                        predicted_coeffs = torch.FloatTensor(predicted_coeffs).to(device)
+                        # inverse_adapt期望torch.Tensor输入，内部会转numpy
+                        predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                        predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
                     else:
                         predicted_coeffs = predicted_output
                     predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
                 else:
                     if data_adapter:
-                        predicted_output_np = predicted_output.cpu().numpy()
-                        predicted_rcs = data_adapter.inverse_adapt(predicted_output_np)
-                        predicted_rcs = torch.FloatTensor(predicted_rcs).to(device)
+                        # inverse_adapt期望torch.Tensor输入，内部会转numpy
+                        predicted_rcs_np = data_adapter.inverse_adapt(predicted_output)
+                        predicted_rcs = torch.FloatTensor(predicted_rcs_np).to(device)
                     else:
                         predicted_rcs = predicted_output
 

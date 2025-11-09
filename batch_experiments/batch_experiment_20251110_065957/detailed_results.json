@@ -1,0 +1,61 @@
+{
+  "experiment_name": "batch_experiment",
+  "experiment_dir": "batch_experiments\\batch_experiment_20251110_065957",
+  "total_experiments": 2,
+  "successful_experiments": 2,
+  "failed_experiments": 0,
+  "results": [
+    {
+      "experiment_id": "db8",
+      "config": {
+        "mode": "wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db8",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "db8"
+      },
+      "training_time": 7.660423517227173,
+      "final_metrics": {},
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_065957\\models\\db8_model.pth"
+    },
+    {
+      "experiment_id": "bior2.2",
+      "config": {
+        "mode": "wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "bior2.2",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "bior2.2"
+      },
+      "training_time": 7.382742404937744,
+      "final_metrics": {},
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_065957\\models\\bior2.2_model.pth"
+    }
+  ]
+}
