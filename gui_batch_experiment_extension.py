@@ -665,14 +665,28 @@ class BatchExperimentExtension:
             if 'training_mode' in training_config:
                 full_training_config['training_mode'] = training_config['training_mode']
 
-            # 调用主GUI的三阶段训练函数（只传3个参数）
-            training_history = self.main_gui._run_three_stage_training_v2(
-                rcs_data=rcs_data,
-                param_data=param_data,
-                training_config=full_training_config
-            )
+            # 启用批量实验模式（禁用弹窗）
+            from gui_managers.managers.training_manager import TrainingManager
+            if hasattr(self.main_gui, 'training_manager') and isinstance(self.main_gui.training_manager, TrainingManager):
+                original_batch_mode = self.main_gui.training_manager.batch_experiment_mode
+                self.main_gui.training_manager.batch_experiment_mode = True
+            else:
+                original_batch_mode = False
 
-            return training_history
+            try:
+                # 调用主GUI的三阶段训练函数（只传3个参数）
+                training_history = self.main_gui._run_three_stage_training_v2(
+                    rcs_data=rcs_data,
+                    param_data=param_data,
+                    training_config=full_training_config
+                )
+
+                return training_history
+
+            finally:
+                # 恢复批量实验模式标志
+                if hasattr(self.main_gui, 'training_manager') and isinstance(self.main_gui.training_manager, TrainingManager):
+                    self.main_gui.training_manager.batch_experiment_mode = original_batch_mode
 
         finally:
             # 恢复原始ae_system

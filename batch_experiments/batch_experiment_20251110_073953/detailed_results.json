@@ -1,9 +1,9 @@
 {
-  "experiment_name": "batch_experiment_test",
-  "experiment_dir": "batch_experiments\\batch_experiment_test_20251107_163535",
+  "experiment_name": "batch_experiment",
+  "experiment_dir": "batch_experiments\\batch_experiment_20251110_073953",
   "total_experiments": 2,
-  "successful_experiments": 0,
-  "failed_experiments": 2,
+  "successful_experiments": 2,
+  "failed_experiments": 0,
   "results": [
     {
       "experiment_id": "direct",
@@ -25,11 +25,11 @@
         },
         "experiment_id": "direct"
       },
-      "training_time": 0.0002772808074951172,
+      "training_time": 23.93746852874756,
       "final_metrics": {},
-      "status": "failed",
-      "error_message": "create_autoencoder_system() got an unexpected keyword argument 'wavelet_type'",
-      "model_path": ""
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_073953\\models\\direct_model.pth"
     },
     {
       "experiment_id": "differentiable_wavelet",
@@ -51,11 +51,11 @@
         },
         "experiment_id": "differentiable_wavelet"
       },
-      "training_time": 1.2636184692382812e-05,
+      "training_time": 25.242579221725464,
       "final_metrics": {},
-      "status": "failed",
-      "error_message": "create_autoencoder_system() got an unexpected keyword argument 'wavelet_type'",
-      "model_path": ""
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_073953\\models\\differentiable_wavelet_model.pth"
     }
   ]
 }

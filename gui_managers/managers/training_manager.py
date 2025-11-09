@@ -32,6 +32,8 @@ class TrainingManager:
             parent_gui: 父GUI窗口实例，用于访问GUI状态和数据
         """
         self.gui = parent_gui
+        self.batch_experiment_mode = False  # 批量实验模式标志
+        self.training_log_buffer = []  # 训练日志缓冲区
 
     def _train_model(self):
         """训练模型（在后台线程中运行）"""
@@ -1386,7 +1388,10 @@ class TrainingManager:
                 self._print_channel_attention_weights(rcs_data)
 
                 self.gui.ae_log("💡 提示: 该模型只能进行RCS重建评估，不能从参数预测RCS")
-                messagebox.showinfo("成功", "AutoEncoder重建训练完成！\n\n该模型专注于重建性能，适合调参和模型对比研究。")
+
+                # 批量实验模式下不弹窗
+                if not self.batch_experiment_mode:
+                    messagebox.showinfo("成功", "AutoEncoder重建训练完成！\n\n该模型专注于重建性能，适合调参和模型对比研究。")
             else:
                 # 完整三阶段模式
                 self.gui.ae_log("🚀 开始三阶段训练流程 (v2统一配置):")
@@ -1417,12 +1422,18 @@ class TrainingManager:
                 # 打印通道注意力权重（如果启用）
                 self._print_channel_attention_weights(rcs_data)
 
-                messagebox.showinfo("成功", "三阶段训练完成!")
+                # 批量实验模式下不弹窗
+                if not self.batch_experiment_mode:
+                    messagebox.showinfo("成功", "三阶段训练完成!")
 
         except Exception as e:
             error_msg = f"训练失败: {e}"
             self.gui.ae_log(f"❌ {error_msg}")
-            messagebox.showerror("错误", error_msg)
+
+            # 批量实验模式下不弹窗，只抛出异常让批量实验处理
+            if not self.batch_experiment_mode:
+                messagebox.showerror("错误", error_msg)
+            raise
 
     def _run_end_to_end_training_v2(self, rcs_data, param_data, training_config):
         """执行端到端训练 v2 (使用统一配置管理器)"""
@@ -1435,12 +1446,19 @@ class TrainingManager:
             self.gui._train_full_end_to_end_v2(rcs_data, param_data, training_config, total_epochs)
 
             self.gui.ae_log("🎉 端到端训练完成!")
-            messagebox.showinfo("成功", "端到端训练完成!")
+
+            # 批量实验模式下不弹窗
+            if not self.batch_experiment_mode:
+                messagebox.showinfo("成功", "端到端训练完成!")
 
         except Exception as e:
             error_msg = f"端到端训练失败: {e}"
             self.gui.ae_log(f"❌ {error_msg}")
-            messagebox.showerror("错误", error_msg)
+
+            # 批量实验模式下不弹窗，只抛出异常让批量实验处理
+            if not self.batch_experiment_mode:
+                messagebox.showerror("错误", error_msg)
+            raise
 
     def _train_autoencoder_stage1_v2(self, rcs_data, training_config):
         """阶段1: AutoEncoder预训练 v2 (使用统一配置)"""

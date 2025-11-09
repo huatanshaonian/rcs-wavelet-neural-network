@@ -1,6 +1,6 @@
 {
   "experiment_name": "batch_experiment",
-  "created_time": "2025-11-10T06:59:57.052952",
+  "created_time": "2025-11-10T07:39:53.674688",
   "base_config": {
     "mode": "wavelet",
     "architecture": "cnn",
@@ -19,18 +19,18 @@
     }
   },
   "compare_dimensions": {
-    "wavelet_type": [
-      "db8",
-      "bior2.2"
+    "mode": [
+      "direct",
+      "differentiable_wavelet"
     ]
   },
   "total_experiments": 2,
   "experiment_configs": [
     {
-      "mode": "wavelet",
+      "mode": "direct",
       "architecture": "cnn",
       "activation": "relu",
-      "wavelet_type": "db8",
+      "wavelet_type": "db4",
       "normalization_method": "zscore",
       "db_transform": false,
       "latent_dim": 32,
@@ -42,13 +42,13 @@
         "stage2": 50,
         "stage3": 20
       },
-      "experiment_id": "db8"
+      "experiment_id": "direct"
     },
     {
-      "mode": "wavelet",
+      "mode": "differentiable_wavelet",
       "architecture": "cnn",
       "activation": "relu",
-      "wavelet_type": "bior2.2",
+      "wavelet_type": "db4",
       "normalization_method": "zscore",
       "db_transform": false,
       "latent_dim": 32,
@@ -60,7 +60,7 @@
         "stage2": 50,
         "stage3": 20
       },
-      "experiment_id": "bior2.2"
+      "experiment_id": "differentiable_wavelet"
     }
   ]
 }

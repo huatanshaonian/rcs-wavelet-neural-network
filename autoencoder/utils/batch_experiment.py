@@ -266,6 +266,13 @@ class BatchExperimentManager:
                     result.stage3_val_loss = training_history.get('stage3_val_loss', [])
                     result.final_metrics = training_history.get('final_metrics', {})
 
+                # 保存训练日志（从控制台输出捕获）
+                # 在training_logs目录中保存
+                log_filename = f"{experiment_id}_training.log"
+                log_path = os.path.join(self.training_logs_dir, log_filename)
+                self._save_training_log(log_path, config, training_history)
+                print(f"✓ 训练日志已保存: {log_filename}")
+
                 # 保存模型
                 if save_models and ae_system:
                     print(f"[DEBUG] 准备保存模型...")
@@ -439,6 +446,76 @@ class BatchExperimentManager:
         config_path = model_path.replace('.pth', '_config.json')
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
+
+    def _save_training_log(self, log_path: str, config: Dict, training_history: Dict):
+        """保存训练日志到文件"""
+        from datetime import datetime
+
+        with open(log_path, 'w', encoding='utf-8') as f:
+            # 写入头部信息
+            f.write("="*80 + "\n")
+            f.write(f"训练日志 - {config.get('experiment_id', 'unknown')}\n")
+            f.write(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("="*80 + "\n\n")
+
+            # 写入配置信息
+            f.write("【实验配置】\n")
+            for key, value in config.items():
+                if key != 'experiment_id':
+                    f.write(f"  {key}: {value}\n")
+            f.write("\n")
+
+            # 写入训练历史
+            if training_history:
+                training_mode = training_history.get('training_mode', 'three_stage')
+                stage_histories = training_history.get('stage_histories', {})
+
+                f.write(f"【训练模式】 {training_mode}\n\n")
+
+                # Stage 1
+                if 'stage1' in stage_histories:
+                    stage1 = stage_histories['stage1']
+                    f.write("【阶段1: AutoEncoder预训练】\n")
+                    f.write(f"  最佳验证损失: {stage1.get('best_val_loss', 'N/A')}\n")
+                    f.write(f"  训练轮数: {len(stage1.get('train_loss', []))}\n")
+                    if 'train_loss' in stage1 and stage1['train_loss']:
+                        f.write(f"  最终训练损失: {stage1['train_loss'][-1]:.6f}\n")
+                        f.write(f"  最终验证损失: {stage1.get('val_loss', [])[-1]:.6f}\n")
+                    f.write("\n")
+
+                # Stage 2
+                if 'stage2' in stage_histories:
+                    stage2 = stage_histories['stage2']
+                    f.write("【阶段2: 参数映射训练】\n")
+                    f.write(f"  最佳验证损失: {stage2.get('best_val_loss', 'N/A')}\n")
+                    f.write(f"  训练轮数: {len(stage2.get('train_loss', []))}\n")
+                    if 'train_loss' in stage2 and stage2['train_loss']:
+                        f.write(f"  最终训练损失: {stage2['train_loss'][-1]:.6f}\n")
+                        f.write(f"  最终验证损失: {stage2.get('val_loss', [])[-1]:.6f}\n")
+                    f.write("\n")
+
+                # Stage 3
+                if 'stage3' in stage_histories:
+                    stage3 = stage_histories['stage3']
+                    f.write("【阶段3: 端到端微调】\n")
+                    f.write(f"  最佳验证损失: {stage3.get('best_val_loss', 'N/A')}\n")
+                    f.write(f"  训练轮数: {len(stage3.get('train_loss', []))}\n")
+                    if 'train_loss' in stage3 and stage3['train_loss']:
+                        f.write(f"  最终训练损失: {stage3['train_loss'][-1]:.6f}\n")
+                        f.write(f"  最终验证损失: {stage3.get('val_loss', [])[-1]:.6f}\n")
+                    f.write("\n")
+
+                # 最终指标
+                final_metrics = training_history.get('final_metrics', {})
+                if final_metrics:
+                    f.write("【最终训练指标】\n")
+                    for key, value in final_metrics.items():
+                        f.write(f"  {key}: {value}\n")
+                    f.write("\n")
+
+            f.write("="*80 + "\n")
+            f.write("训练日志结束\n")
+            f.write("="*80 + "\n")
 
     def _save_results_summary(self):
         """保存结果汇总表（CSV格式）"""
