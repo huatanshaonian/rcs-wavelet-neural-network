@@ -269,7 +269,7 @@ class BatchExperimentManager:
                 # 保存训练日志（从控制台输出捕获）
                 # 在training_logs目录中保存
                 log_filename = f"{experiment_id}_training.log"
-                log_path = os.path.join(self.training_logs_dir, log_filename)
+                log_path = os.path.join(self.logs_dir, log_filename)
                 self._save_training_log(log_path, config, training_history)
                 print(f"✓ 训练日志已保存: {log_filename}")
 

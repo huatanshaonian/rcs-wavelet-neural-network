@@ -1,0 +1,61 @@
+{
+  "experiment_name": "batch_experiment",
+  "experiment_dir": "batch_experiments\\batch_experiment_20251110_075658",
+  "total_experiments": 2,
+  "successful_experiments": 0,
+  "failed_experiments": 2,
+  "results": [
+    {
+      "experiment_id": "db4",
+      "config": {
+        "mode": "wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "db4"
+      },
+      "training_time": 10.523439168930054,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'BatchExperimentManager' object has no attribute 'training_logs_dir'",
+      "model_path": ""
+    },
+    {
+      "experiment_id": "haar",
+      "config": {
+        "mode": "wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "haar",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "haar"
+      },
+      "training_time": 7.332606077194214,
+      "final_metrics": {},
+      "status": "failed",
+      "error_message": "'BatchExperimentManager' object has no attribute 'training_logs_dir'",
+      "model_path": ""
+    }
+  ]
+}
