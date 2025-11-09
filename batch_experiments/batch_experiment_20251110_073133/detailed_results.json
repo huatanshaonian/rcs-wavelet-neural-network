@@ -1,0 +1,61 @@
+{
+  "experiment_name": "batch_experiment",
+  "experiment_dir": "batch_experiments\\batch_experiment_20251110_073133",
+  "total_experiments": 2,
+  "successful_experiments": 2,
+  "failed_experiments": 0,
+  "results": [
+    {
+      "experiment_id": "relu",
+      "config": {
+        "mode": "wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "relu"
+      },
+      "training_time": 83.2878828048706,
+      "final_metrics": {},
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_073133\\models\\relu_model.pth"
+    },
+    {
+      "experiment_id": "sin",
+      "config": {
+        "mode": "wavelet",
+        "architecture": "cnn",
+        "activation": "sin",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "sin"
+      },
+      "training_time": 11.827428102493286,
+      "final_metrics": {},
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_073133\\models\\sin_model.pth"
+    }
+  ]
+}

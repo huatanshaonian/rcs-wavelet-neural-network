@@ -869,6 +869,10 @@ class BatchExperimentExtension:
 
     def _plot_rcs_heatmap_comparison(self, true_rcs, pred_rcs, save_dir, filename):
         """绘制RCS热图对比（真实vs预测）"""
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import os
+
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
 
         freq_labels = ['1.5 GHz', '3.0 GHz']
@@ -905,6 +909,10 @@ class BatchExperimentExtension:
 
     def _plot_residual(self, true_rcs, pred_rcs, save_dir, filename):
         """绘制残差分布图"""
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import os
+
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
         freq_labels = ['1.5 GHz', '3.0 GHz']
