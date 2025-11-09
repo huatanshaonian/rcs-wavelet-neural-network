@@ -626,26 +626,29 @@ class BatchExperimentExtension:
         original_ae_system = self.main_gui.ae_system
 
         try:
-            # ⚠️ Bug修复2: data_adapter需要fit数据来计算统计信息
+            # ⚠️ Bug修复2: data_adapter通过adapt_rcs_data自动计算统计信息
+            # RCS_DataAdapter没有fit方法，而是在adapt_rcs_data时自动计算mean/std
+            # 这里需要先调用一次adapt_rcs_data来初始化统计信息
             data_adapter = ae_system.get('data_adapter', None)
             if data_adapter is not None:
                 mode = ae_system.get('mode', 'direct')
 
-                # 根据模式决定fit的数据
+                # 根据模式决定预处理的数据
                 if mode == 'wavelet':
-                    # Wavelet模式: 先小波变换，再fit小波系数
+                    # Wavelet模式: 先小波变换，再调用adapt_rcs_data计算统计
                     import torch
                     wavelet_transform = ae_system.get('wavelet_transform', None)
                     if wavelet_transform:
                         rcs_tensor = torch.FloatTensor(rcs_data)
                         wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
-                        data_adapter.fit(wavelet_coeffs.numpy())
+                        # 调用adapt_rcs_data会自动计算并保存统计信息到data_stats
+                        _ = data_adapter.adapt_rcs_data(wavelet_coeffs.numpy())
                     else:
-                        # 如果没有wavelet_transform，直接fit RCS
-                        data_adapter.fit(rcs_data)
+                        # 如果没有wavelet_transform，直接处理RCS
+                        _ = data_adapter.adapt_rcs_data(rcs_data)
                 else:
-                    # Direct模式: 直接fit RCS数据
-                    data_adapter.fit(rcs_data)
+                    # Direct模式: 直接处理RCS数据，自动计算统计
+                    _ = data_adapter.adapt_rcs_data(rcs_data)
 
             # 设置当前实验的ae_system
             self.main_gui.ae_system = ae_system
