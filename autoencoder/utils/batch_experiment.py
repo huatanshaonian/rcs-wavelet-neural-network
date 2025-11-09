@@ -385,12 +385,21 @@ class BatchExperimentManager:
         # 保存data_adapter统计信息
         if 'data_adapter' in ae_system and ae_system['data_adapter'] is not None:
             adapter = ae_system['data_adapter']
-            save_dict['data_adapter_stats'] = {
-                'mean': adapter.mean.tolist() if hasattr(adapter.mean, 'tolist') else adapter.mean,
-                'std': adapter.std.tolist() if hasattr(adapter.std, 'tolist') else adapter.std,
-                'normalization_method': adapter.normalization_method,
-                'log_transform': adapter.log_transform
-            }
+            # RCS_DataAdapter的统计信息保存在data_stats字典中
+            if hasattr(adapter, 'data_stats') and adapter.data_stats:
+                # 需要将numpy数组转换为列表以便JSON序列化
+                data_stats_serializable = {}
+                for key, value in adapter.data_stats.items():
+                    if hasattr(value, 'tolist'):
+                        data_stats_serializable[key] = value.tolist()
+                    else:
+                        data_stats_serializable[key] = value
+                save_dict['data_adapter_stats'] = data_stats_serializable
+                save_dict['data_adapter_config'] = {
+                    'normalization_method': adapter.normalization_method,
+                    'db_transform': adapter.db_transform,
+                    'mode': adapter.mode
+                }
 
         torch.save(save_dict, model_path)
 
