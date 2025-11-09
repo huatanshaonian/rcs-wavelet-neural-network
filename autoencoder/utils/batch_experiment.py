@@ -157,8 +157,24 @@ class BatchExperimentManager:
             id_parts = []
             for dim_name, value in zip(dimension_names, combination):
                 config[dim_name] = value
-                # 处理特殊值（如布尔型）
-                value_str = str(value).lower() if isinstance(value, bool) else str(value)
+
+                # 处理不同类型的值，生成合法的文件名
+                if isinstance(value, bool):
+                    value_str = str(value).lower()
+                elif isinstance(value, dict):
+                    # 字典类型：提取关键信息生成简洁字符串
+                    # 例如 {'normalization_method': 'zscore', 'db_transform': False} -> 'zscore_nodb'
+                    if 'normalization_method' in value and 'db_transform' in value:
+                        norm_method = value['normalization_method']
+                        db_flag = 'db' if value['db_transform'] else 'nodb'
+                        value_str = f"{norm_method}_{db_flag}"
+                    else:
+                        # 通用处理：key1-val1_key2-val2
+                        parts = [f"{k}-{v}" for k, v in value.items()]
+                        value_str = '_'.join(parts)
+                else:
+                    value_str = str(value)
+
                 id_parts.append(f"{value_str}")
 
             config['experiment_id'] = '_'.join(id_parts)
