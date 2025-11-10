@@ -2763,6 +2763,14 @@ class RCSWaveletGUI:
             # 总是输出到控制台，确保用户能看到
             print(log_message)
 
+            # 如果批量实验日志文件存在，同时写入文件
+            if hasattr(self, 'batch_experiment_log_file') and self.batch_experiment_log_file is not None:
+                try:
+                    self.batch_experiment_log_file.write(log_message + "\n")
+                    self.batch_experiment_log_file.flush()  # 立即刷新到磁盘
+                except Exception as e:
+                    print(f"写入批量实验日志失败: {e}")
+
             # 检查组件是否存在且有效
             if not hasattr(self, 'ae_log_text') or self.ae_log_text is None:
                 return

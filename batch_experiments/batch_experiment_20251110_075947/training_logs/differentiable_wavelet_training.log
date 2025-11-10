@@ -1,0 +1,21 @@
+================================================================================
+训练日志 - differentiable_wavelet
+时间: 2025-11-10 08:00:19
+================================================================================
+
+【实验配置】
+  mode: differentiable_wavelet
+  architecture: cnn
+  activation: relu
+  wavelet_type: db4
+  normalization_method: zscore
+  db_transform: False
+  latent_dim: 32
+  batch_size: 16
+  learning_rate: 0.001
+  training_mode: three_stage
+  epochs: {'stage1': 100, 'stage2': 50, 'stage3': 20}
+
+================================================================================
+训练日志结束
+================================================================================

@@ -1,0 +1,61 @@
+{
+  "experiment_name": "batch_experiment",
+  "experiment_dir": "batch_experiments\\batch_experiment_20251110_075947",
+  "total_experiments": 2,
+  "successful_experiments": 2,
+  "failed_experiments": 0,
+  "results": [
+    {
+      "experiment_id": "direct",
+      "config": {
+        "mode": "direct",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "direct"
+      },
+      "training_time": 20.897828817367554,
+      "final_metrics": {},
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_075947\\models\\direct_model.pth"
+    },
+    {
+      "experiment_id": "differentiable_wavelet",
+      "config": {
+        "mode": "differentiable_wavelet",
+        "architecture": "cnn",
+        "activation": "relu",
+        "wavelet_type": "db4",
+        "normalization_method": "zscore",
+        "db_transform": false,
+        "latent_dim": 32,
+        "batch_size": 16,
+        "learning_rate": 0.001,
+        "training_mode": "three_stage",
+        "epochs": {
+          "stage1": 100,
+          "stage2": 50,
+          "stage3": 20
+        },
+        "experiment_id": "differentiable_wavelet"
+      },
+      "training_time": 20.981784105300903,
+      "final_metrics": {},
+      "status": "completed",
+      "error_message": "",
+      "model_path": "batch_experiments\\batch_experiment_20251110_075947\\models\\differentiable_wavelet_model.pth"
+    }
+  ]
+}

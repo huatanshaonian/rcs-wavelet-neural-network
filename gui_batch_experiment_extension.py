@@ -563,6 +563,21 @@ class BatchExperimentExtension:
                 save_dir="batch_experiments"
             )
 
+            # 打开批量实验日志文件
+            import os
+            from datetime import datetime
+            log_filename = f"batch_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            log_path = os.path.join(self.batch_manager.experiment_dir, log_filename)
+            self.main_gui.batch_experiment_log_file = open(log_path, 'w', encoding='utf-8')
+
+            # 写入日志头部
+            self.main_gui.batch_experiment_log_file.write("="*80 + "\n")
+            self.main_gui.batch_experiment_log_file.write(f"批量实验训练日志\n")
+            self.main_gui.batch_experiment_log_file.write(f"实验名称: {self.batch_experiment_name.get()}\n")
+            self.main_gui.batch_experiment_log_file.write(f"开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.main_gui.batch_experiment_log_file.write("="*80 + "\n\n")
+            self.main_gui.batch_experiment_log_file.flush()
+
             # 设置回调
             self.batch_manager.on_experiment_start = self._on_experiment_start
             self.batch_manager.on_experiment_complete = self._on_experiment_complete
@@ -582,15 +597,27 @@ class BatchExperimentExtension:
             self._batch_log("="*80)
             self._batch_log(f"批量实验完成！共 {len(results)} 个实验")
             self._batch_log(f"实验目录: {self.batch_manager.experiment_dir}")
+            self._batch_log(f"训练日志: {log_filename}")
             self._batch_log("="*80)
 
-            messagebox.showinfo("完成", f"批量实验完成！\n实验目录: {self.batch_manager.experiment_dir}")
+            messagebox.showinfo("完成", f"批量实验完成！\n实验目录: {self.batch_manager.experiment_dir}\n训练日志: {log_filename}")
 
         except Exception as e:
             self._batch_log(f"✗ 批量实验失败: {str(e)}")
             messagebox.showerror("错误", f"批量实验失败: {str(e)}")
 
         finally:
+            # 关闭批量实验日志文件
+            if hasattr(self.main_gui, 'batch_experiment_log_file') and self.main_gui.batch_experiment_log_file is not None:
+                try:
+                    self.main_gui.batch_experiment_log_file.write("\n" + "="*80 + "\n")
+                    self.main_gui.batch_experiment_log_file.write(f"批量实验结束时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    self.main_gui.batch_experiment_log_file.write("="*80 + "\n")
+                    self.main_gui.batch_experiment_log_file.close()
+                    self.main_gui.batch_experiment_log_file = None
+                except Exception as e:
+                    print(f"关闭日志文件失败: {e}")
+
             self.is_training = False
             self.batch_current_experiment.set("已完成")
 
