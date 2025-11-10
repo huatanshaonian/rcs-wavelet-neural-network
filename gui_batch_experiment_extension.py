@@ -817,9 +817,12 @@ class BatchExperimentExtension:
         """
         # ===== 使用统一的重建接口 =====
         from autoencoder.utils.reconstruction import reconstruct_from_params, get_device_from_model
+        import torch
 
-        # 获取设备
+        # 获取设备和模式
         device = get_device_from_model(ae_system)
+        mode = ae_system.get('mode', 'direct')
+        is_wavelet_mode = mode in ('wavelet', 'differentiable_wavelet')
 
         # 逐个样本可视化
         for idx, sample_idx in enumerate(indices):
@@ -837,6 +840,55 @@ class BatchExperimentExtension:
                 save_dir, f"{experiment_id}_sample{idx}.png",
                 experiment_id=experiment_id
             )
+
+            # 如果是Wavelet模式，额外生成小波系数对比图
+            if is_wavelet_mode:
+                try:
+                    autoencoder = ae_system['autoencoder']
+                    parameter_mapper = ae_system['parameter_mapper']
+                    wavelet_transform = ae_system.get('wavelet_transform', None)
+                    data_adapter = ae_system.get('data_adapter', None)
+
+                    if wavelet_transform is not None:
+                        autoencoder.eval()
+                        parameter_mapper.eval()
+
+                        with torch.no_grad():
+                            # 1. 计算原始小波系数
+                            rcs_tensor = torch.FloatTensor(true_rcs).unsqueeze(0).to(device)  # [1, 91, 91, num_freq]
+                            original_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)  # [1, 49, 49, num_freq*4]
+
+                            # 2. 标准化（如果有data_adapter）
+                            if data_adapter:
+                                original_wavelet_coeffs_np = original_wavelet_coeffs.cpu().numpy()[0]
+                                original_wavelet_coeffs_adapted = data_adapter.adapt_rcs_data(original_wavelet_coeffs_np)
+                                original_wavelet_coeffs = torch.FloatTensor(original_wavelet_coeffs_adapted).unsqueeze(0).to(device)
+
+                            # 3. 通过AutoEncoder重建小波系数
+                            latent = autoencoder.encode(original_wavelet_coeffs)
+                            reconstructed_wavelet_coeffs = autoencoder.decode(latent)  # [1, 49, 49, num_freq*4]
+
+                            # 4. 逆标准化（如果有data_adapter）
+                            if data_adapter:
+                                reconstructed_wavelet_coeffs_np = reconstructed_wavelet_coeffs.cpu().numpy()[0]
+                                reconstructed_wavelet_coeffs_np = data_adapter.inverse_adapt(reconstructed_wavelet_coeffs_np)
+                                original_wavelet_coeffs_np = data_adapter.inverse_adapt(original_wavelet_coeffs.cpu().numpy()[0])
+                            else:
+                                reconstructed_wavelet_coeffs_np = reconstructed_wavelet_coeffs.cpu().numpy()[0]
+                                original_wavelet_coeffs_np = original_wavelet_coeffs.cpu().numpy()[0]
+
+                            # 5. 为每个频率生成小波系数对比图
+                            self._plot_wavelet_coeffs_comparison(
+                                original_wavelet_coeffs_np,
+                                reconstructed_wavelet_coeffs_np,
+                                save_dir,
+                                f"{experiment_id}_sample{idx}_wavelet.png",
+                                experiment_id=experiment_id
+                            )
+
+                except Exception as e:
+                    print(f"  ⚠ 生成小波系数对比图失败: {str(e)}")
+
         # ===== 统一接口调用结束 =====
 
     def _plot_rcs_heatmap_comparison(self, true_rcs, pred_rcs, save_dir, filename, experiment_id="N/A"):
@@ -863,6 +915,34 @@ class BatchExperimentExtension:
                 freq_label=freq_label,
                 model_id=experiment_id,
                 figsize=(30, 10),  # 批量实验图片尺寸翻倍
+                save_path=save_path
+            )
+
+    def _plot_wavelet_coeffs_comparison(self, original_coeffs, reconstructed_coeffs,
+                                       save_dir, filename, experiment_id="N/A"):
+        """绘制小波系数对比图（原始vs重建）- 使用统一绘图接口"""
+        import os
+        from autoencoder.utils.plotting import plot_wavelet_coefficients_comparison
+
+        freq_labels = ['1.5 GHz', '3.0 GHz', '6.0 GHz']
+
+        # 推断频率数量（小波系数格式: [H, W, num_freq*4]）
+        num_freq = original_coeffs.shape[-1] // 4
+
+        # 为每个频率生成小波系数对比图
+        for freq_idx in range(num_freq):
+            freq_label = freq_labels[freq_idx] if freq_idx < len(freq_labels) else f"Freq {freq_idx}"
+
+            # 使用统一绘图函数（批量实验使用大尺寸）
+            save_path = os.path.join(save_dir, filename.replace('.png', f'_freq{freq_idx}.png'))
+            plot_wavelet_coefficients_comparison(
+                original_coeffs=original_coeffs,
+                reconstructed_coeffs=reconstructed_coeffs,
+                freq_idx=freq_idx,
+                freq_label=freq_label,
+                model_id=experiment_id,
+                figsize=(20, 25),  # 批量实验使用大尺寸
+                fontsize_scale=1.0,
                 save_path=save_path
             )
 

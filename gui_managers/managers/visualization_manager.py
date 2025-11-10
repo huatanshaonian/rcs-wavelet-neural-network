@@ -1561,7 +1561,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             traceback.print_exc()
 
     def _plot_wavelet_coefficients_comparison(self):
-        """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH）"""
+        """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH） - 使用统一绘图函数"""
         import numpy as np
 
         # 获取字号缩放因子
@@ -1608,81 +1608,34 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             freq_map = {"1.5G": 0, "3G": 1, "6G": 2}
             freq_idx = freq_map.get(freq_str, 0)
 
-            # 提取该频率的4个小波通道
-            # 小波系数格式: [H, W, num_freq*4]
-            # 对于2频率: 通道0-3是1.5GHz的LL/LH/HL/HH, 通道4-7是3GHz的LL/LH/HL/HH
-            base_idx = freq_idx * 4
+            # 频率标签映射
+            freq_label_map = {"1.5G": "1.5 GHz", "3G": "3.0 GHz", "6G": "6.0 GHz"}
+            freq_label = freq_label_map.get(freq_str, freq_str)
 
-            channel_names = ['LL (低频近似)', 'LH (水平边缘)', 'HL (垂直边缘)', 'HH (对角边缘)']
+            # 使用统一绘图函数
+            from autoencoder.utils.plotting import plot_wavelet_coefficients_comparison
 
-            # 创建4行3列的图表
-            self.gui.vis_fig.clear()
+            plot_wavelet_coefficients_comparison(
+                original_coeffs=original_coeffs,
+                reconstructed_coeffs=reconstructed_coeffs,
+                freq_idx=freq_idx,
+                freq_label=freq_label,
+                model_id=model_id_str,
+                fontsize_scale=fontsize_scale,
+                fig=self.gui.vis_fig
+            )
 
-            for ch_idx in range(4):
-                coeff_idx = base_idx + ch_idx
-
-                # 提取该通道的原始和重建系数
-                orig_ch = original_coeffs[:, :, coeff_idx]  # [49, 49]
-                recon_ch = reconstructed_coeffs[:, :, coeff_idx]  # [49, 49]
-                residual_ch = orig_ch - recon_ch
-
-                # 计算MSE
-                mse = np.mean((orig_ch - recon_ch)**2)
-
-                # 第一列: 原始系数
-                ax1 = self.gui.vis_fig.add_subplot(4, 3, ch_idx*3 + 1)
-                vmin, vmax = orig_ch.min(), orig_ch.max()
-                im1 = ax1.imshow(orig_ch, cmap='viridis', aspect='equal')
-                ax1.set_title(f'{channel_names[ch_idx]}\n原始系数',
-                              fontsize=int(20*fontsize_scale), fontweight='bold')
-                ax1.set_ylabel(f'通道{ch_idx+1}', fontsize=int(20*fontsize_scale), fontweight='bold')
-                if ch_idx == 3:
-                    ax1.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
-                cbar1 = plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
-                cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
-                cbar1.set_label('系数值', fontsize=int(20*fontsize_scale), fontweight='bold')
-                ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-                # 第二列: 重建系数 (使用相同的colorbar范围)
-                ax2 = self.gui.vis_fig.add_subplot(4, 3, ch_idx*3 + 2)
-                im2 = ax2.imshow(recon_ch, cmap='viridis', aspect='equal', vmin=vmin, vmax=vmax)
-                ax2.set_title(f'重建系数\nMSE={mse:.4e}',
-                              fontsize=int(20*fontsize_scale), fontweight='bold')
-                if ch_idx == 3:
-                    ax2.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
-                cbar2 = plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
-                cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
-                cbar2.set_label('系数值', fontsize=int(20*fontsize_scale), fontweight='bold')
-                ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-                # 第三列: 残差
-                ax3 = self.gui.vis_fig.add_subplot(4, 3, ch_idx*3 + 3)
-                residual_finite = residual_ch[np.isfinite(residual_ch)]
-                if len(residual_finite) > 0:
-                    residual_abs_max = np.percentile(np.abs(residual_finite), 95)
-                else:
-                    residual_abs_max = 1
-                im3 = ax3.imshow(residual_ch, cmap='RdBu_r', aspect='equal',
-                               vmin=-residual_abs_max, vmax=residual_abs_max)
-                mae = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
-                ax3.set_title(f'残差\nMAE={mae:.4e}',
-                              fontsize=int(20*fontsize_scale), fontweight='bold')
-                if ch_idx == 3:
-                    ax3.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
-                cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
-                cbar3.ax.tick_params(labelsize=int(16*fontsize_scale))
-                cbar3.set_label('残差值', fontsize=int(20*fontsize_scale), fontweight='bold')
-                ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-            # 显示训练模式信息
+            # 添加训练模式信息到总标题
             mode_display = {
                 'stage1_only': 'Stage 1 Only (RCS重建)',
                 'three_stage': 'Three-Stage (参数预测)'
             }.get(training_mode, training_mode)
 
-            self.gui.vis_fig.suptitle(f'小波系数对比分析 - 模型{model_id_str} @ {freq_str}\n({mode_display})',
-                                 fontsize=int(24*fontsize_scale), fontweight='bold')
-            self.gui.vis_fig.tight_layout()
+            # 更新标题以包含训练模式
+            current_title = self.gui.vis_fig._suptitle.get_text()
+            self.gui.vis_fig.suptitle(f'{current_title}\n({mode_display})',
+                                     fontsize=int(24*fontsize_scale), fontweight='bold')
+
             self.gui.vis_canvas.draw()
 
         except Exception as e:

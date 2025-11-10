@@ -9,6 +9,7 @@ AutoEncoder可视化绘图功能
 3. plot_latent_space_2d() - 绘制隐空间2D投影
 4. plot_training_curves() - 绘制训练曲线（简化版）
 5. plot_ae_training_progress() - 绘制AE三阶段训练进度（完整版，支持最佳epoch标记）
+6. plot_wavelet_coefficients_comparison() - 绘制小波系数对比（原始 vs 重建 vs 残差，4通道）
 
 设计原则：
 - 纯函数，接受数据作为参数
@@ -18,7 +19,9 @@ AutoEncoder可视化绘图功能
 
 作者：Claude Code
 日期：2025-01-10
-更新：2025-01-10 - 添加plot_ae_training_progress()统一绘制AE训练进度
+更新：
+  - 2025-01-10: 添加plot_ae_training_progress()统一绘制AE训练进度
+  - 2025-01-10: 添加plot_wavelet_coefficients_comparison()统一绘制小波系数对比
 """
 
 import numpy as np
@@ -390,6 +393,122 @@ def close_figure(fig: Figure) -> None:
         fig: matplotlib.figure.Figure对象
     """
     plt.close(fig)
+
+
+def plot_wavelet_coefficients_comparison(
+    original_coeffs: np.ndarray,
+    reconstructed_coeffs: np.ndarray,
+    freq_idx: int = 0,
+    freq_label: str = "1.5 GHz",
+    model_id: str = "Unknown",
+    figsize: Tuple[int, int] = (15, 20),
+    fontsize_scale: float = 1.0,
+    save_path: Optional[str] = None,
+    fig: Optional[Figure] = None
+) -> Figure:
+    """
+    绘制小波系数对比图（原始 vs 重建 vs 残差）
+
+    供GUI和批量实验复用，仅适用于Wavelet模式。
+
+    Args:
+        original_coeffs: 原始小波系数 [H, W, num_freq*4]
+        reconstructed_coeffs: 重建小波系数 [H, W, num_freq*4]
+        freq_idx: 频率索引 (0=1.5GHz, 1=3GHz, 2=6GHz)
+        freq_label: 频率标签（如 "1.5 GHz"）
+        model_id: 模型ID（如 "001"）
+        figsize: 图像尺寸
+        fontsize_scale: 字号缩放因子
+        save_path: 保存路径（批量实验使用）
+        fig: 复用的Figure对象（GUI使用）
+
+    Returns:
+        matplotlib.figure.Figure对象
+
+    示例:
+        # GUI使用（复用Figure）
+        >>> plot_wavelet_coefficients_comparison(orig, recon, freq_idx=0, fig=gui.vis_fig)
+
+        # 批量实验使用（保存到文件）
+        >>> plot_wavelet_coefficients_comparison(orig, recon, freq_idx=0, save_path='wavelet_comp.png')
+    """
+    if fig is None:
+        fig = plt.figure(figsize=figsize)
+    else:
+        fig.clear()
+
+    # 提取该频率的4个小波通道
+    # 小波系数格式: [H, W, num_freq*4]
+    # 对于2频率: 通道0-3是1.5GHz的LL/LH/HL/HH, 通道4-7是3GHz的LL/LH/HL/HH
+    base_idx = freq_idx * 4
+
+    channel_names = ['LL (低频近似)', 'LH (水平边缘)', 'HL (垂直边缘)', 'HH (对角边缘)']
+
+    # 创建4行3列的图表
+    for ch_idx in range(4):
+        coeff_idx = base_idx + ch_idx
+
+        # 提取该通道的原始和重建系数
+        orig_ch = original_coeffs[:, :, coeff_idx]  # [H, W]
+        recon_ch = reconstructed_coeffs[:, :, coeff_idx]  # [H, W]
+        residual_ch = orig_ch - recon_ch
+
+        # 计算MSE和MAE
+        mse = np.mean((orig_ch - recon_ch)**2)
+        residual_finite = residual_ch[np.isfinite(residual_ch)]
+        mae = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
+
+        # 第一列: 原始系数
+        ax1 = fig.add_subplot(4, 3, ch_idx*3 + 1)
+        vmin, vmax = orig_ch.min(), orig_ch.max()
+        im1 = ax1.imshow(orig_ch, cmap='viridis', aspect='equal')
+        ax1.set_title(f'{channel_names[ch_idx]}\n原始系数',
+                      fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.set_ylabel(f'通道{ch_idx+1}', fontsize=int(20*fontsize_scale), fontweight='bold')
+        if ch_idx == 3:
+            ax1.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
+        cbar1 = plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+        cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
+        cbar1.set_label('系数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+        # 第二列: 重建系数 (使用相同的colorbar范围)
+        ax2 = fig.add_subplot(4, 3, ch_idx*3 + 2)
+        im2 = ax2.imshow(recon_ch, cmap='viridis', aspect='equal', vmin=vmin, vmax=vmax)
+        ax2.set_title(f'重建系数\nMSE={mse:.4e}',
+                      fontsize=int(20*fontsize_scale), fontweight='bold')
+        if ch_idx == 3:
+            ax2.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
+        cbar2 = plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
+        cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
+        cbar2.set_label('系数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+        # 第三列: 残差
+        ax3 = fig.add_subplot(4, 3, ch_idx*3 + 3)
+        if len(residual_finite) > 0:
+            residual_abs_max = np.percentile(np.abs(residual_finite), 95)
+        else:
+            residual_abs_max = 1
+        im3 = ax3.imshow(residual_ch, cmap='RdBu_r', aspect='equal',
+                       vmin=-residual_abs_max, vmax=residual_abs_max)
+        ax3.set_title(f'残差\nMAE={mae:.4e}',
+                      fontsize=int(20*fontsize_scale), fontweight='bold')
+        if ch_idx == 3:
+            ax3.set_xlabel('像素', fontsize=int(20*fontsize_scale), fontweight='bold')
+        cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
+        cbar3.ax.tick_params(labelsize=int(16*fontsize_scale))
+        cbar3.set_label('残差值', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+    fig.suptitle(f'小波系数对比分析 - 模型{model_id} @ {freq_label}',
+                 fontsize=int(24*fontsize_scale), fontweight='bold')
+    fig.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+
+    return fig
 
 
 def plot_ae_training_progress(
