@@ -763,7 +763,7 @@ class BatchExperimentExtension:
     def _evaluate_model(self, ae_system: Dict, rcs_data: np.ndarray,
                        param_data: np.ndarray, indices: List[int]) -> Dict[str, float]:
         """
-        评估模型性能
+        评估模型性能（使用统一重建和评估接口）
 
         Args:
             ae_system: AutoEncoder系统
@@ -774,68 +774,36 @@ class BatchExperimentExtension:
         Returns:
             评估指标字典 {'mse': ..., 'rmse': ..., 'mae': ...}
         """
-        import torch
+        # ===== 使用统一的重建和评估接口 =====
+        from autoencoder.utils.reconstruction import reconstruct_from_params, get_device_from_model
+        from autoencoder.utils.evaluation import compute_reconstruction_metrics
 
         # 提取评估样本
         eval_rcs = rcs_data[indices]
         eval_params = param_data[indices]
 
-        # 获取系统组件
-        autoencoder = ae_system['autoencoder']
-        parameter_mapper = ae_system['parameter_mapper']
-        data_adapter = ae_system.get('data_adapter', None)
-        wavelet_transform = ae_system.get('wavelet_transform', None)
-        mode = ae_system.get('mode', 'wavelet')
+        # 获取设备
+        device = get_device_from_model(ae_system)
 
-        device = next(autoencoder.parameters()).device
-        autoencoder.eval()
-        parameter_mapper.eval()
+        # 从参数预测RCS（使用统一重建函数）
+        predicted_rcs = reconstruct_from_params(ae_system, eval_params, device=device)
 
-        with torch.no_grad():
-            # 预测
-            params_tensor = torch.FloatTensor(eval_params).to(device)
-            predicted_latents = parameter_mapper(params_tensor)
-            predicted_output = autoencoder.decode(predicted_latents)
+        # 计算评估指标（使用统一评估函数）
+        metrics = compute_reconstruction_metrics(eval_rcs, predicted_rcs, per_frequency=False)
 
-            # 逆变换到RCS空间
-            if mode == 'wavelet':
-                # Wavelet: 逆标准化 → 逆小波变换 → RCS
-                if data_adapter:
-                    # inverse_adapt期望torch.Tensor输入，内部会转numpy
-                    predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
-                    predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
-                else:
-                    predicted_coeffs = predicted_output
-
-                predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
-            else:
-                # Direct: 逆标准化 → RCS
-                if data_adapter:
-                    # inverse_adapt期望torch.Tensor输入，内部会转numpy
-                    predicted_rcs_np = data_adapter.inverse_adapt(predicted_output)
-                    predicted_rcs = torch.FloatTensor(predicted_rcs_np).to(device)
-                else:
-                    predicted_rcs = predicted_output
-
-            # 计算指标
-            predicted_rcs_np = predicted_rcs.cpu().numpy()
-            true_rcs_np = eval_rcs
-
-            mse = np.mean((predicted_rcs_np - true_rcs_np) ** 2)
-            rmse = np.sqrt(mse)
-            mae = np.mean(np.abs(predicted_rcs_np - true_rcs_np))
-
+        # 返回兼容的指标格式（只包含基本指标）
         return {
-            'mse': float(mse),
-            'rmse': float(rmse),
-            'mae': float(mae)
+            'mse': metrics['mse'],
+            'rmse': metrics['rmse'],
+            'mae': metrics['mae']
         }
+        # ===== 统一接口调用结束 =====
 
     def _visualize_model(self, ae_system: Dict, rcs_data: np.ndarray,
                         param_data: np.ndarray, indices: List[int],
                         save_dir: str, experiment_id: str):
         """
-        生成模型可视化图表
+        生成模型可视化图表（使用统一重建接口）
 
         Args:
             ae_system: AutoEncoder系统
@@ -845,61 +813,34 @@ class BatchExperimentExtension:
             save_dir: 保存目录
             experiment_id: 实验ID（用于文件名前缀）
         """
-        import torch
-        import matplotlib.pyplot as plt
+        # ===== 使用统一的重建接口 =====
+        from autoencoder.utils.reconstruction import reconstruct_from_params, get_device_from_model
 
-        # 获取系统组件
-        autoencoder = ae_system['autoencoder']
-        parameter_mapper = ae_system['parameter_mapper']
-        data_adapter = ae_system.get('data_adapter', None)
-        wavelet_transform = ae_system.get('wavelet_transform', None)
-        mode = ae_system.get('mode', 'wavelet')
+        # 获取设备
+        device = get_device_from_model(ae_system)
 
-        device = next(autoencoder.parameters()).device
-        autoencoder.eval()
-        parameter_mapper.eval()
+        # 逐个样本可视化
+        for idx, sample_idx in enumerate(indices):
+            # 获取单个样本
+            params = param_data[sample_idx:sample_idx+1]
+            true_rcs = rcs_data[sample_idx]
 
-        with torch.no_grad():
-            for idx, sample_idx in enumerate(indices):
-                # 获取单个样本
-                params = param_data[sample_idx:sample_idx+1]
-                true_rcs = rcs_data[sample_idx]
+            # 从参数预测RCS（使用统一重建函数）
+            predicted_rcs = reconstruct_from_params(ae_system, params, device=device)
+            predicted_rcs_np = predicted_rcs[0]  # [91, 91, num_freq]
 
-                # 预测
-                params_tensor = torch.FloatTensor(params).to(device)
-                predicted_latents = parameter_mapper(params_tensor)
-                predicted_output = autoencoder.decode(predicted_latents)
+            # 生成2D热图对比
+            self._plot_rcs_heatmap_comparison(
+                true_rcs, predicted_rcs_np,
+                save_dir, f"{experiment_id}_sample{idx}_heatmap.png"
+            )
 
-                # 逆变换到RCS空间
-                if mode == 'wavelet':
-                    if data_adapter:
-                        # inverse_adapt期望torch.Tensor输入，内部会转numpy
-                        predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
-                        predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
-                    else:
-                        predicted_coeffs = predicted_output
-                    predicted_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
-                else:
-                    if data_adapter:
-                        # inverse_adapt期望torch.Tensor输入，内部会转numpy
-                        predicted_rcs_np = data_adapter.inverse_adapt(predicted_output)
-                        predicted_rcs = torch.FloatTensor(predicted_rcs_np).to(device)
-                    else:
-                        predicted_rcs = predicted_output
-
-                predicted_rcs_np = predicted_rcs.cpu().numpy()[0]  # [91, 91, 2]
-
-                # 生成2D热图对比
-                self._plot_rcs_heatmap_comparison(
-                    true_rcs, predicted_rcs_np,
-                    save_dir, f"{experiment_id}_sample{idx}_heatmap.png"
-                )
-
-                # 生成残差图
-                self._plot_residual(
-                    true_rcs, predicted_rcs_np,
-                    save_dir, f"{experiment_id}_sample{idx}_residual.png"
-                )
+            # 生成残差图
+            self._plot_residual(
+                true_rcs, predicted_rcs_np,
+                save_dir, f"{experiment_id}_sample{idx}_residual.png"
+            )
+        # ===== 统一接口调用结束 =====
 
     def _plot_rcs_heatmap_comparison(self, true_rcs, pred_rcs, save_dir, filename):
         """绘制RCS热图对比（真实vs预测）"""
