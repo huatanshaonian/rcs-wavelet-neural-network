@@ -726,6 +726,21 @@ class TrainingManager:
                 messagebox.showwarning("警告", "请先加载数据!")
                 return
 
+            # 检查是否需要从Stage 1继续训练
+            continue_from_stage1 = self.gui.ae_system.get('continue_from_stage1', False)
+
+            if continue_from_stage1:
+                self.gui.ae_log("🔄 检测到Stage 1模型，继续训练Stage 2和Stage 3...")
+                self.gui.ae_log("  💡 AutoEncoder权重将保持不变（已训练）")
+                self.gui.ae_log("  🎯 将训练参数映射器（Stage 2）和端到端微调（Stage 3）")
+
+                # 清除标志，避免重复触发
+                self.gui.ae_system['continue_from_stage1'] = False
+
+                # 执行从Stage 2开始的训练
+                self._continue_training_from_stage1()
+                return
+
             self.gui.ae_log("🚀 开始AutoEncoder训练...")
 
             # 创建统一训练配置 (复用项目配置管理器)
@@ -1359,6 +1374,72 @@ class TrainingManager:
         except Exception as e:
             self.gui.ae_log(f"❌ 端到端训练失败: {e}")
             raise e
+
+    def _continue_training_from_stage1(self):
+        """从Stage 1模型继续训练Stage 2和Stage 3"""
+        try:
+            # 获取数据
+            if 'rcs_data' not in self.gui.ae_system or 'param_data' not in self.gui.ae_system:
+                self.gui.ae_log("❌ 数据未正确集成到AutoEncoder系统")
+                messagebox.showerror("错误", "数据未正确集成，请重新加载数据")
+                return
+
+            rcs_data = self.gui.ae_system['rcs_data']
+            param_data = self.gui.ae_system['param_data']
+
+            # 创建训练配置
+            training_config = self.gui._create_ae_training_config()
+
+            self.gui.ae_log(f"📊 训练配置:")
+            self.gui.ae_log(f"  批次大小: {training_config['batch_size']}")
+            self.gui.ae_log(f"  学习率: {training_config['learning_rate']} (min: {training_config['min_lr']})")
+            self.gui.ae_log(f"  调度策略: {training_config['lr_scheduler']}")
+            self.gui.ae_log(f"  🎯 阶段2(参数映射): {training_config['epochs']['stage2']} epochs (耐心: {training_config['patience']['stage2']})")
+            self.gui.ae_log(f"  ⚡ 阶段3(端到端): {training_config['epochs']['stage3']} epochs (耐心: {training_config['patience']['stage3']})")
+
+            # 初始化训练历史（保留已有的Stage 1历史，如果有的话）
+            if not hasattr(self.gui, 'ae_training_history') or self.gui.ae_training_history is None:
+                self.gui.ae_training_history = {
+                    'training_mode': 'three_stage',
+                    'stage_histories': {}
+                }
+            else:
+                # 更新训练模式为three_stage
+                self.gui.ae_training_history['training_mode'] = 'three_stage'
+                if 'stage_histories' not in self.gui.ae_training_history:
+                    self.gui.ae_training_history['stage_histories'] = {}
+
+            self.gui.ae_log("🚀 从Stage 1模型继续训练 (跳过Stage 1，已训练):")
+
+            # 阶段2: 参数映射训练
+            self.gui.ae_log("🎯 开始阶段2: 参数映射训练...")
+            stage2_history = self.gui._train_parameter_mapping_stage2_v2(rcs_data, param_data, training_config)
+            self.gui.ae_training_history['stage_histories']['stage2'] = stage2_history
+
+            # 阶段3: 端到端微调
+            self.gui.ae_log("⚡ 开始阶段3: 端到端微调...")
+            stage3_history = self.gui._train_end_to_end_stage3_v2(rcs_data, param_data, training_config)
+            self.gui.ae_training_history['stage_histories']['stage3'] = stage3_history
+
+            # 更新系统的training_mode标记
+            self.gui.ae_system['training_mode'] = 'three_stage'
+
+            self.gui.ae_log("🎉 从Stage 1继续训练完成！模型现在支持从参数预测RCS。")
+
+            # 打印通道注意力权重（如果启用）
+            self._print_channel_attention_weights(rcs_data)
+
+            messagebox.showinfo("成功",
+                "从Stage 1继续训练完成！\n\n"
+                "已完成Stage 2（参数映射）和Stage 3（端到端微调）训练\n"
+                "模型现在支持从参数预测RCS")
+
+        except Exception as e:
+            error_msg = f"继续训练失败: {e}"
+            self.gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+            import traceback
+            traceback.print_exc()
 
     def _run_three_stage_training_v2(self, rcs_data, param_data, training_config):
         """执行三阶段训练 v2 (使用统一配置管理器)"""
