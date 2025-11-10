@@ -251,6 +251,31 @@ python gui.py
 损失: MSE(最终重建RCS, 原始RCS)
 ```
 
+##### ⭐ 从Stage 1继续训练（v0.3.0新增）
+
+系统支持从Stage 1 Only模型继续完成三阶段训练：
+
+**适用场景**:
+- 已有Stage 1模型，想要添加参数映射功能
+- 需要在不同数据集上微调已训练的AutoEncoder
+
+**操作步骤**:
+1. 在【AutoEncoder】页面加载Stage 1 Only模型（.pth文件）
+2. 系统自动检测训练模式，弹出提示框：
+   ```
+   检测到该模型仅完成了Stage 1训练（AutoEncoder重建）
+
+   是否要继续训练Stage 2（参数映射）和Stage 3（端到端微调）？
+   ```
+3. 选择"是"：系统自动执行Stage 2和Stage 3训练
+4. 训练完成后，模型自动更新为Three Stage模式
+
+**技术细节**:
+- Stage 1的AutoEncoder权重保持不变作为初始化
+- 自动创建并训练ParameterMapper
+- 训练历史包含所有三个阶段的记录
+- `training_mode`自动从`stage1_only`更新为`three_stage`
+
 #### 4. **模型评估**
 - 查看训练损失曲线
 - 评估重建质量（MSE/RMSE/MAE）
@@ -331,7 +356,7 @@ batch_experiments/activation_comparison_20250107_143000/
 │   ├── sin_model_config.json
 │   └── ...
 │
-├── visualizations/                 # 单模型可视化
+├── visualizations/                 # 单模型可视化（每模型6张图）
 │   ├── relu/                      # 每个模型一个子目录
 │   │   ├── relu_train_sample0_heatmap.png   # 训练集样本0热图
 │   │   ├── relu_train_sample0_residual.png  # 训练集样本0残差
@@ -348,8 +373,18 @@ batch_experiments/activation_comparison_20250107_143000/
 │   └── gelu/
 │       └── ...
 │
-└── training_logs/                  # 训练日志（可选）
+└── training_logs/                  # 训练日志和进度图 ⭐新增
+    ├── relu_training_progress.png  # 每个模型的训练进度曲线
+    ├── relu_wavelet_coeffs_comparison.png  # 小波系数对比（仅Wavelet模式）
+    ├── sin_training_progress.png
+    ├── sin_wavelet_coeffs_comparison.png
+    └── batch_experiment.log        # 完整训练日志
 ```
+
+**⭐ v0.3.0 新增可视化**:
+- **训练进度图**: 每个模型自动生成三阶段训练曲线（Train/Val Loss对比）
+- **小波系数对比图**: Wavelet模式下自动生成小波系数重建对比（LL/LH/HL/HH四通道）
+- **模型ID显示**: 所有可视化图表自动标注实验序号，便于识别
 
 ##### 典型应用场景
 
@@ -568,16 +603,44 @@ batch_experiments/activation_comparison_20250107_143000/
 
 ## 📝 更新日志
 
-### 2025-01 最新更新
+### v0.3.0 (2025-01-10) 🎉
+
+**🚀 新功能**
+- ✅ **从Stage 1继续训练**: 支持加载Stage 1 Only模型，自动继续完成Stage 2和Stage 3训练
+- ✅ **批量实验训练进度图**: 批量实验为每个模型自动生成三阶段训练曲线
+- ✅ **批量实验小波系数对比图**: Wavelet模式下自动生成小波系数重建对比可视化
+- ✅ **模型ID标注**: 所有批量实验可视化图表自动标注实验序号
+
+**🔧 代码优化**
+- ✅ **统一绘图接口**: 提取`plot_ae_training_progress()`和`plot_wavelet_coefficients_comparison()`到`autoencoder/utils/plotting.py`
+- ✅ **统一评估接口**: 重构批量实验评估流程，消除~200行重复代码
+- ✅ **统一模型I/O**: 标准化模型保存/加载接口，修复键名不一致问题
+- ✅ **完善批量实验日志**: 包含批量实验管理器的所有输出到单一日志文件
+
+**📚 文档改进**
+- ✅ 更新README批量实验可视化说明
+- ✅ 添加从Stage 1继续训练使用指南
+- ✅ 更新.gitignore忽略临时实验结果
+
+**🐛 Bug修复**
+- ✅ 修复批量实验模型ID显示为"N/A"的问题
+- ✅ 修复批量实验模型保存键名不一致导致无法加载
+
+### v0.2.0 (2025-01)
 - ✅ 新增双分支架构（Dual_Branch_CNN/MLP）
 - ✅ 完善小隐空间支持（16-32维）
 - ✅ 整理文档到docs文件夹
 - ✅ 更新功能兼容性矩阵
+- ✅ 实现批量对比实验系统
 
-### 2024-10
+### v0.1.1 (2024-10)
 - ✅ 实现可微分小波模式
 - ✅ 添加通道注意力机制
+
+### v0.1.0 (2024-10)
 - ✅ 完成三阶段训练流程
+- ✅ 实现Wavelet和Direct两种模式
+- ✅ 基础GUI界面
 
 ---
 

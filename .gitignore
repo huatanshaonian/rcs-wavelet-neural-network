@@ -81,3 +81,11 @@ simple_tkinter_test.py
 web_gui.py
 simple_demo.py
 fix_tkinter.md*.backup
+
+# Batch experiment results (temporary test outputs)
+batch_experiments/
+
+# Temporary analysis and planning documents
+*_ANALYSIS.md
+*_PLAN.md
+REFACTORING_PLAN.md
