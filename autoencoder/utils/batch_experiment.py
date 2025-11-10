@@ -411,40 +411,24 @@ class BatchExperimentManager:
         return ", ".join(diff_parts)
 
     def _save_model(self, ae_system: Dict, model_path: str, config: Dict):
-        """保存模型和配置（与gui.py保持一致的格式）"""
-        import torch
+        """保存模型和配置（使用统一保存函数）"""
+        # ===== 使用统一的保存函数（autoencoder/utils/model_io.py）=====
+        from autoencoder.utils.model_io import save_ae_model_to_file
 
-        # 保存模型权重（使用和gui.py一致的键名）
-        save_dict = {
-            'autoencoder': ae_system['autoencoder'].state_dict(),  # 统一键名
-            'parameter_mapper': ae_system['parameter_mapper'].state_dict(),  # 统一键名
-            'config': config
-        }
+        # 获取训练模式
+        training_mode = config.get('training_mode', 'three_stage')
 
-        # 保存data_adapter统计信息（使用和gui.py一致的键名）
-        if 'data_adapter' in ae_system and ae_system['data_adapter'] is not None:
-            adapter = ae_system['data_adapter']
-
-            # RCS_DataAdapter的统计信息保存在data_stats字典中
-            if hasattr(adapter, 'data_stats') and adapter.data_stats:
-                # 需要将numpy数组转换为列表以便JSON序列化
-                data_stats_serializable = {}
-                for key, value in adapter.data_stats.items():
-                    if hasattr(value, 'tolist'):
-                        data_stats_serializable[key] = value.tolist()
-                    else:
-                        data_stats_serializable[key] = value
-                save_dict['adapter_stats'] = data_stats_serializable  # 统一键名为adapter_stats
-
-        # 保存训练模式（与gui.py保持一致）
-        save_dict['training_mode'] = config.get('training_mode', 'three_stage')
-
-        torch.save(save_dict, model_path)
-
-        # 保存配置JSON
-        config_path = model_path.replace('.pth', '_config.json')
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        # 调用统一保存函数
+        # 注意：批量实验不保存详细训练历史（training_history=None）
+        save_ae_model_to_file(
+            ae_system=ae_system,
+            model_path=model_path,
+            training_history=None,  # 批量实验不保存详细训练历史
+            training_mode=training_mode,
+            save_json_config=True,
+            config_override=config  # 直接传递实验配置
+        )
+        # ===== 统一保存函数调用结束 =====
 
     def _save_results_summary(self):
         """保存结果汇总表（CSV格式）"""

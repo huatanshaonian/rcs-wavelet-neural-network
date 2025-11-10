@@ -2946,97 +2946,56 @@ class RCSWaveletGUI:
             )
 
             if filename:
-                # 保存模型状态（包含完整配置信息）
-                import torch
+                # ===== 使用统一的保存函数（autoencoder/utils/model_io.py）=====
+                from autoencoder.utils.model_io import save_ae_model_to_file
 
-                # 构建完整配置（包含系统创建所需的所有参数）
-                complete_config = self.ae_system['config_info'].copy()
-                complete_config.update({
+                # 构建配置覆盖（补充GUI特有的字段）
+                config_override = {
                     'config_name': self.ae_freq_config.get(),
                     'latent_dim': int(self.ae_latent_dim.get()),
                     'dropout_rate': float(self.ae_dropout_rate.get()),
                     'wavelet': self.ae_wavelet_type.get(),
-                    'normalize': self.ae_normalize.get(),  # 从GUI读取
-                    'db_transform': self.ae_db_transform.get(),  # 从GUI读取
-                    'mode': self.ae_system.get('mode', 'wavelet'),  # 从系统字典获取
-                    'architecture': self.ae_system.get('architecture', 'cnn'),  # 从系统字典获取
-                    'activation': self.ae_activation.get() if hasattr(self, 'ae_activation') else 'relu'  # 激活函数
-                })
+                    'normalize': self.ae_normalize.get(),
+                    'db_transform': self.ae_db_transform.get(),
+                    'mode': self.ae_system.get('mode', 'wavelet'),
+                    'architecture': self.ae_system.get('architecture', 'cnn'),
+                    'activation': activation
+                }
 
-                # 保存data_adapter统计信息（用于inverse_adapt还原数据）
-                data_adapter = self.ae_system.get('data_adapter', None)
-                adapter_stats = {}
-                if data_adapter and hasattr(data_adapter, 'data_stats'):
-                    adapter_stats = data_adapter.data_stats.copy()
-                    # 将numpy数组转换为列表以便保存
-                    if 'mean' in adapter_stats:
-                        adapter_stats['mean'] = adapter_stats['mean'].tolist()
-                    if 'std' in adapter_stats:
-                        adapter_stats['std'] = adapter_stats['std'].tolist()
-
-                # 保存训练模式信息
+                # 获取训练模式
                 training_mode = 'three_stage'  # 默认
                 if self.ae_training_history and 'training_mode' in self.ae_training_history:
                     training_mode = self.ae_training_history['training_mode']
 
-                model_state = {
-                    'autoencoder': self.ae_system['autoencoder'].state_dict(),
-                    'parameter_mapper': self.ae_system['parameter_mapper'].state_dict(),
-                    'config': complete_config,
-                    'adapter_stats': adapter_stats,  # 保存统计信息
-                    'training_history': self.ae_training_history,
-                    'training_mode': training_mode  # 保存训练模式
-                }
+                # 调用统一保存函数
+                save_ae_model_to_file(
+                    ae_system=self.ae_system,
+                    model_path=filename,
+                    training_history=self.ae_training_history,
+                    training_mode=training_mode,
+                    save_json_config=True,
+                    config_override=config_override
+                )
+                # ===== 统一保存函数调用结束 =====
 
-                torch.save(model_state, filename)
                 self.ae_log(f"💾 模型保存成功: {filename}")
 
-                # 保存详细配置JSON文件
-                import json
+                # 获取配置信息用于日志
                 import os
                 config_filename = os.path.splitext(filename)[0] + "_config.json"
-
-                # 构建可读的配置信息（不包含state_dict等二进制数据）
-                readable_config = {
-                    "model_info": {
-                        "mode": complete_config['mode'],
-                        "architecture": complete_config['architecture'],
-                        "config_name": complete_config.get('config_name', 'N/A'),
-                        "latent_dim": complete_config.get('latent_dim', 'N/A'),
-                        "dropout_rate": complete_config.get('dropout_rate', 'N/A'),
-                        "activation": complete_config.get('activation', 'relu')
-                    },
-                    "frequency_config": {
-                        "num_frequencies": complete_config.get('num_frequencies', 'N/A'),
-                        "frequency_labels": complete_config.get('frequency_labels', []),
-                        "frequency_values": complete_config.get('frequency_values', [])
-                    },
-                    "data_preprocessing": {
-                        "wavelet_type": complete_config.get('wavelet', 'db4'),
-                        "normalize": complete_config.get('normalize', False),
-                        "db_transform": complete_config.get('db_transform', False),
-                        "adapter_stats": adapter_stats if adapter_stats else "Not used"
-                    },
-                    "training_info": {
-                        "training_mode": training_mode,
-                        "training_history": self.ae_training_history if self.ae_training_history else "No training history"
-                    },
-                    "save_info": {
-                        "saved_at": timestamp,
-                        "file_name": os.path.basename(filename)
-                    }
-                }
-
-                with open(config_filename, 'w', encoding='utf-8') as f:
-                    json.dump(readable_config, f, indent=2, ensure_ascii=False)
+                saved_mode = config_override['mode']
+                saved_arch = config_override['architecture']
+                saved_nfreq = self.ae_system['config_info'].get('num_frequencies', 'N/A')
+                saved_freq_labels = self.ae_system['config_info'].get('frequency_labels', [])
 
                 self.ae_log(f"📄 配置文件保存成功: {config_filename}")
-                self.ae_log(f"  保存配置: mode={complete_config['mode']}, arch={complete_config['architecture']}")
-                self.ae_log(f"  频率配置: {complete_config.get('num_frequencies', 'N/A')}频 {complete_config.get('frequency_labels', [])}")
+                self.ae_log(f"  保存配置: mode={saved_mode}, arch={saved_arch}")
+                self.ae_log(f"  频率配置: {saved_nfreq}频 {saved_freq_labels}")
+
                 messagebox.showinfo("成功",
                     f"模型已保存到: {filename}\n"
                     f"配置文件: {config_filename}\n\n"
-                    f"频率配置: {complete_config.get('num_frequencies')}频 {complete_config.get('frequency_labels', [])}")
+                    f"频率配置: {saved_nfreq}频 {saved_freq_labels}")
 
         except Exception as e:
             error_msg = f"保存模型失败: {e}"
@@ -3054,16 +3013,30 @@ class RCSWaveletGUI:
             if filename:
                 self.ae_log(f"正在加载模型: {filename}")
 
-                import torch
-                checkpoint = torch.load(filename, map_location='cpu')
+                # ===== 使用统一的加载函数（autoencoder/utils/model_io.py）=====
+                from autoencoder.utils.model_io import (
+                    load_ae_model_from_file,
+                    validate_model_config,
+                    restore_data_adapter_stats
+                )
 
-                # 从检查点提取配置信息
-                if 'config' not in checkpoint:
-                    self.ae_log("❌ 检查点缺少config信息，无法自动重建系统")
-                    messagebox.showerror("错误", "模型文件缺少配置信息，请使用旧版方式先创建系统再加载")
+                try:
+                    checkpoint, config, training_history = load_ae_model_from_file(
+                        model_path=filename,
+                        device='cpu'
+                    )
+                except (FileNotFoundError, KeyError, RuntimeError) as e:
+                    self.ae_log(f"❌ 加载模型失败: {e}")
+                    messagebox.showerror("错误", f"模型文件加载失败:\n{e}")
                     return
+                # ===== 统一加载函数调用结束 =====
 
-                config = checkpoint['config']
+                # 验证配置完整性
+                is_valid, error_msg = validate_model_config(config)
+                if not is_valid:
+                    self.ae_log(f"❌ 模型配置无效: {error_msg}")
+                    messagebox.showerror("错误", f"模型配置无效:\n{error_msg}")
+                    return
 
                 # 提取系统创建所需参数
                 freq_config = config.get('config_name', '2freq')
@@ -3142,17 +3115,14 @@ class RCSWaveletGUI:
                 self.ae_system['autoencoder'].load_state_dict(checkpoint['autoencoder'])
                 self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
 
-                # 恢复data_adapter统计信息
+                # 恢复data_adapter统计信息（使用统一函数）
                 if 'adapter_stats' in checkpoint and checkpoint['adapter_stats']:
-                    import numpy as np
-                    adapter_stats = checkpoint['adapter_stats'].copy()
-                    # 将列表转换回numpy数组
-                    if 'mean' in adapter_stats:
-                        adapter_stats['mean'] = np.array(adapter_stats['mean'])
-                    if 'std' in adapter_stats:
-                        adapter_stats['std'] = np.array(adapter_stats['std'])
-                    self.ae_system['data_adapter'].data_stats = adapter_stats
-                    self.ae_log(f"✅ 已恢复data_adapter统计信息")
+                    data_adapter = self.ae_system.get('data_adapter', None)
+                    if data_adapter:
+                        restore_data_adapter_stats(data_adapter, checkpoint['adapter_stats'])
+                        self.ae_log(f"✅ 已恢复data_adapter统计信息")
+                    else:
+                        self.ae_log(f"⚠️ 系统中没有data_adapter，跳过统计信息恢复")
                 else:
                     self.ae_log(f"⚠️ 模型文件不包含adapter统计信息（可能是旧版模型）")
 
@@ -3171,8 +3141,11 @@ class RCSWaveletGUI:
                     # 修复键名错误：应为 'param_data'，否则重建函数在three_stage模式下取数失败
                     self.ae_system['param_data'] = self.param_data
 
-                if 'training_history' in checkpoint:
-                    self.ae_training_history = checkpoint['training_history']
+                # 设置训练历史（来自load_ae_model_from_file的返回值）
+                if training_history:
+                    self.ae_training_history = training_history
+                else:
+                    self.ae_training_history = None
 
                 # 识别训练模式
                 training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
