@@ -705,12 +705,14 @@ class BatchExperimentExtension:
 
             try:
                 # 调用主GUI的三阶段训练函数（只传3个参数）
-                training_history = self.main_gui._run_three_stage_training_v2(
+                self.main_gui._run_three_stage_training_v2(
                     rcs_data=rcs_data,
                     param_data=param_data,
                     training_config=full_training_config
                 )
 
+                # 训练完成后，从主GUI获取训练历史
+                training_history = getattr(self.main_gui, 'ae_training_history', None)
                 return training_history
 
             finally:

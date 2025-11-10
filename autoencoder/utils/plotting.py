@@ -7,7 +7,8 @@ AutoEncoder可视化绘图功能
 1. plot_rcs_comparison() - 绘制RCS对比图（真实 vs 预测 vs 残差）
 2. plot_rcs_heatmap() - 绘制单个RCS热图
 3. plot_latent_space_2d() - 绘制隐空间2D投影
-4. plot_training_curves() - 绘制训练曲线
+4. plot_training_curves() - 绘制训练曲线（简化版）
+5. plot_ae_training_progress() - 绘制AE三阶段训练进度（完整版，支持最佳epoch标记）
 
 设计原则：
 - 纯函数，接受数据作为参数
@@ -17,6 +18,7 @@ AutoEncoder可视化绘图功能
 
 作者：Claude Code
 日期：2025-01-10
+更新：2025-01-10 - 添加plot_ae_training_progress()统一绘制AE训练进度
 """
 
 import numpy as np
@@ -388,3 +390,140 @@ def close_figure(fig: Figure) -> None:
         fig: matplotlib.figure.Figure对象
     """
     plt.close(fig)
+
+
+def plot_ae_training_progress(
+    ae_training_history: Dict,
+    figsize: Tuple[int, int] = (15, 10),
+    fontsize_scale: float = 1.0,
+    save_path: Optional[str] = None,
+    fig: Optional[Figure] = None,
+    use_log_scale: bool = True,
+    show_best_epoch: bool = True
+) -> Figure:
+    """
+    绘制AutoEncoder训练进度（支持三阶段训练）
+
+    供GUI和批量实验复用，统一绘制AE训练进度可视化。
+
+    Args:
+        ae_training_history: AE训练历史字典，包含:
+            {
+                'stage_histories': {
+                    'stage1': {
+                        'train_losses': List[float],
+                        'val_losses': List[float],
+                        'best_val_loss': float (可选),
+                        'best_epoch': int (可选)
+                    },
+                    'stage2': {...},
+                    'stage3': {...}
+                }
+            }
+        figsize: 图像尺寸
+        fontsize_scale: 字号缩放因子
+        save_path: 保存路径（批量实验使用）
+        fig: 复用的Figure对象（GUI使用）
+        use_log_scale: 是否使用对数坐标
+        show_best_epoch: 是否显示最佳epoch标记
+
+    Returns:
+        matplotlib.figure.Figure对象
+
+    示例:
+        # GUI使用（复用Figure）
+        >>> plot_ae_training_progress(history, fig=gui.vis_fig)
+
+        # 批量实验使用（保存到文件）
+        >>> plot_ae_training_progress(history, save_path='progress.png')
+    """
+    if fig is None:
+        fig = plt.figure(figsize=figsize)
+    else:
+        fig.clear()
+
+    # 检查数据完整性
+    if not ae_training_history or 'stage_histories' not in ae_training_history:
+        ax = fig.add_subplot(1, 1, 1)
+        ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(暂无训练历史数据)',
+               transform=ax.transAxes, ha='center', va='center',
+               fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax.set_title('AutoEncoder训练进度',
+                     fontsize=int(24*fontsize_scale), fontweight='bold')
+        ax.axis('off')
+        if save_path:
+            fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        return fig
+
+    # 获取训练历史数据
+    stage_histories = ae_training_history['stage_histories']
+    num_stages = len(stage_histories)
+
+    if num_stages == 0:
+        ax = fig.add_subplot(1, 1, 1)
+        ax.text(0.5, 0.5, 'AutoEncoder训练进度可视化\n(暂无阶段历史数据)',
+               transform=ax.transAxes, ha='center', va='center',
+               fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax.set_title('AutoEncoder训练进度',
+                     fontsize=int(24*fontsize_scale), fontweight='bold')
+        ax.axis('off')
+        if save_path:
+            fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        return fig
+
+    # 创建子图布局（两列布局）
+    rows = (num_stages + 1) // 2
+    cols = 2 if num_stages > 1 else 1
+
+    stage_colors = ['blue', 'green', 'red', 'orange']
+    stage_names = ['阶段1(AE预训练)', '阶段2(参数映射)', '阶段3(端到端)', '完整训练']
+
+    for i, (stage_name, stage_data) in enumerate(stage_histories.items()):
+        if 'train_losses' not in stage_data or 'val_losses' not in stage_data:
+            continue
+
+        # 计算子图位置
+        if num_stages == 1:
+            ax = fig.add_subplot(1, 1, 1)
+        else:
+            row = i // cols
+            col = i % cols
+            ax = fig.add_subplot(rows, cols, i + 1)
+
+        # 绘制训练和验证损失
+        epochs = range(1, len(stage_data['train_losses']) + 1)
+        color = stage_colors[i % len(stage_colors)]
+
+        ax.plot(epochs, stage_data['train_losses'], color=color, linestyle='-',
+               label='训练损失', linewidth=2)
+        ax.plot(epochs, stage_data['val_losses'], color=color, linestyle='--',
+               label='验证损失', linewidth=2)
+
+        ax.set_xlabel('训练轮数', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax.set_ylabel('损失值', fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax.set_title(f'{stage_names[i] if i < len(stage_names) else stage_name}',
+                     fontsize=int(20*fontsize_scale), fontweight='bold')
+        ax.legend(fontsize=int(14*fontsize_scale))
+        ax.grid(True, alpha=0.3)
+
+        # 使用对数坐标
+        if use_log_scale:
+            ax.set_yscale('log')
+
+        ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+        # 添加最佳损失标记
+        if show_best_epoch and 'best_val_loss' in stage_data:
+            best_epoch = stage_data.get('best_epoch', len(stage_data['val_losses']))
+            ax.axvline(x=best_epoch, color='red', linestyle=':', alpha=0.7,
+                       label=f'最佳: Epoch {best_epoch}')
+            ax.legend(fontsize=int(14*fontsize_scale))
+
+    fig.suptitle('AutoEncoder训练进度',
+                 fontsize=int(24*fontsize_scale), fontweight='bold')
+    fig.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+
+    return fig

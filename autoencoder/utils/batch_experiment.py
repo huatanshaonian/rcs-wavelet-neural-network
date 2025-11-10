@@ -45,6 +45,9 @@ class ExperimentResult:
         self.stage3_train_loss = []
         self.stage3_val_loss = []
 
+        # 完整的AE训练历史（包含stage_histories，用于绘图）
+        self.ae_training_history = None
+
         # 最终指标
         self.final_metrics = {}
 
@@ -287,6 +290,9 @@ class BatchExperimentManager:
                     result.stage3_val_loss = training_history.get('stage3_val_loss', [])
                     result.final_metrics = training_history.get('final_metrics', {})
 
+                    # 保存完整的ae_training_history（用于绘制训练进度图）
+                    result.ae_training_history = training_history
+
                 # 保存模型
                 if save_models and ae_system:
                     model_filename = f"{experiment_id}_model.pth"
@@ -357,6 +363,31 @@ class BatchExperimentManager:
 
                     except Exception as e:
                         self._log(f"  ⚠ 可视化失败: {str(e)}")
+
+                # 生成训练进度图（使用统一绘图函数）
+                if training_history and result.ae_training_history:
+                    self._log(f"  正在生成训练进度图...")
+                    try:
+                        from autoencoder.utils.plotting import plot_ae_training_progress
+
+                        # 创建训练日志目录（如果不存在）
+                        training_logs_dir = os.path.join(self.base_dir, 'training_logs')
+                        os.makedirs(training_logs_dir, exist_ok=True)
+
+                        # 保存训练进度图
+                        progress_plot_path = os.path.join(training_logs_dir, f"{experiment_id}_training_progress.png")
+                        plot_ae_training_progress(
+                            ae_training_history=result.ae_training_history,
+                            fontsize_scale=1.0,
+                            save_path=progress_plot_path,
+                            use_log_scale=True,
+                            show_best_epoch=True
+                        )
+
+                        self._log(f"  ✓ 训练进度图已保存: {experiment_id}_training_progress.png")
+
+                    except Exception as e:
+                        self._log(f"  ⚠ 训练进度图生成失败: {str(e)}")
 
                 result.complete(success=True)
                 self._log(f"✓ 实验完成，耗时: {result.training_time:.1f}秒")
