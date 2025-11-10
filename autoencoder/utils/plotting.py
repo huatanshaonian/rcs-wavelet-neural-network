@@ -22,12 +22,49 @@ AutoEncoder可视化绘图功能
 更新：
   - 2025-01-10: 添加plot_ae_training_progress()统一绘制AE训练进度
   - 2025-01-10: 添加plot_wavelet_coefficients_comparison()统一绘制小波系数对比
+  - 2025-01-11: 配置科研图片标准字体（Arial/Helvetica，国际顶刊标准）
+  - 2025-01-11: 修复Unicode减号报错（\u2212），提升图片出版质量
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from typing import Optional, Tuple, List, Dict
+
+# ============================================================================
+# 科研图片字体配置（国际顶刊标准）
+# ============================================================================
+# 推荐字体：Arial（Nature, Science, Cell等顶刊常用）
+# 备用字体：Helvetica, DejaVu Sans（开源，支持Unicode）
+#
+# 解决Unicode减号报错：
+# - 方案1: 使用支持Unicode的字体（Arial, DejaVu Sans）
+# - 方案2: 禁用Unicode减号（使用普通连字符）
+# ============================================================================
+
+# 配置matplotlib全局参数（应用于所有图片）
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans', 'Liberation Sans']
+plt.rcParams['axes.unicode_minus'] = False  # 禁用Unicode减号，避免字体不支持时出现dummy symbol
+plt.rcParams['font.size'] = 10  # 基础字号（科研图片标准）
+plt.rcParams['axes.labelsize'] = 11  # 坐标轴标签
+plt.rcParams['axes.titlesize'] = 12  # 标题
+plt.rcParams['xtick.labelsize'] = 10  # x轴刻度
+plt.rcParams['ytick.labelsize'] = 10  # y轴刻度
+plt.rcParams['legend.fontsize'] = 10  # 图例
+plt.rcParams['figure.titlesize'] = 13  # 图形标题
+
+# 高质量输出配置
+plt.rcParams['figure.dpi'] = 100  # 显示分辨率
+plt.rcParams['savefig.dpi'] = 300  # 保存分辨率（出版质量）
+plt.rcParams['savefig.bbox'] = 'tight'  # 紧凑布局
+plt.rcParams['savefig.pad_inches'] = 0.1  # 边距
+
+# 线条和网格配置
+plt.rcParams['lines.linewidth'] = 1.5
+plt.rcParams['axes.linewidth'] = 1.0
+plt.rcParams['grid.linewidth'] = 0.5
+plt.rcParams['grid.alpha'] = 0.3
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
