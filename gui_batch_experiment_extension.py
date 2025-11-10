@@ -843,51 +843,47 @@ class BatchExperimentExtension:
 
             # 如果是Wavelet模式，额外生成小波系数对比图
             if is_wavelet_mode:
-                try:
-                    autoencoder = ae_system['autoencoder']
-                    parameter_mapper = ae_system['parameter_mapper']
-                    wavelet_transform = ae_system.get('wavelet_transform', None)
-                    data_adapter = ae_system.get('data_adapter', None)
+                autoencoder = ae_system['autoencoder']
+                parameter_mapper = ae_system['parameter_mapper']
+                wavelet_transform = ae_system.get('wavelet_transform', None)
+                data_adapter = ae_system.get('data_adapter', None)
 
-                    if wavelet_transform is not None:
-                        autoencoder.eval()
-                        parameter_mapper.eval()
+                if wavelet_transform is not None:
+                    autoencoder.eval()
+                    parameter_mapper.eval()
 
-                        with torch.no_grad():
-                            # 1. 计算原始小波系数
-                            rcs_tensor = torch.FloatTensor(true_rcs).unsqueeze(0).to(device)  # [1, 91, 91, num_freq]
-                            original_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)  # [1, 49, 49, num_freq*4]
+                    with torch.no_grad():
+                        # 1. 计算原始小波系数
+                        rcs_tensor = torch.FloatTensor(true_rcs).unsqueeze(0).to(device)  # [1, 91, 91, num_freq]
+                        original_wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)  # [1, 49, 49, num_freq*4]
 
-                            # 2. 标准化（如果有data_adapter）
-                            if data_adapter:
-                                original_wavelet_coeffs_np = original_wavelet_coeffs.cpu().numpy()[0]
-                                original_wavelet_coeffs_adapted = data_adapter.adapt_rcs_data(original_wavelet_coeffs_np)
-                                original_wavelet_coeffs = torch.FloatTensor(original_wavelet_coeffs_adapted).unsqueeze(0).to(device)
+                        # 2. 标准化（如果有data_adapter）
+                        if data_adapter:
+                            original_wavelet_coeffs_np = original_wavelet_coeffs.cpu().numpy()[0]
+                            original_wavelet_coeffs_adapted = data_adapter.adapt_rcs_data(original_wavelet_coeffs_np)
+                            original_wavelet_coeffs = torch.FloatTensor(original_wavelet_coeffs_adapted).unsqueeze(0).to(device)
 
-                            # 3. 通过AutoEncoder重建小波系数
-                            latent = autoencoder.encode(original_wavelet_coeffs)
-                            reconstructed_wavelet_coeffs = autoencoder.decode(latent)  # [1, 49, 49, num_freq*4]
+                        # 3. 通过AutoEncoder重建小波系数
+                        latent = autoencoder.encode(original_wavelet_coeffs)
+                        reconstructed_wavelet_coeffs = autoencoder.decode(latent)  # [1, 49, 49, num_freq*4]
 
-                            # 4. 逆标准化（如果有data_adapter）
-                            if data_adapter:
-                                reconstructed_wavelet_coeffs_np = reconstructed_wavelet_coeffs.cpu().numpy()[0]
-                                reconstructed_wavelet_coeffs_np = data_adapter.inverse_adapt(reconstructed_wavelet_coeffs_np)
-                                original_wavelet_coeffs_np = data_adapter.inverse_adapt(original_wavelet_coeffs.cpu().numpy()[0])
-                            else:
-                                reconstructed_wavelet_coeffs_np = reconstructed_wavelet_coeffs.cpu().numpy()[0]
-                                original_wavelet_coeffs_np = original_wavelet_coeffs.cpu().numpy()[0]
+                        # 4. 逆标准化（如果有data_adapter）
+                        if data_adapter:
+                            reconstructed_wavelet_coeffs_np = reconstructed_wavelet_coeffs.cpu().numpy()[0]
+                            reconstructed_wavelet_coeffs_np = data_adapter.inverse_adapt(reconstructed_wavelet_coeffs_np)
+                            original_wavelet_coeffs_np = data_adapter.inverse_adapt(original_wavelet_coeffs.cpu().numpy()[0])
+                        else:
+                            reconstructed_wavelet_coeffs_np = reconstructed_wavelet_coeffs.cpu().numpy()[0]
+                            original_wavelet_coeffs_np = original_wavelet_coeffs.cpu().numpy()[0]
 
-                            # 5. 为每个频率生成小波系数对比图
-                            self._plot_wavelet_coeffs_comparison(
-                                original_wavelet_coeffs_np,
-                                reconstructed_wavelet_coeffs_np,
-                                save_dir,
-                                f"{experiment_id}_sample{idx}_wavelet.png",
-                                experiment_id=experiment_id
-                            )
-
-                except Exception as e:
-                    print(f"  ⚠ 生成小波系数对比图失败: {str(e)}")
+                        # 5. 为每个频率生成小波系数对比图
+                        self._plot_wavelet_coeffs_comparison(
+                            original_wavelet_coeffs_np,
+                            reconstructed_wavelet_coeffs_np,
+                            save_dir,
+                            f"{experiment_id}_sample{idx}_wavelet.png",
+                            experiment_id=experiment_id
+                        )
 
         # ===== 统一接口调用结束 =====
 

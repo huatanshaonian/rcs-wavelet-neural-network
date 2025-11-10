@@ -363,9 +363,11 @@ class BatchExperimentManager:
 
                     except Exception as e:
                         self._log(f"  ⚠ 可视化失败: {str(e)}")
+                        import traceback
+                        self._log(f"  详细错误: {traceback.format_exc()}")
 
                 # 生成训练进度图（使用统一绘图函数）
-                if training_history and result.ae_training_history:
+                if training_history and isinstance(training_history, dict) and 'stage_histories' in training_history:
                     self._log(f"  正在生成训练进度图...")
                     try:
                         from autoencoder.utils.plotting import plot_ae_training_progress
@@ -388,6 +390,17 @@ class BatchExperimentManager:
 
                     except Exception as e:
                         self._log(f"  ⚠ 训练进度图生成失败: {str(e)}")
+                        import traceback
+                        self._log(f"  详细错误: {traceback.format_exc()}")
+                else:
+                    # 添加调试信息，帮助诊断为什么没有生成训练进度图
+                    if not training_history:
+                        self._log(f"  ⚠ 跳过训练进度图: training_history为None或空")
+                    elif not isinstance(training_history, dict):
+                        self._log(f"  ⚠ 跳过训练进度图: training_history不是字典类型")
+                    elif 'stage_histories' not in training_history:
+                        self._log(f"  ⚠ 跳过训练进度图: training_history缺少'stage_histories'键")
+                        self._log(f"  当前training_history keys: {list(training_history.keys())}")
 
                 result.complete(success=True)
                 self._log(f"✓ 实验完成，耗时: {result.training_time:.1f}秒")
