@@ -1609,80 +1609,36 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             pred_2d = predicted_rcs[:, :, freq_idx]
             print(f"提取频率{freq_str} (索引{freq_idx}): {pred_2d.shape}")
 
-            # 将预测数据转换为dB
-            pred_2d_db = 10 * np.log10(pred_2d)
+            # 使用统一绘图函数
+            from autoencoder.utils.plotting import plot_rcs_comparison
 
-            # 残差计算（dB域）
-            residual_db = true_rcs_db - pred_2d_db
+            # 计算角度范围
+            phi_range = (phi_values.min(), phi_values.max())
+            theta_range = (theta_values.min(), theta_values.max())
 
-            # 创建三个子图
-            self.gui.vis_fig.clear()
+            # 调用统一绘图函数（复用GUI的figure）
+            plot_rcs_comparison(
+                true_rcs=true_rcs_linear,  # 线性值
+                pred_rcs=pred_2d,           # 线性值
+                freq_label=freq_str,
+                model_id=model_id_str,
+                phi_range=phi_range,
+                theta_range=theta_range,
+                fontsize_scale=fontsize_scale,
+                fig=self.gui.vis_fig  # 复用GUI的figure
+            )
 
-            # 设置extent用于正确显示角度范围
-            extent = [phi_values.min(), phi_values.max(),
-                     theta_values.max(), theta_values.min()]
-
-            # 子图1: 原图（真实值）
-            ax1 = self.gui.vis_fig.add_subplot(1, 3, 1)
-            im1 = ax1.imshow(true_rcs_db, cmap='jet', aspect='equal', extent=extent)
-            ax1.set_title(f'原图（真实RCS）\n模型{model_id_str} @ {freq_str}',
-                          fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.set_xlabel('φ (方位角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.set_ylabel('θ (俯仰角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            from mpl_toolkits.axes_grid1 import make_axes_locatable
-            divider1 = make_axes_locatable(ax1)
-            cax1 = divider1.append_axes("right", size="5%", pad=0.05)
-            cbar1 = self.gui.vis_fig.colorbar(im1, cax=cax1)
-            cbar1.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
-            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-            # 获取原图的colorbar范围，用于重构图
-            vmin, vmax = im1.get_clim()
-
-            # 子图2: AE重构图 - 使用原图的colorbar范围
-            ax2 = self.gui.vis_fig.add_subplot(1, 3, 2)
-            im2 = ax2.imshow(pred_2d_db, cmap='jet', aspect='equal',
-                            vmin=vmin, vmax=vmax, extent=extent)
-            mse_linear = np.mean((true_rcs_linear - pred_2d)**2)
-            ax2.set_title(f'AE重构图\nMSE={mse_linear:.4e}',
-                          fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.set_xlabel('φ (方位角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.set_ylabel('θ (俯仰角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            divider2 = make_axes_locatable(ax2)
-            cax2 = divider2.append_axes("right", size="5%", pad=0.05)
-            cbar2 = self.gui.vis_fig.colorbar(im2, cax=cax2)
-            cbar2.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
-            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-            # 子图3: 残差图
-            ax3 = self.gui.vis_fig.add_subplot(1, 3, 3)
-            # 残差图使用对称colorbar，中心为0
-            residual_finite = residual_db[np.isfinite(residual_db)]
-            residual_abs_max = np.percentile(np.abs(residual_finite), 95) if len(residual_finite) > 0 else 10
-            im3 = ax3.imshow(residual_db, cmap='RdBu_r', aspect='equal',
-                            vmin=-residual_abs_max, vmax=residual_abs_max, extent=extent)
-            mae_db = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
-            ax3.set_title(f'残差图（原图-重构）\nMAE={mae_db:.2f} dB',
-                          fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.set_xlabel('φ (方位角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.set_ylabel('θ (俯仰角, °)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            divider3 = make_axes_locatable(ax3)
-            cax3 = divider3.append_axes("right", size="5%", pad=0.05)
-            cbar3 = self.gui.vis_fig.colorbar(im3, cax=cax3)
-            cbar3.set_label('残差 (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
-            cbar3.ax.tick_params(labelsize=int(16*fontsize_scale))
-            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-            # 显示训练模式信息
+            # 添加训练模式信息到总标题
             mode_display = {
                 'stage1_only': 'Stage 1 Only (RCS重建)',
                 'three_stage': 'Three-Stage (参数预测)'
             }.get(training_mode, training_mode)
 
-            self.gui.vis_fig.suptitle(f'AutoEncoder对比分析 - 模型{model_id_str} @ {freq_str}\n({mode_display})',
-                                 fontsize=int(24*fontsize_scale), fontweight='bold')
+            self.gui.vis_fig.suptitle(
+                f'AutoEncoder对比分析 - 模型{model_id_str} @ {freq_str}\n({mode_display})',
+                fontsize=int(24*fontsize_scale),
+                fontweight='bold'
+            )
             self.gui.vis_fig.tight_layout()
             self.gui.vis_canvas.draw()
 

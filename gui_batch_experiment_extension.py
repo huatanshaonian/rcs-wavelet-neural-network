@@ -832,11 +832,12 @@ class BatchExperimentExtension:
             # 生成RCS对比图（包含真实、预测、残差）
             self._plot_rcs_heatmap_comparison(
                 true_rcs, predicted_rcs_np,
-                save_dir, f"{experiment_id}_sample{idx}.png"
+                save_dir, f"{experiment_id}_sample{idx}.png",
+                experiment_id=experiment_id
             )
         # ===== 统一接口调用结束 =====
 
-    def _plot_rcs_heatmap_comparison(self, true_rcs, pred_rcs, save_dir, filename):
+    def _plot_rcs_heatmap_comparison(self, true_rcs, pred_rcs, save_dir, filename, experiment_id="N/A"):
         """绘制RCS热图对比（真实vs预测）- 使用统一绘图接口"""
         import os
         from autoencoder.utils.plotting import plot_rcs_comparison
@@ -852,13 +853,14 @@ class BatchExperimentExtension:
             true_rcs_2d = true_rcs[:, :, freq_idx]
             pred_rcs_2d = pred_rcs[:, :, freq_idx]
 
-            # 使用统一绘图函数
+            # 使用统一绘图函数（批量实验使用2倍尺寸）
             save_path = os.path.join(save_dir, filename.replace('.png', f'_freq{freq_idx}.png'))
             plot_rcs_comparison(
                 true_rcs=true_rcs_2d,
                 pred_rcs=pred_rcs_2d,
                 freq_label=freq_label,
-                model_id="N/A",
+                model_id=experiment_id,
+                figsize=(30, 10),  # 批量实验图片尺寸翻倍
                 save_path=save_path
             )
 
