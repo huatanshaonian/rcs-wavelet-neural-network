@@ -411,17 +411,17 @@ class BatchExperimentManager:
         return ", ".join(diff_parts)
 
     def _save_model(self, ae_system: Dict, model_path: str, config: Dict):
-        """保存模型和配置"""
+        """保存模型和配置（与gui.py保持一致的格式）"""
         import torch
 
-        # 保存模型权重
+        # 保存模型权重（使用和gui.py一致的键名）
         save_dict = {
-            'autoencoder_state_dict': ae_system['autoencoder'].state_dict(),
-            'parameter_mapper_state_dict': ae_system['parameter_mapper'].state_dict(),
+            'autoencoder': ae_system['autoencoder'].state_dict(),  # 统一键名
+            'parameter_mapper': ae_system['parameter_mapper'].state_dict(),  # 统一键名
             'config': config
         }
 
-        # 保存data_adapter统计信息
+        # 保存data_adapter统计信息（使用和gui.py一致的键名）
         if 'data_adapter' in ae_system and ae_system['data_adapter'] is not None:
             adapter = ae_system['data_adapter']
 
@@ -434,12 +434,10 @@ class BatchExperimentManager:
                         data_stats_serializable[key] = value.tolist()
                     else:
                         data_stats_serializable[key] = value
-                save_dict['data_adapter_stats'] = data_stats_serializable
-                save_dict['data_adapter_config'] = {
-                    'normalization_method': adapter.normalization_method,
-                    'db_transform': adapter.db_transform,
-                    'mode': adapter.mode
-                }
+                save_dict['adapter_stats'] = data_stats_serializable  # 统一键名为adapter_stats
+
+        # 保存训练模式（与gui.py保持一致）
+        save_dict['training_mode'] = config.get('training_mode', 'three_stage')
 
         torch.save(save_dict, model_path)
 
