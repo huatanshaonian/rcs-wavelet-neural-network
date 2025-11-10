@@ -44,8 +44,9 @@ from typing import Optional, Tuple, List, Dict
 
 # 配置matplotlib全局参数（应用于所有图片）
 plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans', 'Liberation Sans']
+plt.rcParams['font.sans-serif'] = ['Arial', 'Microsoft YaHei', 'SimHei', 'Helvetica', 'DejaVu Sans', 'Liberation Sans']
 plt.rcParams['axes.unicode_minus'] = False  # 禁用Unicode减号，避免字体不支持时出现dummy symbol
+# 注：Arial用于英文（国际顶刊标准），Microsoft YaHei/SimHei用于中文（Windows），Helvetica用于macOS
 plt.rcParams['font.size'] = 10  # 基础字号（科研图片标准）
 plt.rcParams['axes.labelsize'] = 11  # 坐标轴标签
 plt.rcParams['axes.titlesize'] = 12  # 标题
