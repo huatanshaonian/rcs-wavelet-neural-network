@@ -121,11 +121,9 @@ class BatchExperimentManager:
 
         # 创建子目录
         self.models_dir = os.path.join(self.experiment_dir, "models")
-        self.logs_dir = os.path.join(self.experiment_dir, "training_logs")
         self.plots_dir = os.path.join(self.experiment_dir, "comparison_plots")
         self.visualizations_dir = os.path.join(self.experiment_dir, "visualizations")
         os.makedirs(self.models_dir, exist_ok=True)
-        os.makedirs(self.logs_dir, exist_ok=True)
         os.makedirs(self.plots_dir, exist_ok=True)
         os.makedirs(self.visualizations_dir, exist_ok=True)
 
@@ -140,6 +138,26 @@ class BatchExperimentManager:
         self.on_experiment_start = None    # 回调: (index, total, config)
         self.on_experiment_complete = None  # 回调: (index, total, result)
         self.on_batch_complete = None      # 回调: (results)
+
+        # 日志文件（可选，用于记录批量实验输出）
+        self.log_file = None
+
+    def _log(self, message: str):
+        """统一的日志输出方法，同时输出到控制台和日志文件"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_message = f"[{timestamp}] {message}"
+
+        # 输出到控制台
+        print(log_message)
+
+        # 如果日志文件存在，同时写入文件
+        if self.log_file is not None:
+            try:
+                self.log_file.write(log_message + "\n")
+                self.log_file.flush()
+            except Exception as e:
+                print(f"写入日志文件失败: {e}")
 
     def _generate_configs(self) -> List[Dict[str, Any]]:
         """生成所有实验配置"""
@@ -225,18 +243,21 @@ class BatchExperimentManager:
         total = len(self.experiment_configs)
         self.results = []
 
-        print(f"\n{'='*80}")
-        print(f"开始批量实验: {self.experiment_name}")
-        print(f"实验目录: {self.experiment_dir}")
-        print(f"实验数量: {total}")
-        print(f"{'='*80}\n")
+        self._log("")
+        self._log("="*80)
+        self._log(f"开始批量实验: {self.experiment_name}")
+        self._log(f"实验目录: {self.experiment_dir}")
+        self._log(f"实验数量: {total}")
+        self._log("="*80)
+        self._log("")
 
         for idx, config in enumerate(self.experiment_configs, 1):
             result = ExperimentResult(config)
             experiment_id = config['experiment_id']
 
-            print(f"\n[{idx}/{total}] 开始实验: {experiment_id}")
-            print(f"配置: {self._format_config_diff(config)}")
+            self._log("")
+            self._log(f"[{idx}/{total}] 开始实验: {experiment_id}")
+            self._log(f"配置: {self._format_config_diff(config)}")
 
             # 回调：实验开始
             if self.on_experiment_start:
@@ -268,17 +289,15 @@ class BatchExperimentManager:
 
                 # 保存模型
                 if save_models and ae_system:
-                    print(f"[DEBUG] 准备保存模型...")
                     model_filename = f"{experiment_id}_model.pth"
                     model_path = os.path.join(self.models_dir, model_filename)
                     self._save_model(ae_system, model_path, config)
                     result.model_path = model_path
-                    print(f"✓ 模型已保存: {model_filename}")
+                    self._log(f"  ✓ 模型已保存: {model_filename}")
 
                 # 评估模型（如果提供了评估函数）
                 if evaluator_func and ae_system:
-                    print(f"[DEBUG] 准备评估模型...")
-                    print(f"  正在评估模型...")
+                    self._log(f"  正在评估模型...")
                     try:
                         # 划分训练集和测试集（80/20）
                         n_total = len(rcs_data)
@@ -301,15 +320,15 @@ class BatchExperimentManager:
                         with open(eval_path, 'w', encoding='utf-8') as f:
                             json.dump(eval_result, f, indent=2, ensure_ascii=False)
 
-                        print(f"✓ 评估完成: Train MSE={train_eval.get('mse', 'N/A'):.6f}, "
-                              f"Test MSE={test_eval.get('mse', 'N/A'):.6f}")
+                        self._log(f"  ✓ 评估完成: Train MSE={train_eval.get('mse', 'N/A'):.6f}, "
+                                  f"Test MSE={test_eval.get('mse', 'N/A'):.6f}")
 
                     except Exception as e:
-                        print(f"  ⚠ 评估失败: {str(e)}")
+                        self._log(f"  ⚠ 评估失败: {str(e)}")
 
                 # 生成可视化（如果提供了可视化函数）
                 if visualizer_func and ae_system:
-                    print(f"  正在生成可视化图表...")
+                    self._log(f"  正在生成可视化图表...")
                     try:
                         # 创建实验的可视化目录
                         vis_dir = os.path.join(self.visualizations_dir, experiment_id)
@@ -333,25 +352,25 @@ class BatchExperimentManager:
                         visualizer_func(ae_system, rcs_data, param_data,
                                       test_sample_indices, vis_dir, f"{experiment_id}_test")
 
-                        print(f"✓ 可视化完成: {len(train_sample_indices)}个训练样本 + "
-                              f"{len(test_sample_indices)}个测试样本")
+                        self._log(f"  ✓ 可视化完成: {len(train_sample_indices)}个训练样本 + "
+                                  f"{len(test_sample_indices)}个测试样本")
 
                     except Exception as e:
-                        print(f"  ⚠ 可视化失败: {str(e)}")
+                        self._log(f"  ⚠ 可视化失败: {str(e)}")
 
                 result.complete(success=True)
-                print(f"✓ 实验完成，耗时: {result.training_time:.1f}秒")
+                self._log(f"✓ 实验完成，耗时: {result.training_time:.1f}秒")
 
                 # 显示关键指标
                 if result.final_metrics:
-                    print(f"  训练指标: {result.final_metrics}")
+                    self._log(f"  训练指标: {result.final_metrics}")
                 if hasattr(result, 'evaluation_results') and result.evaluation_results:
                     test_metrics = result.evaluation_results.get('test', {})
-                    print(f"  测试指标: {test_metrics}")
+                    self._log(f"  测试指标: {test_metrics}")
 
             except Exception as e:
                 result.complete(success=False, error=str(e))
-                print(f"✗ 实验失败: {str(e)}")
+                self._log(f"✗ 实验失败: {str(e)}")
 
             self.results.append(result)
 
@@ -362,11 +381,13 @@ class BatchExperimentManager:
             # 保存中间结果
             self._save_results_summary()
 
-        print(f"\n{'='*80}")
-        print(f"批量实验完成！")
-        print(f"成功: {sum(1 for r in self.results if r.status == 'completed')}/{total}")
-        print(f"失败: {sum(1 for r in self.results if r.status == 'failed')}/{total}")
-        print(f"{'='*80}\n")
+        self._log("")
+        self._log("="*80)
+        self._log(f"批量实验完成！")
+        self._log(f"成功: {sum(1 for r in self.results if r.status == 'completed')}/{total}")
+        self._log(f"失败: {sum(1 for r in self.results if r.status == 'failed')}/{total}")
+        self._log("="*80)
+        self._log("")
 
         # 生成对比图表
         self.generate_comparison_plots()
@@ -393,10 +414,6 @@ class BatchExperimentManager:
         """保存模型和配置"""
         import torch
 
-        print(f"[DEBUG] 开始保存模型到: {model_path}")
-        print(f"[DEBUG] config内容: {config}")
-        print(f"[DEBUG] config类型: {[(k, type(v).__name__) for k, v in config.items()]}")
-
         # 保存模型权重
         save_dict = {
             'autoencoder_state_dict': ae_system['autoencoder'].state_dict(),
@@ -404,16 +421,12 @@ class BatchExperimentManager:
             'config': config
         }
 
-        print(f"[DEBUG] 基础save_dict已创建")
-
         # 保存data_adapter统计信息
         if 'data_adapter' in ae_system and ae_system['data_adapter'] is not None:
-            print(f"[DEBUG] 发现data_adapter")
             adapter = ae_system['data_adapter']
 
             # RCS_DataAdapter的统计信息保存在data_stats字典中
             if hasattr(adapter, 'data_stats') and adapter.data_stats:
-                print(f"[DEBUG] data_stats存在: {list(adapter.data_stats.keys())}")
                 # 需要将numpy数组转换为列表以便JSON序列化
                 data_stats_serializable = {}
                 for key, value in adapter.data_stats.items():
@@ -427,13 +440,8 @@ class BatchExperimentManager:
                     'db_transform': adapter.db_transform,
                     'mode': adapter.mode
                 }
-                print(f"[DEBUG] data_adapter信息已添加到save_dict")
-            else:
-                print(f"[DEBUG] data_stats为空或不存在")
 
-        print(f"[DEBUG] 准备调用torch.save")
         torch.save(save_dict, model_path)
-        print(f"[DEBUG] torch.save完成")
 
         # 保存配置JSON
         config_path = model_path.replace('.pth', '_config.json')

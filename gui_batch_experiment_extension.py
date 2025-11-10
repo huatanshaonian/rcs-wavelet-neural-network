@@ -570,6 +570,9 @@ class BatchExperimentExtension:
             log_path = os.path.join(self.batch_manager.experiment_dir, log_filename)
             self.main_gui.batch_experiment_log_file = open(log_path, 'w', encoding='utf-8')
 
+            # 同时设置给 batch_manager，让它的所有输出也写入日志
+            self.batch_manager.log_file = self.main_gui.batch_experiment_log_file
+
             # 写入日志头部
             self.main_gui.batch_experiment_log_file.write("="*80 + "\n")
             self.main_gui.batch_experiment_log_file.write(f"批量实验训练日志\n")
@@ -773,8 +776,6 @@ class BatchExperimentExtension:
         """
         import torch
 
-        print(f"[DEBUG _evaluate_model] 开始评估，样本数: {len(indices)}")
-
         # 提取评估样本
         eval_rcs = rcs_data[indices]
         eval_params = param_data[indices]
@@ -785,8 +786,6 @@ class BatchExperimentExtension:
         data_adapter = ae_system.get('data_adapter', None)
         wavelet_transform = ae_system.get('wavelet_transform', None)
         mode = ae_system.get('mode', 'wavelet')
-
-        print(f"[DEBUG _evaluate_model] mode={mode}, data_adapter存在={data_adapter is not None}")
 
         device = next(autoencoder.parameters()).device
         autoencoder.eval()
@@ -799,11 +798,9 @@ class BatchExperimentExtension:
             predicted_output = autoencoder.decode(predicted_latents)
 
             # 逆变换到RCS空间
-            print(f"[DEBUG _evaluate_model] 开始逆变换，mode={mode}")
             if mode == 'wavelet':
                 # Wavelet: 逆标准化 → 逆小波变换 → RCS
                 if data_adapter:
-                    print(f"[DEBUG _evaluate_model] Wavelet模式，调用inverse_adapt")
                     # inverse_adapt期望torch.Tensor输入，内部会转numpy
                     predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
                     predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
@@ -814,7 +811,6 @@ class BatchExperimentExtension:
             else:
                 # Direct: 逆标准化 → RCS
                 if data_adapter:
-                    print(f"[DEBUG _evaluate_model] Direct模式，调用inverse_adapt")
                     # inverse_adapt期望torch.Tensor输入，内部会转numpy
                     predicted_rcs_np = data_adapter.inverse_adapt(predicted_output)
                     predicted_rcs = torch.FloatTensor(predicted_rcs_np).to(device)
@@ -822,15 +818,12 @@ class BatchExperimentExtension:
                     predicted_rcs = predicted_output
 
             # 计算指标
-            print(f"[DEBUG _evaluate_model] 计算指标")
             predicted_rcs_np = predicted_rcs.cpu().numpy()
             true_rcs_np = eval_rcs
 
             mse = np.mean((predicted_rcs_np - true_rcs_np) ** 2)
             rmse = np.sqrt(mse)
             mae = np.mean(np.abs(predicted_rcs_np - true_rcs_np))
-
-        print(f"[DEBUG _evaluate_model] 评估完成: MSE={mse:.6f}")
 
         return {
             'mse': float(mse),
