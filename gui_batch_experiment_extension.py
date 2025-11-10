@@ -829,58 +829,38 @@ class BatchExperimentExtension:
             predicted_rcs = reconstruct_from_params(ae_system, params, device=device)
             predicted_rcs_np = predicted_rcs[0]  # [91, 91, num_freq]
 
-            # 生成2D热图对比
+            # 生成RCS对比图（包含真实、预测、残差）
             self._plot_rcs_heatmap_comparison(
                 true_rcs, predicted_rcs_np,
-                save_dir, f"{experiment_id}_sample{idx}_heatmap.png"
-            )
-
-            # 生成残差图
-            self._plot_residual(
-                true_rcs, predicted_rcs_np,
-                save_dir, f"{experiment_id}_sample{idx}_residual.png"
+                save_dir, f"{experiment_id}_sample{idx}.png"
             )
         # ===== 统一接口调用结束 =====
 
     def _plot_rcs_heatmap_comparison(self, true_rcs, pred_rcs, save_dir, filename):
-        """绘制RCS热图对比（真实vs预测）"""
-        import matplotlib.pyplot as plt
-        import numpy as np
+        """绘制RCS热图对比（真实vs预测）- 使用统一绘图接口"""
         import os
-
-        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        from autoencoder.utils.plotting import plot_rcs_comparison
 
         freq_labels = ['1.5 GHz', '3.0 GHz']
+        num_freq = true_rcs.shape[-1]
 
-        for freq_idx in range(2):
-            # 真实值
-            ax = axes[freq_idx, 0]
-            im = ax.imshow(true_rcs[:, :, freq_idx], cmap='jet', aspect='auto')
-            ax.set_title(f'True RCS - {freq_labels[freq_idx]}', fontsize=10)
-            ax.set_xlabel('Azimuth')
-            ax.set_ylabel('Elevation')
-            plt.colorbar(im, ax=ax)
+        # 为每个频率生成对比图
+        for freq_idx in range(num_freq):
+            freq_label = freq_labels[freq_idx] if freq_idx < len(freq_labels) else f"Freq {freq_idx}"
 
-            # 预测值
-            ax = axes[freq_idx, 1]
-            im = ax.imshow(pred_rcs[:, :, freq_idx], cmap='jet', aspect='auto')
-            ax.set_title(f'Predicted RCS - {freq_labels[freq_idx]}', fontsize=10)
-            ax.set_xlabel('Azimuth')
-            ax.set_ylabel('Elevation')
-            plt.colorbar(im, ax=ax)
+            # 提取该频率的数据
+            true_rcs_2d = true_rcs[:, :, freq_idx]
+            pred_rcs_2d = pred_rcs[:, :, freq_idx]
 
-            # 残差
-            ax = axes[freq_idx, 2]
-            residual = np.abs(true_rcs[:, :, freq_idx] - pred_rcs[:, :, freq_idx])
-            im = ax.imshow(residual, cmap='hot', aspect='auto')
-            ax.set_title(f'Absolute Error - {freq_labels[freq_idx]}', fontsize=10)
-            ax.set_xlabel('Azimuth')
-            ax.set_ylabel('Elevation')
-            plt.colorbar(im, ax=ax)
-
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, filename), dpi=150, bbox_inches='tight')
-        plt.close()
+            # 使用统一绘图函数
+            save_path = os.path.join(save_dir, filename.replace('.png', f'_freq{freq_idx}.png'))
+            plot_rcs_comparison(
+                true_rcs=true_rcs_2d,
+                pred_rcs=pred_rcs_2d,
+                freq_label=freq_label,
+                model_id="N/A",
+                save_path=save_path
+            )
 
     def _plot_residual(self, true_rcs, pred_rcs, save_dir, filename):
         """绘制残差分布图"""
