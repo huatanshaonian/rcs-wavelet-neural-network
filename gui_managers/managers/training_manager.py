@@ -1473,6 +1473,10 @@ class TrainingManager:
                 # 批量实验模式下不弹窗
                 if not self.batch_experiment_mode:
                     messagebox.showinfo("成功", "AutoEncoder重建训练完成！\n\n该模型专注于重建性能，适合调参和模型对比研究。")
+
+                # 返回训练历史（批量实验需要）
+                return self.gui.ae_training_history
+
             else:
                 # 完整三阶段模式
                 self.gui.ae_log("🚀 开始三阶段训练流程 (v2统一配置):")
@@ -1506,6 +1510,9 @@ class TrainingManager:
                 # 批量实验模式下不弹窗
                 if not self.batch_experiment_mode:
                     messagebox.showinfo("成功", "三阶段训练完成!")
+
+            # 返回训练历史（批量实验需要）
+            return self.gui.ae_training_history
 
         except Exception as e:
             error_msg = f"训练失败: {e}"

@@ -373,7 +373,7 @@ class BatchExperimentManager:
                         from autoencoder.utils.plotting import plot_ae_training_progress
 
                         # 创建训练日志目录（如果不存在）
-                        training_logs_dir = os.path.join(self.base_dir, 'training_logs')
+                        training_logs_dir = os.path.join(self.experiment_dir, 'training_logs')
                         os.makedirs(training_logs_dir, exist_ok=True)
 
                         # 保存训练进度图
