@@ -27,6 +27,7 @@ AutoEncoder可视化绘图功能
 """
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from typing import Optional, Tuple, List, Dict
@@ -42,11 +43,30 @@ from typing import Optional, Tuple, List, Dict
 # - 方案2: 禁用Unicode减号（使用普通连字符）
 # ============================================================================
 
+# 强制刷新字体管理器（解决中文字体缓存问题）
+import matplotlib.font_manager as fm
+# 重建字体缓存（如果有中文显示问题）
+try:
+    fm._load_fontmanager(try_read_cache=False)
+except:
+    pass  # 如果失败，继续使用缓存
+
 # 配置matplotlib全局参数（应用于所有图片）
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial', 'Microsoft YaHei', 'SimHei', 'Helvetica', 'DejaVu Sans', 'Liberation Sans']
-plt.rcParams['axes.unicode_minus'] = False  # 禁用Unicode减号，避免字体不支持时出现dummy symbol
-# 注：Arial用于英文（国际顶刊标准），Microsoft YaHei/SimHei用于中文（Windows），Helvetica用于macOS
+# 重要：中文字体必须放在前面，matplotlib不会自动fallback到后面的字体
+# 解决方案：使用Microsoft YaHei作为主字体（同时支持中英文）
+matplotlib.rcParams['font.family'] = 'sans-serif'
+matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Arial', 'Helvetica', 'DejaVu Sans', 'Liberation Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False  # 禁用Unicode减号，避免字体不支持时出现dummy symbol
+
+# 注意：
+# - Microsoft YaHei (微软雅黑)：同时支持中英文，优先使用
+# - SimHei (黑体)：中文备用字体
+# - Arial：英文专用字体（国际顶刊标准），但不支持中文
+# - 英文字符也会使用Microsoft YaHei显示，字体清晰专业
+# - 如果需要纯英文+Arial，可以在特定函数中单独设置
+
+# 同时设置plt.rcParams（确保兼容性）
+plt.rcParams.update(matplotlib.rcParams)
 plt.rcParams['font.size'] = 10  # 基础字号（科研图片标准）
 plt.rcParams['axes.labelsize'] = 11  # 坐标轴标签
 plt.rcParams['axes.titlesize'] = 12  # 标题
