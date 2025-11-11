@@ -979,7 +979,9 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 获取AutoEncoder组件
             autoencoder = self.gui.ae_system['autoencoder']
             wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)  # 直接模式时为None
+            data_adapter = self.gui.ae_system.get('data_adapter', None)
             rcs_data = self.gui.ae_system['rcs_data']
+            mode = self.gui.ae_system.get('mode', 'direct')
 
             # 设置设备和评估模式
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -987,9 +989,32 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 编码所有数据到隐空间
             with torch.no_grad():
-                rcs_tensor = torch.FloatTensor(rcs_data[:50])  # 取前50个样本避免内存问题
-                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
-                _, latent_vectors = autoencoder(wavelet_coeffs.to(device))
+                # 取前50个样本避免内存问题
+                sample_data = rcs_data[:50]
+
+                # 根据模式准备输入数据
+                if mode in ('wavelet', 'differentiable_wavelet'):
+                    # Wavelet模式：RCS → 小波变换 → 标准化
+                    rcs_tensor = torch.FloatTensor(sample_data).to(device)
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+                    if data_adapter:
+                        # 标准化小波系数
+                        wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                        input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = wavelet_coeffs
+                else:
+                    # Direct模式：RCS → 标准化
+                    if data_adapter:
+                        input_adapted = data_adapter.adapt_rcs_data(sample_data)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = torch.FloatTensor(sample_data).to(device)
+
+                # 编码到隐空间
+                latent_vectors = autoencoder.encode(input_tensor)
                 latent_vectors = latent_vectors.cpu().numpy()
 
             # 降维可视化
@@ -1059,8 +1084,9 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             self.gui.vis_canvas.draw()
 
     def _plot_ae_reconstruction_quality(self):
-        """绘制AutoEncoder重建质量分析 - 使用统一重建函数"""
+        """绘制AutoEncoder重建质量分析 - 使用统一重建接口"""
         import numpy as np
+        import torch
 
         # 获取字号缩放因子
         try:
@@ -1070,20 +1096,63 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             fontsize_scale = 1.0
 
         try:
-            # 获取RCS数据
+            # 获取AutoEncoder组件
+            autoencoder = self.gui.ae_system['autoencoder']
+            wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)
+            data_adapter = self.gui.ae_system.get('data_adapter', None)
             rcs_data = self.gui.ae_system['rcs_data']
+            mode = self.gui.ae_system.get('mode', 'direct')
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
 
             # 选择测试样本
             test_indices = [0, 10, 20, 30]  # 选择几个代表性样本
             test_samples = rcs_data[test_indices]
 
-            # 使用统一重建函数重建RCS
-            result = self.gui._reconstruct_rcs(
-                input_data=test_samples,
-                input_type='auto',  # 自动根据training_mode选择
-                return_latents=False
-            )
-            reconstructed_samples = result['reconstructed_rcs']
+            # 使用AutoEncoder重建RCS（模拟Stage1-Only的行为）
+            with torch.no_grad():
+                # 根据模式准备输入数据
+                if mode in ('wavelet', 'differentiable_wavelet'):
+                    # Wavelet模式：RCS → 小波变换 → 标准化
+                    rcs_tensor = torch.FloatTensor(test_samples).to(device)
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+                    if data_adapter:
+                        wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                        input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = wavelet_coeffs
+                else:
+                    # Direct模式：RCS → 标准化
+                    if data_adapter:
+                        input_adapted = data_adapter.adapt_rcs_data(test_samples)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = torch.FloatTensor(test_samples).to(device)
+
+                # AutoEncoder重建
+                latent = autoencoder.encode(input_tensor)
+                reconstructed_output = autoencoder.decode(latent)
+
+                # 逆变换到RCS空间
+                if mode in ('wavelet', 'differentiable_wavelet'):
+                    # 小波模式：逆标准化 → 逆小波变换 → RCS
+                    if data_adapter:
+                        reconstructed_coeffs_np = data_adapter.inverse_adapt(reconstructed_output)
+                        reconstructed_coeffs = torch.FloatTensor(reconstructed_coeffs_np).to(device)
+                    else:
+                        reconstructed_coeffs = reconstructed_output
+
+                    reconstructed_samples = wavelet_transform.inverse_transform(reconstructed_coeffs).cpu().numpy()
+                else:
+                    # 直接模式：逆标准化 → RCS
+                    if data_adapter:
+                        reconstructed_samples = data_adapter.inverse_adapt(reconstructed_output)
+                    else:
+                        reconstructed_samples = reconstructed_output.cpu().numpy()
 
             self.gui.vis_fig.clear()
 
