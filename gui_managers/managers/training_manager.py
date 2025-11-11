@@ -1698,7 +1698,8 @@ class TrainingManager:
                     loss.backward()
 
                     # 梯度监控（在optimizer.step()之前，仅在每个epoch的第一个batch）
-                    if batch_idx == 0 and epoch % 10 == 0:
+                    # 与进度打印的时机对齐：(epoch + 1) % 10 == 0
+                    if batch_idx == 0 and (epoch + 1) % 10 == 0:
                         stats, status = gradient_monitor.check_gradients(autoencoder, step=epoch, verbose=False)
                         gradient_history['epochs'].append(epoch)
                         gradient_history['grad_norm'].append(stats['grad_norm'])
@@ -1933,7 +1934,8 @@ class TrainingManager:
                     loss.backward()
 
                     # 梯度监控（在optimizer.step()之前，仅在每个epoch的第一个batch）
-                    if batch_idx == 0 and epoch % 10 == 0:
+                    # 与进度打印的时机对齐：(epoch + 1) % 10 == 0
+                    if batch_idx == 0 and (epoch + 1) % 10 == 0:
                         stats, status = gradient_monitor.check_gradients(parameter_mapper, step=epoch, verbose=False)
                         gradient_history['epochs'].append(epoch)
                         gradient_history['grad_norm'].append(stats['grad_norm'])
@@ -2170,7 +2172,8 @@ class TrainingManager:
 
                     # 梯度监控（在optimizer.step()之前，仅在每个epoch的第一个batch）
                     # Stage3监控整个系统（autoencoder + parameter_mapper）的梯度
-                    if batch_idx == 0 and epoch % 10 == 0:
+                    # 与进度打印的时机对齐：(epoch + 1) % 5 == 0 (Stage3更频繁)
+                    if batch_idx == 0 and (epoch + 1) % 5 == 0:
                         # 创建临时模块列表包含两个组件
                         import torch.nn as nn
                         combined_model = nn.ModuleList([autoencoder, parameter_mapper])
