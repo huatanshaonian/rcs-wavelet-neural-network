@@ -402,6 +402,59 @@ class BatchExperimentManager:
                         self._log(f"  ⚠ 跳过训练进度图: training_history缺少'stage_histories'键")
                         self._log(f"  当前training_history keys: {list(training_history.keys())}")
 
+                # 生成统计对比图（新增）
+                if ae_system:
+                    self._log(f"  正在生成统计对比分析...")
+                    try:
+                        from autoencoder.utils.statistics_comparison import generate_statistics_comparison
+                        import torch
+
+                        # 创建统计对比目录
+                        statistics_dir = os.path.join(self.visualizations_dir, experiment_id, 'statistics')
+                        os.makedirs(statistics_dir, exist_ok=True)
+
+                        # 确定设备
+                        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+                        # 生成统计对比（考虑Stage1-Only和Three-Stage两种模式）
+                        training_mode = ae_system.get('training_mode', 'three_stage')
+                        if training_mode == 'stage1_only':
+                            # Stage1-Only模式：不需要param_data
+                            stats_result = generate_statistics_comparison(
+                                ae_system=ae_system,
+                                rcs_data=rcs_data,
+                                param_data=None,
+                                save_dir=statistics_dir,
+                                device=device,
+                                figsize=(15, 10),
+                                fontsize_scale=1.0
+                            )
+                        else:
+                            # Three-Stage模式：需要param_data
+                            stats_result = generate_statistics_comparison(
+                                ae_system=ae_system,
+                                rcs_data=rcs_data,
+                                param_data=param_data,
+                                save_dir=statistics_dir,
+                                device=device,
+                                figsize=(15, 10),
+                                fontsize_scale=1.0
+                            )
+
+                        # 提取关键指标用于日志
+                        model_stats = stats_result['model_stats']
+                        stats_1_5 = [s for s in model_stats if s['freq'] == '1.5GHz']
+                        stats_3 = [s for s in model_stats if s['freq'] == '3GHz']
+                        avg_r1 = np.mean([s['correlation'] for s in stats_1_5])
+                        avg_r2 = np.mean([s['correlation'] for s in stats_3])
+
+                        self._log(f"  ✓ 统计对比完成: 相关系数 1.5GHz={avg_r1:.4f}, 3GHz={avg_r2:.4f}")
+
+                    except Exception as e:
+                        self._log(f"  ⚠ 统计对比生成失败: {str(e)}")
+                        import traceback
+                        self._log(f"  详细错误: {traceback.format_exc()}")
+
                 result.complete(success=True)
                 self._log(f"✓ 实验完成，耗时: {result.training_time:.1f}秒")
 
