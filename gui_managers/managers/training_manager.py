@@ -1553,6 +1553,7 @@ class TrainingManager:
         try:
             import torch
             from torch.utils.data import DataLoader, TensorDataset, random_split
+            from autoencoder.utils.gradient_monitor import GradientMonitor
 
             # 获取AutoEncoder组件
             autoencoder = self.gui.ae_system['autoencoder']
@@ -1657,6 +1658,24 @@ class TrainingManager:
             train_losses = []
             val_losses = []
 
+            # 创建梯度监控器
+            gradient_monitor = GradientMonitor(
+                log_interval=10,           # 每10步记录一次
+                warn_threshold_high=10.0,  # 梯度范数>10警告
+                warn_threshold_low=1e-5    # 梯度范数<1e-5警告
+            )
+            self.gui.ae_log("梯度监控已启用 (阈值: 1e-5 < grad_norm < 10.0)")
+
+            # 梯度历史记录
+            gradient_history = {
+                'epochs': [],
+                'grad_norm': [],
+                'grad_mean': [],
+                'grad_std': [],
+                'grad_max': [],
+                'grad_min': []
+            }
+
             # 注意力权重历史记录
             attention_history = {
                 'epochs': [],
@@ -1670,13 +1689,24 @@ class TrainingManager:
                 train_loss = 0.0
                 train_samples = 0
 
-                for batch_coeffs, in train_loader:
+                for batch_idx, (batch_coeffs,) in enumerate(train_loader):
                     batch_coeffs = batch_coeffs.to(device)
                     reconstructed, latent = autoencoder(batch_coeffs)
                     loss = criterion(reconstructed, batch_coeffs)
 
                     optimizer.zero_grad()
                     loss.backward()
+
+                    # 梯度监控（在optimizer.step()之前，仅在每个epoch的第一个batch）
+                    if batch_idx == 0 and epoch % 10 == 0:
+                        stats, status = gradient_monitor.check_gradients(autoencoder, step=epoch, verbose=False)
+                        gradient_history['epochs'].append(epoch)
+                        gradient_history['grad_norm'].append(stats['grad_norm'])
+                        gradient_history['grad_mean'].append(stats['grad_mean'])
+                        gradient_history['grad_std'].append(stats['grad_std'])
+                        gradient_history['grad_max'].append(stats['grad_max'])
+                        gradient_history['grad_min'].append(stats['grad_min'])
+
                     optimizer.step()
 
                     # 按样本数加权累加（而不是按batch数）
@@ -1722,7 +1752,19 @@ class TrainingManager:
 
                 # 记录进度
                 if (epoch + 1) % 10 == 0:
+                    # 获取当前epoch的梯度范数（如果有记录）
+                    grad_norm_str = ""
+                    if epoch in gradient_history['epochs']:
+                        idx = gradient_history['epochs'].index(epoch)
+                        grad_norm = gradient_history['grad_norm'][idx]
+                        grad_norm_str = f", Grad={grad_norm:.2e}"
+
+                    # 调用原有的日志函数
                     self.gui._ae_log_training_progress(epoch, epochs, avg_train_loss, avg_val_loss, current_lr, "阶段1")
+
+                    # 如果有梯度信息，额外打印梯度状态
+                    if grad_norm_str:
+                        self.gui.ae_log(f"    梯度监控{grad_norm_str}")
 
                 # 每100 epoch记录注意力权重
                 if (epoch + 1) % 100 == 0 or epoch == 0:
@@ -1741,7 +1783,8 @@ class TrainingManager:
                 'val_losses': val_losses,
                 'best_val_loss': best_val_loss,
                 'best_epoch': best_epoch,
-                'attention_history': attention_history
+                'attention_history': attention_history,
+                'gradient_history': gradient_history
             }
 
         except Exception as e:
@@ -1753,6 +1796,7 @@ class TrainingManager:
         try:
             import torch
             from torch.utils.data import DataLoader, TensorDataset, random_split
+            from autoencoder.utils.gradient_monitor import GradientMonitor
 
             # 获取组件
             autoencoder = self.gui.ae_system['autoencoder']
@@ -1854,13 +1898,31 @@ class TrainingManager:
             train_losses = []
             val_losses = []
 
+            # 创建梯度监控器
+            gradient_monitor = GradientMonitor(
+                log_interval=10,
+                warn_threshold_high=10.0,
+                warn_threshold_low=1e-5
+            )
+            self.gui.ae_log("梯度监控已启用 (阈值: 1e-5 < grad_norm < 10.0)")
+
+            # 梯度历史记录
+            gradient_history = {
+                'epochs': [],
+                'grad_norm': [],
+                'grad_mean': [],
+                'grad_std': [],
+                'grad_max': [],
+                'grad_min': []
+            }
+
             for epoch in range(epochs):
                 # 训练
                 parameter_mapper.train()
                 train_loss = 0.0
                 train_samples = 0
 
-                for batch_params, batch_latents in train_loader:
+                for batch_idx, (batch_params, batch_latents) in enumerate(train_loader):
                     batch_params = batch_params.to(device)
                     batch_latents = batch_latents.to(device)
 
@@ -1869,6 +1931,17 @@ class TrainingManager:
 
                     optimizer.zero_grad()
                     loss.backward()
+
+                    # 梯度监控（在optimizer.step()之前，仅在每个epoch的第一个batch）
+                    if batch_idx == 0 and epoch % 10 == 0:
+                        stats, status = gradient_monitor.check_gradients(parameter_mapper, step=epoch, verbose=False)
+                        gradient_history['epochs'].append(epoch)
+                        gradient_history['grad_norm'].append(stats['grad_norm'])
+                        gradient_history['grad_mean'].append(stats['grad_mean'])
+                        gradient_history['grad_std'].append(stats['grad_std'])
+                        gradient_history['grad_max'].append(stats['grad_max'])
+                        gradient_history['grad_min'].append(stats['grad_min'])
+
                     optimizer.step()
 
                     # 按样本数加权累加
@@ -1915,7 +1988,19 @@ class TrainingManager:
 
                 # 记录进度
                 if (epoch + 1) % 10 == 0:
+                    # 获取当前epoch的梯度范数（如果有记录）
+                    grad_norm_str = ""
+                    if epoch in gradient_history['epochs']:
+                        idx = gradient_history['epochs'].index(epoch)
+                        grad_norm = gradient_history['grad_norm'][idx]
+                        grad_norm_str = f", Grad={grad_norm:.2e}"
+
+                    # 调用原有的日志函数
                     self.gui._ae_log_training_progress(epoch, epochs, avg_train_loss, avg_val_loss, current_lr, "阶段2")
+
+                    # 如果有梯度信息，额外打印梯度状态
+                    if grad_norm_str:
+                        self.gui.ae_log(f"    梯度监控{grad_norm_str}")
 
                 # 早停
                 if patience_counter >= patience:
@@ -1933,7 +2018,8 @@ class TrainingManager:
                 'train_losses': train_losses,
                 'val_losses': val_losses,
                 'best_val_loss': best_val_loss,
-                'best_epoch': best_epoch
+                'best_epoch': best_epoch,
+                'gradient_history': gradient_history
             }
 
         except Exception as e:
@@ -1945,6 +2031,7 @@ class TrainingManager:
         try:
             import torch
             from torch.utils.data import DataLoader, TensorDataset, random_split
+            from autoencoder.utils.gradient_monitor import GradientMonitor
 
             # 获取组件
             autoencoder = self.gui.ae_system['autoencoder']
@@ -2040,6 +2127,24 @@ class TrainingManager:
             train_losses = []
             val_losses = []
 
+            # 创建梯度监控器
+            gradient_monitor = GradientMonitor(
+                log_interval=10,
+                warn_threshold_high=10.0,
+                warn_threshold_low=1e-5
+            )
+            self.gui.ae_log("梯度监控已启用 (阈值: 1e-5 < grad_norm < 10.0)")
+
+            # 梯度历史记录
+            gradient_history = {
+                'epochs': [],
+                'grad_norm': [],
+                'grad_mean': [],
+                'grad_std': [],
+                'grad_max': [],
+                'grad_min': []
+            }
+
             for epoch in range(epochs):
                 # 训练
                 autoencoder.train()
@@ -2047,7 +2152,7 @@ class TrainingManager:
                 train_loss = 0.0
                 train_samples = 0
 
-                for batch_params, batch_target_coeffs in train_loader:
+                for batch_idx, (batch_params, batch_target_coeffs) in enumerate(train_loader):
                     batch_params = batch_params.to(device)
                     batch_target_coeffs = batch_target_coeffs.to(device)
 
@@ -2062,6 +2167,21 @@ class TrainingManager:
 
                     optimizer.zero_grad()
                     loss.backward()
+
+                    # 梯度监控（在optimizer.step()之前，仅在每个epoch的第一个batch）
+                    # Stage3监控整个系统（autoencoder + parameter_mapper）的梯度
+                    if batch_idx == 0 and epoch % 10 == 0:
+                        # 创建临时模块列表包含两个组件
+                        import torch.nn as nn
+                        combined_model = nn.ModuleList([autoencoder, parameter_mapper])
+                        stats, status = gradient_monitor.check_gradients(combined_model, step=epoch, verbose=False)
+                        gradient_history['epochs'].append(epoch)
+                        gradient_history['grad_norm'].append(stats['grad_norm'])
+                        gradient_history['grad_mean'].append(stats['grad_mean'])
+                        gradient_history['grad_std'].append(stats['grad_std'])
+                        gradient_history['grad_max'].append(stats['grad_max'])
+                        gradient_history['grad_min'].append(stats['grad_min'])
+
                     optimizer.step()
 
                     # 按样本数加权累加
@@ -2110,7 +2230,19 @@ class TrainingManager:
 
                 # 记录进度 (微调阶段更频繁记录)
                 if (epoch + 1) % 5 == 0:
+                    # 获取当前epoch的梯度范数（如果有记录）
+                    grad_norm_str = ""
+                    if epoch in gradient_history['epochs']:
+                        idx = gradient_history['epochs'].index(epoch)
+                        grad_norm = gradient_history['grad_norm'][idx]
+                        grad_norm_str = f", Grad={grad_norm:.2e}"
+
+                    # 调用原有的日志函数
                     self.gui._ae_log_training_progress(epoch, epochs, avg_train_loss, avg_val_loss, current_lr, "阶段3")
+
+                    # 如果有梯度信息，额外打印梯度状态
+                    if grad_norm_str:
+                        self.gui.ae_log(f"    梯度监控{grad_norm_str}")
 
                 # 早停
                 if patience_counter >= patience:
@@ -2124,7 +2256,8 @@ class TrainingManager:
                 'train_losses': train_losses,
                 'val_losses': val_losses,
                 'best_val_loss': best_val_loss,
-                'best_epoch': best_epoch
+                'best_epoch': best_epoch,
+                'gradient_history': gradient_history
             }
 
         except Exception as e:

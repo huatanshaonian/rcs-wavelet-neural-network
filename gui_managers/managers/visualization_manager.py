@@ -1751,3 +1751,206 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             messagebox.showerror("保存失败", error_msg)
             import traceback
             traceback.print_exc()
+
+    def _plot_gradient_history(self):
+        """绘制梯度历史曲线 (三阶段综合视图)"""
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.gridspec import GridSpec
+
+            # 检查是否有训练历史
+            if not hasattr(self.gui, 'ae_training_history') or self.gui.ae_training_history is None:
+                messagebox.showwarning("警告", "没有找到训练历史数据！\n请先完成训练。")
+                return
+
+            training_history = self.gui.ae_training_history
+            stage_histories = training_history.get('stage_histories', {})
+
+            # 检查是否有梯度历史数据
+            has_gradient_data = False
+            for stage_name in ['stage1', 'stage2', 'stage3']:
+                if stage_name in stage_histories:
+                    gradient_history = stage_histories[stage_name].get('gradient_history', {})
+                    if gradient_history and len(gradient_history.get('epochs', [])) > 0:
+                        has_gradient_data = True
+                        break
+
+            if not has_gradient_data:
+                messagebox.showwarning("警告", "没有找到梯度监控数据！\n可能是使用旧版本训练的模型。")
+                return
+
+            # 创建3x2子图布局
+            fig = plt.figure(figsize=(15, 10))
+            gs = GridSpec(3, 2, figure=fig, hspace=0.3, wspace=0.3)
+
+            # 定义阶段信息
+            stages = [
+                ('stage1', '阶段1: AutoEncoder预训练', 0),
+                ('stage2', '阶段2: 参数映射训练', 1),
+                ('stage3', '阶段3: 端到端微调', 2)
+            ]
+
+            # 绘制每个阶段的梯度范数和梯度分布
+            for stage_name, stage_title, row in stages:
+                if stage_name not in stage_histories:
+                    continue
+
+                gradient_history = stage_histories[stage_name].get('gradient_history', {})
+                if not gradient_history or len(gradient_history.get('epochs', [])) == 0:
+                    # 该阶段没有梯度数据
+                    ax1 = fig.add_subplot(gs[row, 0])
+                    ax1.text(0.5, 0.5, f'{stage_title}\n无梯度数据',
+                            ha='center', va='center', fontsize=12, color='gray')
+                    ax1.axis('off')
+
+                    ax2 = fig.add_subplot(gs[row, 1])
+                    ax2.text(0.5, 0.5, f'{stage_title}\n无梯度数据',
+                            ha='center', va='center', fontsize=12, color='gray')
+                    ax2.axis('off')
+                    continue
+
+                epochs = gradient_history['epochs']
+                grad_norm = gradient_history['grad_norm']
+                grad_mean = gradient_history['grad_mean']
+                grad_std = gradient_history['grad_std']
+
+                # 左侧: 梯度范数历史
+                ax1 = fig.add_subplot(gs[row, 0])
+                ax1.plot(epochs, grad_norm, linewidth=2, color='blue', marker='o', markersize=4)
+                ax1.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7,
+                           label='Explosion Threshold (10.0)')
+                ax1.axhline(y=1e-5, color='orange', linestyle='--', linewidth=1.5, alpha=0.7,
+                           label='Vanishing Threshold (1e-5)')
+                ax1.set_yscale('log')
+                ax1.set_xlabel('Epoch', fontsize=11, fontweight='bold')
+                ax1.set_ylabel('Gradient Norm (L2)', fontsize=11, fontweight='bold')
+                ax1.set_title(f'{stage_title} - Gradient Norm', fontsize=12, fontweight='bold')
+                ax1.legend(fontsize=9)
+                ax1.grid(True, alpha=0.3)
+
+                # 右侧: 梯度分布 (均值和标准差)
+                ax2 = fig.add_subplot(gs[row, 1])
+                ax2.plot(epochs, grad_mean, linewidth=2, color='green', marker='s', markersize=4,
+                        label='Mean')
+                ax2.plot(epochs, grad_std, linewidth=2, color='purple', marker='^', markersize=4,
+                        label='Std')
+                ax2.axhline(y=0, color='black', linestyle='-', linewidth=1, alpha=0.3)
+                ax2.set_xlabel('Epoch', fontsize=11, fontweight='bold')
+                ax2.set_ylabel('Gradient Value', fontsize=11, fontweight='bold')
+                ax2.set_title(f'{stage_title} - Gradient Distribution', fontsize=12, fontweight='bold')
+                ax2.legend(fontsize=9)
+                ax2.grid(True, alpha=0.3)
+
+            # 总标题
+            training_mode = training_history.get('training_mode', 'three_stage')
+            if training_mode == 'stage1_only':
+                fig.suptitle('Gradient Monitoring History (Stage 1 Only Mode)',
+                            fontsize=14, fontweight='bold', y=0.995)
+            else:
+                fig.suptitle('Gradient Monitoring History (Three-Stage Training)',
+                            fontsize=14, fontweight='bold', y=0.995)
+
+            # 显示图表
+            plt.show()
+
+            self.gui.ae_log("✅ 梯度历史图表已生成")
+
+        except Exception as e:
+            error_msg = f"绘制梯度历史失败: {str(e)}"
+            self.gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("绘图失败", error_msg)
+            import traceback
+            traceback.print_exc()
+
+    def _show_gradient_report(self):
+        """显示梯度监控总结报告"""
+        try:
+            import numpy as np
+
+            # 检查是否有训练历史
+            if not hasattr(self.gui, 'ae_training_history') or self.gui.ae_training_history is None:
+                messagebox.showwarning("警告", "没有找到训练历史数据！\n请先完成训练。")
+                return
+
+            training_history = self.gui.ae_training_history
+            stage_histories = training_history.get('stage_histories', {})
+
+            # 收集所有阶段的梯度报告
+            report_lines = []
+            report_lines.append("=" * 80)
+            report_lines.append("梯度监控总结报告")
+            report_lines.append("=" * 80)
+            report_lines.append("")
+
+            # 定义阶段信息
+            stages = [
+                ('stage1', '阶段1: AutoEncoder预训练'),
+                ('stage2', '阶段2: 参数映射训练'),
+                ('stage3', '阶段3: 端到端微调')
+            ]
+
+            has_any_data = False
+
+            for stage_name, stage_title in stages:
+                if stage_name not in stage_histories:
+                    continue
+
+                gradient_history = stage_histories[stage_name].get('gradient_history', {})
+                if not gradient_history or len(gradient_history.get('epochs', [])) == 0:
+                    continue
+
+                has_any_data = True
+
+                grad_norms = np.array(gradient_history['grad_norm'])
+                grad_means = np.array(gradient_history['grad_mean'])
+                grad_stds = np.array(gradient_history['grad_std'])
+
+                report_lines.append(f"【{stage_title}】")
+                report_lines.append(f"  记录步数: {len(grad_norms)}")
+                report_lines.append(f"  Epochs: {gradient_history['epochs'][0]} ~ {gradient_history['epochs'][-1]}")
+                report_lines.append("")
+                report_lines.append("  梯度范数统计:")
+                report_lines.append(f"    均值:   {np.mean(grad_norms):.2e}")
+                report_lines.append(f"    中位数: {np.median(grad_norms):.2e}")
+                report_lines.append(f"    标准差: {np.std(grad_norms):.2e}")
+                report_lines.append(f"    最大值: {np.max(grad_norms):.2e}")
+                report_lines.append(f"    最小值: {np.min(grad_norms):.2e}")
+                report_lines.append("")
+                report_lines.append("  健康度评估:")
+                report_lines.append(f"    梯度爆炸次数 (>10.0):  {np.sum(grad_norms > 10.0)}")
+                report_lines.append(f"    梯度消失次数 (<1e-5): {np.sum(grad_norms < 1e-5)}")
+                healthy_count = np.sum((grad_norms >= 1e-5) & (grad_norms <= 10.0))
+                healthy_ratio = healthy_count / len(grad_norms) * 100
+                report_lines.append(f"    健康比例: {healthy_ratio:.1f}% ({healthy_count}/{len(grad_norms)})")
+                report_lines.append("")
+                report_lines.append("-" * 80)
+                report_lines.append("")
+
+            if not has_any_data:
+                messagebox.showwarning("警告", "没有找到梯度监控数据！\n可能是使用旧版本训练的模型。")
+                return
+
+            # 打印报告到日志
+            full_report = "\n".join(report_lines)
+            self.gui.ae_log("\n" + full_report)
+
+            # 同时弹窗显示
+            from tkinter import scrolledtext, Toplevel
+            report_window = Toplevel(self.gui.root)
+            report_window.title("梯度监控报告")
+            report_window.geometry("800x600")
+
+            # 创建滚动文本框
+            text_widget = scrolledtext.ScrolledText(report_window, wrap='word', font=('Courier New', 10))
+            text_widget.pack(fill='both', expand=True, padx=10, pady=10)
+            text_widget.insert('1.0', full_report)
+            text_widget.configure(state='disabled')  # 只读
+
+            self.gui.ae_log("✅ 梯度监控报告已生成")
+
+        except Exception as e:
+            error_msg = f"生成梯度报告失败: {str(e)}"
+            self.gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("生成失败", error_msg)
+            import traceback
+            traceback.print_exc()

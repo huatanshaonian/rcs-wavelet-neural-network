@@ -407,6 +407,19 @@ class AutoEncoderExtension:
         # 运行小波分析按钮
         ttk.Button(wavelet_frame, text="🔬 运行小波分析", command=self.run_wavelet_analysis).pack(fill=tk.X)
 
+        # 11. 梯度监控组 (新增)
+        gradient_group = ttk.LabelFrame(right_column, text="📈 梯度监控")
+        gradient_group.pack(fill=tk.X, pady=(0, 10))
+
+        gradient_frame = ttk.Frame(gradient_group)
+        gradient_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 梯度监控按钮
+        ttk.Button(gradient_frame, text="📊 查看梯度历史曲线",
+                  command=lambda: self.main_gui.visualization_manager._plot_gradient_history()).pack(fill=tk.X, pady=(0, 3))
+        ttk.Button(gradient_frame, text="📋 梯度监控报告",
+                  command=lambda: self.main_gui.visualization_manager._show_gradient_report()).pack(fill=tk.X)
+
 
     def _create_right_panel(self, parent):
         """创建右侧状态和结果面板"""
