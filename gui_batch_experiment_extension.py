@@ -837,8 +837,8 @@ class BatchExperimentExtension:
             # 生成RCS对比图（包含真实、预测、残差）
             self._plot_rcs_heatmap_comparison(
                 true_rcs, predicted_rcs_np,
-                save_dir, f"{experiment_id}_sample{idx}.png",
-                experiment_id=experiment_id
+                save_dir, f"{experiment_id}_sample{sample_idx:03d}.png",
+                experiment_id=f"{sample_idx:03d}"
             )
 
             # 如果是Wavelet模式，额外生成小波系数对比图
@@ -904,8 +904,8 @@ class BatchExperimentExtension:
                             original_wavelet_coeffs_np,
                             reconstructed_wavelet_coeffs_np,
                             save_dir,
-                            f"{experiment_id}_sample{idx}_wavelet.png",
-                            experiment_id=experiment_id
+                            f"{experiment_id}_sample{sample_idx:03d}_wavelet.png",
+                            experiment_id=f"{sample_idx:03d}"
                         )
 
         # ===== 统一接口调用结束 =====
