@@ -435,10 +435,13 @@ def create_my_autoencoder(latent_dim: int = 32, ...):  # 256 → 32
 | 2 | EnhancedDirectAutoEncoder | enhanced_cnn_autoencoder.py | CNN | 需查看 |
 | 3 | DeepWaveletAutoEncoder | deep_autoencoder.py | CNN | 需查看 |
 | 4 | DeepDirectAutoEncoder | deep_autoencoder.py | CNN | 需查看 |
-| 5 | SinWaveletAutoEncoder | sine_cnn_autoencoder.py | CNN | 4096 |
-| 6 | SinDirectAutoEncoder | sine_cnn_autoencoder.py | CNN | 512 |
-| 7 | SinWaveletMLPAutoEncoder | sine_mlp_autoencoder.py | MLP | 19208 |
-| 8 | SinDirectMLPAutoEncoder | sine_mlp_autoencoder.py | MLP | 16562 |
+
+**注**: ~~SinWaveletAutoEncoder, SinDirectAutoEncoder, SinWaveletMLPAutoEncoder, SinDirectMLPAutoEncoder~~ 已移除。
+现在通过参数化激活函数实现：
+- `WaveletAutoEncoder(activation='sin')` 替代 `SinWaveletAutoEncoder`
+- `DirectAutoEncoder(activation='sin')` 替代 `SinDirectAutoEncoder`
+- `WaveletMLPAutoEncoder(activation='sin')` 替代 `SinWaveletMLPAutoEncoder`
+- `DirectMLPAutoEncoder(activation='sin')` 替代 `SinDirectMLPAutoEncoder`
 
 ---
 

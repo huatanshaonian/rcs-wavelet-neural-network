@@ -139,8 +139,6 @@ wavelet/
 │   │   ├── mlp_autoencoder.py         # MLP系列（Wavelet/Direct）
 │   │   ├── enhanced_cnn_autoencoder.py # Enhanced系列（多尺度）
 │   │   ├── deep_autoencoder.py        # Deep CNN系列（最强表达力）
-│   │   ├── sine_cnn_autoencoder.py    # Sine激活CNN系列
-│   │   ├── sine_mlp_autoencoder.py    # Sine激活MLP系列
 │   │   ├── dual_branch_autoencoder.py  # 双分支系列（LL/HF分离）⭐
 │   │   ├── differentiable_wavelet_autoencoder.py # 可微分小波系列
 │   │   ├── parameter_mapper.py        # 参数映射器
