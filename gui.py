@@ -3099,7 +3099,8 @@ class RCSWaveletGUI:
 
                 # 自动创建系统
                 self.ae_log("🔧 正在自动重建AutoEncoder系统...")
-                activation = checkpoint.get('activation', 'relu')  # 从checkpoint获取，默认relu
+                activation = config.get('activation', 'relu')  # 从config获取，默认relu
+                self.ae_log(f"  激活函数: {activation}")
                 self.ae_system = create_autoencoder_system(
                     config_name=freq_config,
                     latent_dim=latent_dim,
