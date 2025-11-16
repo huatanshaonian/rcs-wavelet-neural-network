@@ -737,8 +737,13 @@ class TrainingManager:
                 # 清除标志，避免重复触发
                 self.gui.ae_system['continue_from_stage1'] = False
 
-                # 执行从Stage 2开始的训练
-                self._continue_training_from_stage1()
+                # 在后台线程执行从Stage 2开始的训练
+                import threading
+                self.training_thread = threading.Thread(
+                    target=self._continue_training_from_stage1,
+                    daemon=True
+                )
+                self.training_thread.start()
                 return
 
             self.gui.ae_log("🚀 开始AutoEncoder训练...")
@@ -790,6 +795,23 @@ class TrainingManager:
             self.gui.ae_log(f"  模式: {self.gui.ae_system.get('mode', 'wavelet')}")
             self.gui.ae_log(f"  架构: {self.gui.ae_system.get('architecture', 'cnn')}")
 
+            # 在后台线程启动训练（避免阻塞GUI）
+            import threading
+            self.training_thread = threading.Thread(
+                target=self._run_ae_training_in_background,
+                args=(rcs_data, param_data, training_config, training_mode),
+                daemon=True
+            )
+            self.training_thread.start()
+
+        except Exception as e:
+            error_msg = f"启动训练失败: {e}"
+            self.gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def _run_ae_training_in_background(self, rcs_data, param_data, training_config, training_mode):
+        """在后台线程运行AutoEncoder训练"""
+        try:
             # 启动训练过程（使用统一配置）
             if training_mode == "三阶段训练":
                 self.gui.ae_log("📊 开始三阶段训练流程")
@@ -801,10 +823,24 @@ class TrainingManager:
                 self.gui.ae_log("📊 开始端到端训练流程")
                 self.gui._run_end_to_end_training_v2(rcs_data, param_data, training_config)
 
+            # 训练完成，在主线程更新UI
+            self.gui.root.after(0, self._on_ae_training_completed)
+
         except Exception as e:
-            error_msg = f"启动训练失败: {e}"
+            # 线程安全的错误处理
+            error_msg = f"训练过程出错: {e}"
             self.gui.ae_log(f"❌ {error_msg}")
-            messagebox.showerror("错误", error_msg)
+            import traceback
+            traceback.print_exc()
+            # 在主线程显示错误对话框
+            self.gui.root.after(0, lambda: messagebox.showerror("训练错误", error_msg))
+
+    def _on_ae_training_completed(self):
+        """训练完成后的UI更新（在主线程执行）"""
+        self.gui.ae_log("✅ 训练流程全部完成!")
+        # 如果不是批量实验模式，显示完成提示
+        if not self.batch_experiment_mode:
+            messagebox.showinfo("成功", "AutoEncoder训练完成!")
 
     def stop_ae_training(self):
         """停止AutoEncoder训练"""
@@ -1429,17 +1465,19 @@ class TrainingManager:
             # 打印通道注意力权重（如果启用）
             self._print_channel_attention_weights(rcs_data)
 
-            messagebox.showinfo("成功",
+            # 训练完成，在主线程更新UI
+            self.gui.root.after(0, lambda: messagebox.showinfo("成功",
                 "从Stage 1继续训练完成！\n\n"
                 "已完成Stage 2（参数映射）和Stage 3（端到端微调）训练\n"
-                "模型现在支持从参数预测RCS")
+                "模型现在支持从参数预测RCS"))
 
         except Exception as e:
             error_msg = f"继续训练失败: {e}"
             self.gui.ae_log(f"❌ {error_msg}")
-            messagebox.showerror("错误", error_msg)
             import traceback
             traceback.print_exc()
+            # 在主线程显示错误对话框
+            self.gui.root.after(0, lambda: messagebox.showerror("错误", error_msg))
 
     def _run_three_stage_training_v2(self, rcs_data, param_data, training_config):
         """执行三阶段训练 v2 (使用统一配置管理器)"""
