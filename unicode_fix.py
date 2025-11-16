@@ -14,14 +14,19 @@ def fix_unicode_output():
             import codecs
             import io
 
+            # 检查是否已经修复过（避免重复包装）
+            if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding == 'utf-8':
+                # 已经是UTF-8编码，无需再次修复
+                return True
+
             # 方法1: 重新配置stdout和stderr为UTF-8
-            if hasattr(sys.stdout, 'buffer'):
+            if hasattr(sys.stdout, 'buffer') and hasattr(sys.stdout.buffer, 'readable'):
                 sys.stdout = io.TextIOWrapper(
                     sys.stdout.buffer,
                     encoding='utf-8',
                     errors='replace'
                 )
-            if hasattr(sys.stderr, 'buffer'):
+            if hasattr(sys.stderr, 'buffer') and hasattr(sys.stderr.buffer, 'readable'):
                 sys.stderr = io.TextIOWrapper(
                     sys.stderr.buffer,
                     encoding='utf-8',
@@ -32,7 +37,9 @@ def fix_unicode_output():
             return True
 
         except Exception as e:
-            print(f"Unicode修复失败: {e}")
+            # 静默处理错误，因为可能已经被修复过了
+            if "readable" not in str(e):
+                print(f"Unicode修复失败: {e}")
             return False
     else:
         print("✅ 非Windows系统，Unicode支持正常")
