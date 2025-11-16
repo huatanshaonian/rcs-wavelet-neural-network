@@ -34,6 +34,8 @@ class TrainingManager:
         self.gui = parent_gui
         self.batch_experiment_mode = False  # 批量实验模式标志
         self.training_log_buffer = []  # 训练日志缓冲区
+        self.stop_training_flag = False  # 停止训练标志
+        self.training_thread = None  # 当前训练线程
 
     def _train_model(self):
         """训练模型（在后台线程中运行）"""
@@ -812,6 +814,9 @@ class TrainingManager:
     def _run_ae_training_in_background(self, rcs_data, param_data, training_config, training_mode):
         """在后台线程运行AutoEncoder训练"""
         try:
+            # 重置停止标志
+            self.stop_training_flag = False
+
             # 启动训练过程（使用统一配置）
             if training_mode == "三阶段训练":
                 self.gui.ae_log("📊 开始三阶段训练流程")
@@ -844,8 +849,15 @@ class TrainingManager:
 
     def stop_ae_training(self):
         """停止AutoEncoder训练"""
-        self.gui.ae_log("训练停止请求...")
-        messagebox.showinfo("提示", "训练停止功能将在训练实现后完成")
+        if not self.training_thread or not self.training_thread.is_alive():
+            messagebox.showwarning("警告", "当前没有正在进行的训练")
+            return
+
+        self.gui.ae_log("⏹️ 用户请求停止训练...")
+        self.stop_training_flag = True
+        self.gui.ae_log("⏳ 正在停止训练，请稍候...")
+        self.gui.ae_log("   训练将在当前epoch完成后停止")
+        messagebox.showinfo("提示", "停止信号已发送\n训练将在当前epoch完成后停止")
 
     def _run_three_stage_training(self, rcs_data, param_data, batch_size, learning_rate,
                                 epochs_stage1, epochs_stage2, epochs_stage3):
@@ -1809,6 +1821,12 @@ class TrainingManager:
                 if (epoch + 1) % 100 == 0 or epoch == 0:
                     self._record_attention_weights(autoencoder, input_data[:8].to(device), attention_history, epoch + 1)
 
+                # 检查用户停止请求
+                if self.stop_training_flag:
+                    self.gui.ae_log(f"  ⏹️ 用户停止训练 (Epoch {epoch+1}/{epochs})")
+                    self.gui.ae_log(f"     当前验证损失: {avg_val_loss:.6f}, 最佳: {best_val_loss:.6f}")
+                    break
+
                 # 早停
                 if patience_counter >= patience:
                     self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{patience}轮无改善")
@@ -2041,6 +2059,12 @@ class TrainingManager:
                     # 如果有梯度信息，额外打印梯度状态
                     if grad_norm_str:
                         self.gui.ae_log(f"    梯度监控{grad_norm_str}")
+
+                # 检查用户停止请求
+                if self.stop_training_flag:
+                    self.gui.ae_log(f"  ⏹️ 用户停止训练 (Epoch {epoch+1}/{epochs})")
+                    self.gui.ae_log(f"     当前验证损失: {avg_val_loss:.6f}, 最佳: {best_val_loss:.6f}")
+                    break
 
                 # 早停
                 if patience_counter >= patience:
@@ -2284,6 +2308,12 @@ class TrainingManager:
                     # 如果有梯度信息，额外打印梯度状态
                     if grad_norm_str:
                         self.gui.ae_log(f"    梯度监控{grad_norm_str}")
+
+                # 检查用户停止请求
+                if self.stop_training_flag:
+                    self.gui.ae_log(f"  ⏹️ 用户停止训练 (Epoch {epoch+1}/{epochs})")
+                    self.gui.ae_log(f"     当前验证损失: {avg_val_loss:.6f}, 最佳: {best_val_loss:.6f}")
+                    break
 
                 # 早停
                 if patience_counter >= patience:
