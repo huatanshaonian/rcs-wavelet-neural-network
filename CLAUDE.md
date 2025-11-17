@@ -535,12 +535,20 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 
 ## 🎓 学习资源
 
+### 核心文档
 - **项目README**: `README.md` - 完整项目文档
-- **参数参考文档**: `PARAMETERS_REFERENCE.md` - ⚠️ 所有参数命名规范（必看）
-- **设计分析文档**: `DESIGN_ANALYSIS.md` - 架构设计问题分析与重构方案
-- **模型清单**: `autoencoder/models/MODEL_INVENTORY.md`
-- **实验性模型**: `autoencoder/models/experimental/README.md`
-- **改进方案**: `CNN感受野分析与改进方案.md`, `MLP架构详解.md`
+- **本文档**: `CLAUDE.md` - Claude工作上下文（核心参考）
+- **参数参考**: `PARAMETERS_REFERENCE.md` - ⚠️ 所有参数命名规范（必看）
+- **设计分析**: `DESIGN_ANALYSIS.md` - 架构设计问题分析
+
+### 技术文档
+- **技术文档索引**: `docs/README.md` - 所有技术文档导航
+- **数据流程**: `docs/DATA_PIPELINE.md` - 数据预处理完整说明
+- **架构分析**: `docs/architecture/` - CNN/MLP架构详解
+
+### 模型相关
+- **模型清单**: `autoencoder/models/MODEL_INVENTORY.md` - 8个核心网络说明
+- **实验性模型**: `autoencoder/models/experimental/README.md` - 4个实验性网络
 
 ---
 
