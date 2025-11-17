@@ -505,6 +505,7 @@ class DifferentiableWaveletMLPAutoEncoder(nn.Module):
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         return {
             'type': 'DifferentiableWaveletMLPAutoEncoder',
+            'architecture': 'mlp',  # 架构类型
             'latent_dim': self.latent_dim,
             'num_frequencies': self.num_frequencies,
             'activation': self.activation_type,  # 激活函数类型

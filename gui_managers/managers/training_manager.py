@@ -1632,12 +1632,13 @@ class TrainingManager:
             self.gui.ae_log(f"🔧 原始RCS数据范围: [{rcs_data.min():.4f}, {rcs_data.max():.4f}]")
 
             # 根据模式决定输入数据
-            if mode == 'wavelet':
+            if mode in ['wavelet', 'differentiable_wavelet']:
                 # Wavelet模式: Step 1 - 小波变换（必须在线性域进行）
+                # 注意：differentiable_wavelet模式在模型内部做小波变换，但数据预处理流程相同
                 self.gui.ae_log("📊 Step 1: 在原始RCS线性域数据上执行小波变换...")
                 # ⚠️ 修复：forward_transform期望tensor输入，但rcs_data是numpy
                 rcs_tensor = torch.FloatTensor(rcs_data)
-                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor) if wavelet_transform else rcs_tensor
                 self.gui.ae_log(f"📊 小波系数范围（线性域）: [{wavelet_coeffs.min():.4f}, {wavelet_coeffs.max():.4f}]")
 
                 # Step 2 - 预处理（dB变换 + Z-score标准化）

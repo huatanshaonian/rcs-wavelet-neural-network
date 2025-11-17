@@ -239,7 +239,7 @@ def create_autoencoder_system(config_name: str = '2freq',
     Returns:
         包含所有组件的字典
     """
-    mode_desc = "小波增强" if mode == 'wavelet' else "直接处理"
+    mode_desc = "小波增强" if mode in ['wavelet', 'differentiable_wavelet'] else "直接处理"
     arch_desc = architecture.upper()
     print(f"=== 创建{config_name}配置的AutoEncoder系统 ({mode_desc}模式, {arch_desc}架构) ===")
 
