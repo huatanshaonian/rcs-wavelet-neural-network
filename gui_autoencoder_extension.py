@@ -623,6 +623,7 @@ class AutoEncoderExtension:
             normalization_method = self.main_gui.ae_normalization_method.get()  # 从GUI读取标准化方法
             use_channel_attention = self.main_gui.ae_use_channel_attention.get()  # 通道注意力开关
             db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取dB变换开关（手动控制）
+            activation = self.main_gui.ae_activation.get()  # 从GUI读取激活函数
 
             # 向后兼容：更新 ae_normalize 变量
             self.main_gui.ae_normalize.set(normalization_method != 'none')
@@ -637,6 +638,7 @@ class AutoEncoderExtension:
                 mode=mode,
                 architecture=architecture_type,
                 use_channel_attention=use_channel_attention,
+                activation=activation,
                 db_transform=db_transform,
                 normalization_method=normalization_method
             )
