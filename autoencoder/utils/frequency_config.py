@@ -407,31 +407,7 @@ def create_autoencoder_system(config_name: str = '2freq',
             attention_status = "启用输入层通道注意力" if use_channel_attention else "关闭输入层通道注意力"
             print(f"使用 DifferentiableWaveletMLPAutoEncoder (端到端训练, {attention_status}, 激活函数: {activation})")
         elif architecture.lower() in ('dual_branch_cnn', 'dual_branch'):
-            # 可微分小波 + 双分支CNN
-            autoencoder = DualBranchDifferentiableWaveletAutoEncoder(
-                latent_dim=latent_dim,
-                num_frequencies=freq_config.config['num_frequencies'],
-                dropout_rate=dropout_rate,
-                wavelet_type=wavelet,
-                input_size=wavelet_size,
-                ll_ratio=0.7,  # LL分支占70%隐空间
-                activation=activation
-            )
-            print(f"使用 DualBranchDifferentiableWaveletAutoEncoder (双分支CNN + 可微分小波, 端到端训练, 激活函数: {activation})")
-        elif architecture.lower() == 'dual_branch_mlp':
-            # 可微分小波 + 双分支MLP
-            autoencoder = DualBranchDifferentiableWaveletMLPAutoEncoder(
-                latent_dim=latent_dim,
-                num_frequencies=freq_config.config['num_frequencies'],
-                dropout_rate=dropout_rate,
-                wavelet_type=wavelet,
-                input_size=wavelet_size,
-                ll_ratio=0.7,  # LL分支占70%隐空间
-                activation=activation
-            )
-            print(f"使用 DualBranchDifferentiableWaveletMLPAutoEncoder (双分支MLP + 可微分小波, 端到端训练, 激活函数: {activation})")
-        elif architecture.lower() in ('dual_branch_cnn_v2', 'dual_branch_v2'):
-            # 可微分小波 + 双分支CNN V2 (正确实现)
+            # 可微分小波 + 双分支CNN V2 (默认使用V2正确实现)
             autoencoder = DualBranchDifferentiableWaveletAutoEncoderV2(
                 latent_dim=latent_dim,
                 num_frequencies=freq_config.config['num_frequencies'],
@@ -442,8 +418,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation=activation
             )
             print(f"使用 DualBranchDifferentiableWaveletAutoEncoderV2 (双分支CNN V2 + 可微分小波, 正确对称架构, 激活函数: {activation})")
-        elif architecture.lower() == 'dual_branch_mlp_v2':
-            # 可微分小波 + 双分支MLP V2 (正确实现)
+        elif architecture.lower() == 'dual_branch_mlp':
+            # 可微分小波 + 双分支MLP V2 (默认使用V2正确实现)
             autoencoder = DualBranchDifferentiableWaveletMLPAutoEncoderV2(
                 latent_dim=latent_dim,
                 num_frequencies=freq_config.config['num_frequencies'],
@@ -454,6 +430,30 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation=activation
             )
             print(f"使用 DualBranchDifferentiableWaveletMLPAutoEncoderV2 (双分支MLP V2 + 可微分小波, 正确对称架构, 激活函数: {activation})")
+        elif architecture.lower() in ('dual_branch_cnn_v1', 'dual_branch_v1'):
+            # 可微分小波 + 双分支CNN V1 (旧版，仅向后兼容)
+            autoencoder = DualBranchDifferentiableWaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size,
+                ll_ratio=0.7,
+                activation=activation
+            )
+            print(f"⚠️ 使用 DualBranchDifferentiableWaveletAutoEncoder V1 (旧版，有架构缺陷，建议使用V2)")
+        elif architecture.lower() == 'dual_branch_mlp_v1':
+            # 可微分小波 + 双分支MLP V1 (旧版，仅向后兼容)
+            autoencoder = DualBranchDifferentiableWaveletMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size,
+                ll_ratio=0.7,
+                activation=activation
+            )
+            print(f"⚠️ 使用 DualBranchDifferentiableWaveletMLPAutoEncoder V1 (旧版，有架构缺陷，建议使用V2)")
         else:
             # 可微分小波 + CNN (默认)
             autoencoder = DifferentiableWaveletAutoEncoder(
