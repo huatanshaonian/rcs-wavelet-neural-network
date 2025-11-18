@@ -1,21 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git tag:*)",
-      "Bash(git rev-parse:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(python:*)",
-      "Bash(awk:*)",
-      "Bash(rm:*)",
-      "Read(//g//**)",
-      "Bash(cat:*)",
-      "mcp__context7__resolve-library-id",
-      "mcp__context7__get-library-docs",
-      "Bash(git rm:*)",
-      "Bash(git push:*)",
-      "Bash(git mv:*)",
-      "Bash(git restore:*)"
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
