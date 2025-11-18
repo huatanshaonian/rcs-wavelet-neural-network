@@ -2673,24 +2673,25 @@ class RCSWaveletGUI:
 
     def on_closing(self):
         """窗口关闭事件处理"""
-        try:
-            # 记录关闭日志
-            print("RCS小波神经网络系统关闭")
+        # 弹出确认对话框
+        if messagebox.askyesno("确认退出", "确定要退出程序吗？"):
+            try:
+                # 记录关闭日志
+                print("RCS小波神经网络系统关闭")
 
-            # 停止正在进行的训练
-            if hasattr(self, 'training_thread') and self.training_thread and self.training_thread.is_alive():
-                self.stop_training_flag = True
-                print("正在停止训练...")
+                # 停止正在进行的训练
+                if hasattr(self, 'training_thread') and self.training_thread and self.training_thread.is_alive():
+                    self.stop_training_flag = True
+                    print("正在停止训练...")
 
-            # 恢复输出流
-            self.restore_output()
+                # 恢复输出流
+                self.restore_output()
 
-            # 销毁窗口
-            self.root.destroy()
-
-        except Exception as e:
-            print(f"关闭时发生错误: {e}")
-            self.root.destroy()
+                # 销毁窗口
+                self.root.destroy()
+            except Exception as e:
+                print(f"关闭时发生错误: {e}")
+                self.root.destroy()
 
 
     # ==================== AutoEncoder功能函数 ====================
