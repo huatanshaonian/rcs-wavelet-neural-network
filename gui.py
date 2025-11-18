@@ -2748,6 +2748,57 @@ class RCSWaveletGUI:
         except Exception as e:
             print(f"更新AE状态失败: {e}")
 
+    def _update_status_bar_with_model_info(self):
+        """更新状态栏显示网络参数信息"""
+        try:
+            if self.ae_system is None:
+                self.status_var.set("就绪")
+                return
+
+            # 获取配置信息
+            config = self.ae_system.get('config_info', {})
+            model = self.ae_system['autoencoder']
+            model_info = model.get_model_info()
+
+            # 提取关键参数
+            mode = config.get('mode', 'N/A')
+            architecture = config.get('architecture', 'N/A')
+            activation = config.get('activation', 'relu')
+            latent_dim = config.get('latent_dim', 'N/A')
+            num_freq = config.get('num_frequencies', 'N/A')
+            wavelet = config.get('wavelet', 'N/A')
+            dropout = config.get('dropout_rate', 'N/A')
+
+            # 获取参数量
+            param_count = model.get_parameter_count()
+            total_params = param_count.get('total', 0)
+
+            # 格式化参数量（k/M单位）
+            if total_params >= 1_000_000:
+                params_str = f"{total_params/1_000_000:.2f}M"
+            elif total_params >= 1_000:
+                params_str = f"{total_params/1_000:.1f}K"
+            else:
+                params_str = f"{total_params}"
+
+            # 构建状态栏信息
+            status_text = (
+                f"网络: {mode.upper()}-{architecture.upper()} | "
+                f"激活: {activation} | "
+                f"隐空间: {latent_dim}D | "
+                f"频率: {num_freq}freq | "
+                f"小波: {wavelet} | "
+                f"Dropout: {dropout} | "
+                f"参数量: {params_str}"
+            )
+
+            # 更新状态栏
+            self.status_var.set(status_text)
+
+        except Exception as e:
+            print(f"更新状态栏失败: {e}")
+            self.status_var.set("网络已创建")
+
     def get_ae_session_timestamp(self):
         """获取当前AE会话的时间戳（固定，除非重新创建系统）"""
         if not hasattr(self, 'ae_session_timestamp') or self.ae_session_timestamp is None:
@@ -2880,6 +2931,9 @@ class RCSWaveletGUI:
 
                 # 更新状态
                 self.update_ae_status()
+
+                # 更新状态栏显示网络参数
+                self._update_status_bar_with_model_info()
 
                 messagebox.showinfo("成功",
                     f"AutoEncoder系统创建成功!\n\n"
@@ -3222,6 +3276,9 @@ class RCSWaveletGUI:
                         f"请前往数据管理页面加载匹配的{model_num_freq}频数据")
 
                 self.update_ae_status()
+
+                # 更新状态栏显示网络参数
+                self._update_status_bar_with_model_info()
 
                 messagebox.showinfo("成功",
                     f"模型已加载并自动重建系统!\n\n"

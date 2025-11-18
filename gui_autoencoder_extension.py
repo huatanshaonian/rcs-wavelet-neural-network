@@ -656,6 +656,9 @@ class AutoEncoderExtension:
             self.main_gui.update_ae_status()
             self._update_status_display()
 
+            # 更新状态栏显示网络参数
+            self.main_gui._update_status_bar_with_model_info()
+
             messagebox.showinfo("成功", f"{mode}模式AutoEncoder系统创建成功！")
 
         except Exception as e:
