@@ -554,27 +554,69 @@ class AutoEncoderExtension:
             self.main_gui.ae_log(f"  ⚠️ 获取模型结构信息失败: {e}")
 
     def _update_status_display(self):
-        """更新状态显示（精简版）"""
+        """更新状态显示（包含完整网络参数）"""
         self.status_text.delete(1.0, tk.END)
 
         # 更新模型选择列表
         self._update_model_selection()
 
-        # 精简状态信息
         status_info = []
-        mode = self.main_gui.ae_mode.get()
-        freq_config = self.main_gui.ae_freq_config.get()
-        latent_dim = self.main_gui.ae_latent_dim.get()
 
-        # 第一行：基本配置
-        status_info.append(f"模式: {mode} | 频率: {freq_config} | 隐空间: {latent_dim}")
+        # 如果主系统已创建，显示详细参数
+        if hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system:
+            try:
+                config = self.main_gui.ae_system.get('config_info', {})
+                model = self.main_gui.ae_system['autoencoder']
 
-        # 第二行：系统状态
+                # 提取关键参数
+                mode = config.get('mode', 'N/A')
+                architecture = config.get('architecture', 'N/A')
+                activation = config.get('activation', 'relu')
+                latent_dim = config.get('latent_dim', 'N/A')
+                num_freq = config.get('num_frequencies', 'N/A')
+                wavelet = config.get('wavelet', 'N/A')
+                dropout = config.get('dropout_rate', 'N/A')
+
+                # 获取参数量
+                param_count = model.get_parameter_count()
+                total_params = param_count.get('total', 0)
+                if total_params >= 1_000_000:
+                    params_str = f"{total_params/1_000_000:.2f}M"
+                elif total_params >= 1_000:
+                    params_str = f"{total_params/1_000:.1f}K"
+                else:
+                    params_str = f"{total_params}"
+
+                # 第一行：模式和架构
+                status_info.append(f"网络: {mode.upper()}-{architecture.upper()} | 激活: {activation}")
+
+                # 第二行：核心参数
+                status_info.append(f"隐空间: {latent_dim}D | 频率: {num_freq}freq | 小波: {wavelet}")
+
+                # 第三行：训练参数和模型规模
+                status_info.append(f"Dropout: {dropout} | 参数量: {params_str}")
+
+            except Exception as e:
+                # 如果获取详细信息失败，显示基本配置
+                mode = self.main_gui.ae_mode.get()
+                freq_config = self.main_gui.ae_freq_config.get()
+                latent_dim = self.main_gui.ae_latent_dim.get()
+                status_info.append(f"模式: {mode} | 频率: {freq_config} | 隐空间: {latent_dim}")
+                status_info.append(f"⚠️ 无法获取详细参数: {str(e)}")
+        else:
+            # 系统未创建，显示配置信息
+            mode = self.main_gui.ae_mode.get()
+            freq_config = self.main_gui.ae_freq_config.get()
+            latent_dim = self.main_gui.ae_latent_dim.get()
+            status_info.append(f"模式: {mode} | 频率: {freq_config} | 隐空间: {latent_dim}")
+            status_info.append("⚠️ 主系统未创建")
+
+        # 系统状态
         main_sys = "✓" if (hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system) else "✗"
         dual_sys = "✓" if (self.wavelet_system and self.direct_system) else "✗"
         status_info.append(f"主系统: {main_sys} | 双系统: {dual_sys}")
 
-        # 第三行：对比结果（如果有）
+        # 对比结果（如果有）
         if self.comparison_results:
             timestamp = self.comparison_results.get('timestamp', '未知')
             sample_count = self.comparison_results.get('sample_count', 0)
