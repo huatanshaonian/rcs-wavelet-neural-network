@@ -41,6 +41,46 @@
 - **Enhanced CNN**: 多尺度卷积 + 空洞残差 + 通道注意力，更大感受野
 - **Deep CNN**: 4层深度卷积 + 双卷积块 + 通道注意力，最强表达力
 
+**特殊模式**:
+- **Differentiable Wavelet**: 小波变换集成为nn.Module，损失在RCS空间计算，梯度可微分回传
+  - 支持端到端训练，无需单独的小波/逆小波步骤
+  - 支持双分支架构（LL分支 + HF分支）
+
+### 1.1. Dual-Branch Differentiable AutoEncoder (V2 推荐)
+
+**用途**: LL通道（90%+能量）和HF通道（<10%能量）分离处理
+
+| 架构 | 类名 | 文件 | 说明 |
+|------|------|------|------|
+| Dual-Branch CNN V2 | `DualBranchDifferentiableWaveletAutoEncoderV2` | `dual_branch_differentiable_autoencoder_v2.py` | **✅ 推荐**：正确对称架构 |
+| Dual-Branch MLP V2 | `DualBranchDifferentiableWaveletMLPAutoEncoderV2` | `dual_branch_differentiable_autoencoder_v2.py` | **✅ 推荐**：正确对称架构 |
+| Dual-Branch CNN V1 | `DualBranchDifferentiableWaveletAutoEncoder` | `dual_branch_differentiable_autoencoder.py` | ⚠️ 旧版（架构缺陷，仅向后兼容） |
+| Dual-Branch MLP V1 | `DualBranchDifferentiableWaveletMLPAutoEncoder` | `dual_branch_differentiable_autoencoder.py` | ⚠️ 旧版（架构缺陷，仅向后兼容） |
+
+**V2 vs V1 关键区别**:
+- ✅ V2: Decoder也是双分支（ll_decoder + hf_decoder），架构对称
+- ✅ V2: ll_latent_dim和hf_latent_dim真正生效（V1硬编码为128）
+- ✅ V2: ll_ratio参数实际控制latent空间分配（V1无作用）
+- ✅ V2: _combine_channels()保证通道顺序正确（V1缺失）
+- 详见: `DUAL_BRANCH_V1_VS_V2_COMPARISON.md`
+
+**使用示例**:
+```python
+from autoencoder.utils.frequency_config import create_autoencoder_system
+
+# 创建V2双分支MLP (推荐)
+system = create_autoencoder_system(
+    config_name='2freq',
+    mode='differentiable_wavelet',
+    architecture='dual_branch_mlp_v2',  # ← V2后缀
+    latent_dim=32,
+    activation='sin'
+)
+
+# ll_ratio控制LL/HF隐空间分配
+# latent_dim=32, ll_ratio=0.7 → ll_latent=22, hf_latent=10
+```
+
 ### 2. 频率配置
 
 ```python
@@ -553,6 +593,46 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 ---
 
 ## 🔄 最近更新记录
+
+### 2025-01-18 (下午)
+
+1. **🆕 Dual-Branch V2正确实现** (重大架构修复)
+   - **问题**: V1版本DualBranchDifferentiableAutoEncoder存在严重架构缺陷
+   - **核心缺陷**:
+     - Encoder有双分支，但Decoder是单分支（不对称）
+     - ll_latent_dim和hf_latent_dim被计算但未使用（硬编码为128）
+     - ll_ratio参数无作用
+     - 缺少_combine_channels()导致通道顺序可能错误
+   - **V2修复**:
+     - ✅ Decoder也实现双分支（ll_decoder + hf_decoder）
+     - ✅ ll_latent_dim和hf_latent_dim真正生效
+     - ✅ ll_ratio参数实际控制latent空间分配
+     - ✅ 添加_combine_channels()保证通道顺序正确
+     - ✅ 移除无用fusion层，直接concat
+   - **新增文件**:
+     - `autoencoder/models/dual_branch_differentiable_autoencoder_v2.py`
+     - `DUAL_BRANCH_V1_VS_V2_COMPARISON.md`: 详细对比文档
+   - **影响文件**:
+     - `autoencoder/models/__init__.py`: 导出V2模型
+     - `autoencoder/utils/frequency_config.py`: 支持创建V2
+   - **使用方法**:
+     ```python
+     system = create_autoencoder_system(
+         architecture='dual_branch_mlp_v2',  # 或 'dual_branch_cnn_v2'
+         latent_dim=32
+     )
+     ```
+   - **验证结果**:
+     - MLP V2: 20.2M参数, ll_latent=22, hf_latent=10
+     - CNN V2: 2.2M参数, 架构对称
+     - 通道顺序测试通过
+   - **推荐**: 新项目使用V2，V1仅保留向后兼容
+   - **Commits**: ce57f9c
+   - **相关文档**:
+     - `DUAL_BRANCH_MLP_ANALYSIS.md`: V1问题分析
+     - `CONCAT_IMPLEMENTATION_ISSUE.md`: 通道顺序问题
+     - `DUAL_BRANCH_CORRECT_IMPLEMENTATION_PLAN.md`: V2实现方案
+     - `WAVELET_CHANNEL_ORDER_EXPLAINED.md`: 通道顺序说明
 
 ### 2025-01-06
 
