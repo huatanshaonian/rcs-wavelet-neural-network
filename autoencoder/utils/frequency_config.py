@@ -509,13 +509,28 @@ def create_autoencoder_system(config_name: str = '2freq',
     if 'compression_ratio' in model_info:
         print(f"  - 总压缩比: {model_info['compression_ratio']}")
 
+    # 构建完整的config_info（包含所有参数）
+    config_info = freq_config.get_info()
+    config_info.update({
+        'mode': mode,
+        'architecture': architecture,
+        'activation': activation,
+        'latent_dim': latent_dim,
+        'dropout_rate': dropout_rate,
+        'wavelet': wavelet,
+        'normalize': normalize,
+        'db_transform': db_transform,
+        'normalization_method': normalization_method,
+        'use_channel_attention': use_channel_attention
+    })
+
     system = {
         'config': freq_config,
         'autoencoder': autoencoder,
         'wavelet_transform': wavelet_transform,
         'data_adapter': data_adapter,
         'parameter_mapper': parameter_mapper,
-        'config_info': freq_config.get_info(),
+        'config_info': config_info,
         'mode': mode,
         'architecture': architecture
     }
