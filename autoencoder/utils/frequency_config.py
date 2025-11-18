@@ -40,6 +40,10 @@ from models.dual_branch_differentiable_autoencoder import (
     DualBranchDifferentiableWaveletAutoEncoder,
     DualBranchDifferentiableWaveletMLPAutoEncoder
 )
+from models.dual_branch_differentiable_autoencoder_v2 import (
+    DualBranchDifferentiableWaveletAutoEncoderV2,
+    DualBranchDifferentiableWaveletMLPAutoEncoderV2
+)
 from utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 from utils.data_adapters import RCS_DataAdapter
 
@@ -426,6 +430,30 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation=activation
             )
             print(f"使用 DualBranchDifferentiableWaveletMLPAutoEncoder (双分支MLP + 可微分小波, 端到端训练, 激活函数: {activation})")
+        elif architecture.lower() in ('dual_branch_cnn_v2', 'dual_branch_v2'):
+            # 可微分小波 + 双分支CNN V2 (正确实现)
+            autoencoder = DualBranchDifferentiableWaveletAutoEncoderV2(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size,
+                ll_ratio=0.7,
+                activation=activation
+            )
+            print(f"使用 DualBranchDifferentiableWaveletAutoEncoderV2 (双分支CNN V2 + 可微分小波, 正确对称架构, 激活函数: {activation})")
+        elif architecture.lower() == 'dual_branch_mlp_v2':
+            # 可微分小波 + 双分支MLP V2 (正确实现)
+            autoencoder = DualBranchDifferentiableWaveletMLPAutoEncoderV2(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                wavelet_type=wavelet,
+                input_size=wavelet_size,
+                ll_ratio=0.7,
+                activation=activation
+            )
+            print(f"使用 DualBranchDifferentiableWaveletMLPAutoEncoderV2 (双分支MLP V2 + 可微分小波, 正确对称架构, 激活函数: {activation})")
         else:
             # 可微分小波 + CNN (默认)
             autoencoder = DifferentiableWaveletAutoEncoder(
