@@ -269,12 +269,34 @@ class StatisticsManager:
                     pred_raw_1_5g = predicted_batch[i, :, :, 0].flatten()
                     pred_raw_3g = predicted_batch[i, :, :, 1].flatten()
 
+                    # ⚠️ 后处理分贝转换（仅在线性训练模型时可用）
+                    use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+
+                    # 安全检查（只在第一个模型时执行）
+                    if i == 0 and use_postprocess_abs_db and use_ae_system:
+                        data_adapter_check = self.gui.ae_system.get('data_adapter', None)
+                        if data_adapter_check and data_adapter_check.db_transform:
+                            raise ValueError(
+                                "错误：模型训练时已使用分贝处理，不应在后处理中再次转换分贝！\n"
+                                "请取消勾选'后处理绝对值+分贝'选项。"
+                            )
+                        if i == 0:
+                            print("🔄 统计分析将应用后处理：绝对值 + 分贝转换")
+
                     # 根据系统类型进行域转换
                     if use_ae_system:
                         # AutoEncoder系统：predicted_batch已经是线性域RCS
                         # （已经过inverse_adapt处理）
                         pred_1_5g = pred_raw_1_5g
                         pred_3g = pred_raw_3g
+
+                        # ⚠️ 应用后处理（如果启用）
+                        if use_postprocess_abs_db:
+                            # 取绝对值（消除负值影响）
+                            actual_1_5g = np.abs(actual_1_5g)
+                            actual_3g = np.abs(actual_3g)
+                            pred_1_5g = np.abs(pred_1_5g)
+                            pred_3g = np.abs(pred_3g)
 
                         # ⚠️ 详细调试：验证数据域一致性
                         if i < 3:  # 只打印前3个模型
@@ -283,7 +305,10 @@ class StatisticsManager:
                             print(f"  预测RCS [1.5GHz]: min={pred_1_5g.min():.6e}, max={pred_1_5g.max():.6e}, mean={pred_1_5g.mean():.6e}")
                             print(f"  真实RCS [3GHz]:   min={actual_3g.min():.6e}, max={actual_3g.max():.6e}, mean={actual_3g.mean():.6e}")
                             print(f"  预测RCS [3GHz]:   min={pred_3g.min():.6e}, max={pred_3g.max():.6e}, mean={pred_3g.mean():.6e}")
-                            print(f"  数据域检查: 真实和预测的数量级应该相近（线性域RCS通常在1e-6 ~ 1e-1范围）")
+                            if use_postprocess_abs_db:
+                                print(f"  数据域: 线性RCS（已取绝对值）")
+                            else:
+                                print(f"  数据域检查: 真实和预测的数量级应该相近（线性域RCS通常在1e-6 ~ 1e-1范围）")
                     elif hasattr(self.gui, 'preprocessing_stats') and self.gui.preprocessing_stats:
                         # 传统模型 + 预处理：网络输出是标准化的dB值
                         mean = self.gui.preprocessing_stats['mean']

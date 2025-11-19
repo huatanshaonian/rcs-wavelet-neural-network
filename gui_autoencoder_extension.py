@@ -51,6 +51,9 @@ class AutoEncoderExtension:
         # 通道注意力设置
         self.main_gui.ae_use_channel_attention = tk.BooleanVar(value=False)  # 默认关闭通道注意力
 
+        # 后处理设置（仅用于推理/可视化，不影响训练）
+        self.main_gui.ae_postprocess_abs_db = tk.BooleanVar(value=False)  # 默认关闭后处理分贝转换
+
         # 对比分析设置
         self.comparison_batch_size = tk.IntVar(value=20)
         self.comparison_enable_visual = tk.BooleanVar(value=True)
@@ -212,6 +215,22 @@ class AutoEncoderExtension:
         self.db_checkbox.pack(anchor=tk.W)
         ttk.Label(preprocess_frame, text="   • 将线性RCS转换为dB空间 (sign(x)*log10(abs(x)))",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
+
+        # 后处理分贝转换选项（仅用于推理/可视化）
+        self.postprocess_abs_db_checkbox = ttk.Checkbutton(
+            preprocess_frame,
+            text="🔄 后处理: 绝对值+分贝转换 (仅推理时)",
+            variable=self.main_gui.ae_postprocess_abs_db,
+            state='disabled'  # 初始禁用，加载模型时根据情况启用
+        )
+        self.postprocess_abs_db_checkbox.pack(anchor=tk.W)
+        self.postprocess_help_label = ttk.Label(
+            preprocess_frame,
+            text="   • 仅在模型线性训练时可用，用于消除负值影响",
+            font=self.main_gui.font_small,
+            foreground="gray"
+        )
+        self.postprocess_help_label.pack(anchor=tk.W, pady=(0, 5))
 
         # 通道注意力选项
         ttk.Checkbutton(preprocess_frame, text="🔍 输入层通道注意力 (Channel Attention)",

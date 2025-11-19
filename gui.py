@@ -3190,6 +3190,31 @@ class RCSWaveletGUI:
                 self.ae_system['data_adapter'].db_transform = db_transform
                 self.ae_log(f"🔧 数据预处理: 标准化={normalize}, dB变换={db_transform}")
 
+                # ⚠️ 后处理选项控制逻辑
+                # 根据模型训练时是否使用dB变换来决定是否启用后处理分贝转换
+                if hasattr(self, 'ae_extension') and self.ae_extension is not None:
+                    postprocess_checkbox = self.ae_extension.postprocess_abs_db_checkbox
+                    postprocess_help_label = self.ae_extension.postprocess_help_label
+
+                    if db_transform:
+                        # 模型训练时已使用dB变换，禁用后处理选项
+                        postprocess_checkbox.config(state='disabled')
+                        self.ae_postprocess_abs_db.set(False)
+                        postprocess_help_label.config(
+                            text="   • 模型已使用分贝训练，数据已在对数空间，无需再次转换",
+                            foreground="orange"
+                        )
+                        self.ae_log(f"🔒 后处理分贝转换: 已禁用（模型训练时已使用dB变换）")
+                    else:
+                        # 模型训练时未使用dB变换，启用后处理选项
+                        postprocess_checkbox.config(state='normal')
+                        self.ae_postprocess_abs_db.set(False)  # 默认不勾选
+                        postprocess_help_label.config(
+                            text="   • 仅在模型线性训练时可用，用于消除负值影响",
+                            foreground="gray"
+                        )
+                        self.ae_log(f"🔓 后处理分贝转换: 已启用（模型线性训练，可选择后处理转分贝）")
+
                 # 如果有数据，也加载到系统中
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
                     self.ae_system['rcs_data'] = self.rcs_data

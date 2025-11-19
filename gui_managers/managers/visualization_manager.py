@@ -1434,6 +1434,28 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             freq_idx = 0 if freq == "1.5G" else 1
             rcs_2d = predicted_rcs[:, :, freq_idx]
 
+            # ⚠️ 后处理分贝转换（仅在线性训练模型时可用）
+            use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+            rcs_unit_label = 'RCS'  # 默认线性值
+
+            if use_postprocess_abs_db:
+                # 安全检查：确认模型训练时未使用dB变换
+                if data_adapter and data_adapter.db_transform:
+                    raise ValueError(
+                        "错误：模型训练时已使用分贝处理，不应在后处理中再次转换分贝！\n"
+                        "请取消勾选'后处理绝对值+分贝'选项。"
+                    )
+
+                print("🔄 应用后处理：绝对值 + 分贝转换")
+                print(f"  处理前 - 预测RCS范围: [{rcs_2d.min():.6e}, {rcs_2d.max():.6e}]")
+
+                # 取绝对值并转换为dB
+                rcs_2d = np.abs(rcs_2d)
+                rcs_2d = 10 * np.log10(rcs_2d + 1e-10)
+                rcs_unit_label = 'RCS (dB)'
+
+                print(f"  处理后 - 预测RCS (dB)范围: [{rcs_2d.min():.2f}, {rcs_2d.max():.2f}]")
+
             # 创建角度网格（实际角度范围：theta 45-135°, phi -45-45°）
             theta_values = np.linspace(45, 135, rcs_2d.shape[0])
             phi_values = np.linspace(-45, 45, rcs_2d.shape[1])
@@ -1457,9 +1479,9 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 设置刻度标签字号
             ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
-            # 添加colorbar并设置字号
-            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label='RCS')
-            cbar.set_label('RCS', fontsize=int(20*fontsize_scale), fontweight='bold')
+            # 添加colorbar并设置字号（根据是否后处理调整标签）
+            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label=rcs_unit_label)
+            cbar.set_label(rcs_unit_label, fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             self.gui.vis_fig.tight_layout()
@@ -1591,6 +1613,29 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             pred_2d = predicted_rcs[:, :, freq_idx]
             print(f"提取频率{freq_str} (索引{freq_idx}): {pred_2d.shape}")
 
+            # ⚠️ 后处理分贝转换（仅在线性训练模型时可用）
+            data_adapter = self.gui.ae_system.get('data_adapter', None)
+            use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+
+            if use_postprocess_abs_db:
+                # 安全检查：确认模型训练时未使用dB变换
+                if data_adapter and data_adapter.db_transform:
+                    raise ValueError(
+                        "错误：模型训练时已使用分贝处理，不应在后处理中再次转换分贝！\n"
+                        "请取消勾选'后处理绝对值+分贝'选项。"
+                    )
+
+                print("🔄 应用后处理：绝对值 + 分贝转换")
+                print(f"  处理前 - 真实RCS范围: [{true_rcs_linear.min():.6e}, {true_rcs_linear.max():.6e}]")
+                print(f"  处理前 - 预测RCS范围: [{pred_2d.min():.6e}, {pred_2d.max():.6e}]")
+
+                # 取绝对值（消除负值影响）
+                true_rcs_linear = np.abs(true_rcs_linear)
+                pred_2d = np.abs(pred_2d)
+
+                print(f"  处理后 - 真实RCS范围: [{true_rcs_linear.min():.6e}, {true_rcs_linear.max():.6e}]")
+                print(f"  处理后 - 预测RCS范围: [{pred_2d.min():.6e}, {pred_2d.max():.6e}]")
+
             # 使用统一绘图函数
             from autoencoder.utils.plotting import plot_rcs_comparison
 
@@ -1600,8 +1645,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 调用统一绘图函数（复用GUI的figure）
             plot_rcs_comparison(
-                true_rcs=true_rcs_linear,  # 线性值
-                pred_rcs=pred_2d,           # 线性值
+                true_rcs=true_rcs_linear,  # 线性值（可能已经过绝对值处理）
+                pred_rcs=pred_2d,           # 线性值（可能已经过绝对值处理）
                 freq_label=freq_str,
                 model_id=model_id_str,
                 phi_range=phi_range,
