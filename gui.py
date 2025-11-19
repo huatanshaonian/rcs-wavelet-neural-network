@@ -3193,29 +3193,47 @@ class RCSWaveletGUI:
                 # ⚠️ 后处理选项控制逻辑
                 # 根据模型训练时是否使用dB变换来决定是否启用后处理分贝转换
                 self.ae_log(f"🔍 调试: hasattr(ae_extension)={hasattr(self, 'ae_extension')}, ae_extension={getattr(self, 'ae_extension', None)}")
-                if hasattr(self, 'ae_extension') and self.ae_extension is not None:
-                    self.ae_log(f"🔍 调试: 找到ae_extension，准备配置后处理选项")
-                    postprocess_checkbox = self.ae_extension.postprocess_abs_db_checkbox
-                    postprocess_help_label = self.ae_extension.postprocess_help_label
 
-                    if db_transform:
-                        # 模型训练时已使用dB变换，禁用后处理选项
-                        postprocess_checkbox.config(state='disabled')
-                        self.ae_postprocess_abs_db.set(False)
-                        postprocess_help_label.config(
-                            text="   • 模型已使用分贝训练，数据已在对数空间，无需再次转换",
-                            foreground="orange"
-                        )
-                        self.ae_log(f"🔒 后处理分贝转换: 已禁用（模型训练时已使用dB变换）")
-                    else:
-                        # 模型训练时未使用dB变换，启用后处理选项
-                        postprocess_checkbox.config(state='normal')
-                        self.ae_postprocess_abs_db.set(False)  # 默认不勾选
-                        postprocess_help_label.config(
-                            text="   • 仅在模型线性训练时可用，用于消除负值影响",
-                            foreground="gray"
-                        )
-                        self.ae_log(f"🔓 后处理分贝转换: 已启用（模型线性训练，可选择后处理转分贝）")
+                # 尝试从所有可能的位置获取 ae_extension
+                ae_extension = None
+                if hasattr(self, 'ae_extension') and self.ae_extension is not None:
+                    ae_extension = self.ae_extension
+                    self.ae_log(f"🔍 调试: 从self找到ae_extension")
+                else:
+                    # 尝试从全局查找（如果main()中设置失败，但对象还在）
+                    import sys
+                    main_module = sys.modules.get('__main__')
+                    if main_module and hasattr(main_module, 'app') and hasattr(main_module.app, 'ae_extension'):
+                        ae_extension = main_module.app.ae_extension
+                        self.ae_extension = ae_extension  # 补救措施：设置到self
+                        self.ae_log(f"🔍 调试: 从main找到ae_extension并设置到self")
+
+                if ae_extension is not None:
+                    self.ae_log(f"🔍 调试: 找到ae_extension，准备配置后处理选项")
+                    try:
+                        postprocess_checkbox = ae_extension.postprocess_abs_db_checkbox
+                        postprocess_help_label = ae_extension.postprocess_help_label
+
+                        if db_transform:
+                            # 模型训练时已使用dB变换，禁用后处理选项
+                            postprocess_checkbox.config(state='disabled')
+                            self.ae_postprocess_abs_db.set(False)
+                            postprocess_help_label.config(
+                                text="   • 模型已使用分贝训练，数据已在对数空间，无需再次转换",
+                                foreground="orange"
+                            )
+                            self.ae_log(f"🔒 后处理分贝转换: 已禁用（模型训练时已使用dB变换）")
+                        else:
+                            # 模型训练时未使用dB变换，启用后处理选项
+                            postprocess_checkbox.config(state='normal')
+                            self.ae_postprocess_abs_db.set(False)  # 默认不勾选
+                            postprocess_help_label.config(
+                                text="   • 仅在模型线性训练时可用，用于消除负值影响",
+                                foreground="gray"
+                            )
+                            self.ae_log(f"🔓 后处理分贝转换: 已启用（模型线性训练，可选择后处理转分贝）")
+                    except Exception as e:
+                        self.ae_log(f"⚠️ 调试: 配置后处理选项时出错: {e}")
                 else:
                     self.ae_log(f"⚠️ 调试: 未找到ae_extension，无法配置后处理选项")
 
