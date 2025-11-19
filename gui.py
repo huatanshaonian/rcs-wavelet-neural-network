@@ -842,6 +842,7 @@ class RCSWaveletGUI:
                   style="Accent.TButton").pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="生成报告", command=self.generate_report).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="导出结果", command=self.export_results).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="详细报告", command=self.save_detailed_evaluation_report).pack(side=tk.LEFT, padx=5)
 
         # 评估结果显示
         results_group = ttk.LabelFrame(main_frame, text="评估结果")
@@ -2073,6 +2074,10 @@ class RCSWaveletGUI:
     def _display_traditional_results(self, results):
         """显示传统网络评估结果"""
         return self.evaluation_manager._display_traditional_results(results)
+
+    def save_detailed_evaluation_report(self):
+        """保存详细评估报告（AutoEncoder专用）"""
+        return self.evaluation_manager.save_detailed_evaluation_report()
 
     def generate_report(self):
         """生成评估报告"""

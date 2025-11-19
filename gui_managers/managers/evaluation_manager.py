@@ -155,7 +155,7 @@ class EvaluationManager:
             predictions = np.concatenate(predictions, axis=0)
             targets = np.concatenate(targets, axis=0)
 
-            # 计算整体指标
+            # 计算基础指标（保持向后兼容）
             avg_loss = total_loss / total_samples
             mse = np.mean((predictions - targets) ** 2)
             rmse = np.sqrt(mse)
@@ -174,7 +174,24 @@ class EvaluationManager:
                 freq_rmse.append(np.sqrt(freq_mse[-1]))
                 freq_mae.append(np.mean(np.abs(pred_freq - target_freq)))
 
-            # 创建评估结果
+            # 使用ReconstructionMetrics计算完整指标
+            self.gui.log_message("  计算完整评估指标...")
+            from autoencoder.evaluation.reconstruction_metrics import ReconstructionMetrics
+
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            metrics_calculator = ReconstructionMetrics(device=device)
+
+            # 转换为tensor
+            pred_tensor = torch.FloatTensor(predictions).to(device)
+            true_tensor = torch.FloatTensor(targets).to(device)
+
+            # 计算所有指标
+            all_metrics = metrics_calculator.compute_all_metrics(pred_tensor, true_tensor)
+
+            # 生成详细报告
+            detailed_report = metrics_calculator.generate_report(all_metrics, detailed=True)
+
+            # 创建评估结果（包含所有指标）
             self.gui.evaluation_results = {
                 'overall': {
                     'mse': mse,
@@ -187,6 +204,8 @@ class EvaluationManager:
                     'rmse': freq_rmse,
                     'mae': freq_mae
                 },
+                'advanced_metrics': all_metrics,  # 新增：完整指标
+                'detailed_report': detailed_report,  # 新增：详细报告
                 'model_type': 'autoencoder',
                 'test_samples': test_size
             }
@@ -195,6 +214,9 @@ class EvaluationManager:
             self.gui.log_message(f"  平均损失: {avg_loss:.6f}")
             self.gui.log_message(f"  整体RMSE: {rmse:.6f}")
             self.gui.log_message(f"  整体MAE: {mae:.6f}")
+            self.gui.log_message(f"  SSIM: {all_metrics.get('ssim_mean', 0):.4f}")
+            self.gui.log_message(f"  相关系数: {all_metrics.get('correlation', 0):.4f}")
+            self.gui.log_message(f"  R²: {all_metrics.get('r2_score', 0):.4f}")
 
             # 更新评估结果显示
             self.gui._update_evaluation_display()
@@ -222,18 +244,52 @@ class EvaluationManager:
         self.gui.eval_tree.insert(basic_node, "end", values=("模型类型", "AutoEncoder", "", ""))
         self.gui.eval_tree.insert(basic_node, "end", values=("测试样本数", str(results['test_samples']), "", ""))
 
-        # 添加整体指标
-        overall_node = self.gui.eval_tree.insert("", "end", text="整体指标")
+        # 添加基础误差指标
+        basic_error_node = self.gui.eval_tree.insert("", "end", text="📊 基础误差指标")
         overall = results['overall']
-        self.gui.eval_tree.insert(overall_node, "end", values=("MSE", "", "", f"{overall['mse']:.6f}"))
-        self.gui.eval_tree.insert(overall_node, "end", values=("RMSE", "", "", f"{overall['rmse']:.6f}"))
-        self.gui.eval_tree.insert(overall_node, "end", values=("MAE", "", "", f"{overall['mae']:.6f}"))
-        self.gui.eval_tree.insert(overall_node, "end", values=("平均损失", "", "", f"{overall['avg_loss']:.6f}"))
+        self.gui.eval_tree.insert(basic_error_node, "end", values=("MSE", "", "", f"{overall['mse']:.6f}"))
+        self.gui.eval_tree.insert(basic_error_node, "end", values=("RMSE", "", "", f"{overall['rmse']:.6f}"))
+        self.gui.eval_tree.insert(basic_error_node, "end", values=("MAE", "", "", f"{overall['mae']:.6f}"))
+        self.gui.eval_tree.insert(basic_error_node, "end", values=("平均损失", "", "", f"{overall['avg_loss']:.6f}"))
 
-        # 添加频率指标（如果有多个频率）
+        # 添加结构相似性指标（新增）
+        if 'advanced_metrics' in results:
+            adv = results['advanced_metrics']
+
+            ssim_node = self.gui.eval_tree.insert("", "end", text="🔍 结构相似性指标")
+            self.gui.eval_tree.insert(ssim_node, "end", values=("SSIM (平均)", "", "", f"{adv.get('ssim_mean', 0):.4f}"))
+            self.gui.eval_tree.insert(ssim_node, "end", values=("SSIM (标准差)", "", "", f"{adv.get('ssim_std', 0):.4f}"))
+            self.gui.eval_tree.insert(ssim_node, "end", values=("SSIM (最小)", "", "", f"{adv.get('ssim_min', 0):.4f}"))
+
+            # 添加统计指标（新增）
+            stat_node = self.gui.eval_tree.insert("", "end", text="📈 统计指标")
+            self.gui.eval_tree.insert(stat_node, "end", values=("相关系数", "", "", f"{adv.get('correlation', 0):.4f}"))
+            self.gui.eval_tree.insert(stat_node, "end", values=("R²决定系数", "", "", f"{adv.get('r2_score', 0):.4f}"))
+            self.gui.eval_tree.insert(stat_node, "end", values=("KL散度", "", "", f"{adv.get('kl_divergence', 0):.4f}"))
+
+            # 添加物理约束指标（新增）
+            phys_node = self.gui.eval_tree.insert("", "end", text="⚖️ 物理约束指标")
+            self.gui.eval_tree.insert(phys_node, "end", values=("对称性误差", "", "", f"{adv.get('symmetry_error', 0):.6f}"))
+            self.gui.eval_tree.insert(phys_node, "end", values=("连续性误差", "", "", f"{adv.get('continuity_error', 0):.6f}"))
+            self.gui.eval_tree.insert(phys_node, "end", values=("负值比例", "", "", f"{adv.get('negative_ratio', 0):.4f}"))
+
+            # 添加频域指标（新增）
+            freq_domain_node = self.gui.eval_tree.insert("", "end", text="🌊 频域指标")
+            self.gui.eval_tree.insert(freq_domain_node, "end", values=("幅度谱误差", "", "", f"{adv.get('freq_magnitude_error', 0):.6f}"))
+            self.gui.eval_tree.insert(freq_domain_node, "end", values=("相位谱误差", "", "", f"{adv.get('freq_phase_error', 0):.6f}"))
+            self.gui.eval_tree.insert(freq_domain_node, "end", values=("功率谱误差", "", "", f"{adv.get('freq_power_error', 0):.6f}"))
+            self.gui.eval_tree.insert(freq_domain_node, "end", values=("频率间一致性", "", "", f"{adv.get('freq_consistency_error', 0):.6f}"))
+
+            # 添加数值范围指标（新增）
+            range_node = self.gui.eval_tree.insert("", "end", text="📏 数值范围")
+            self.gui.eval_tree.insert(range_node, "end", values=("预测值范围", f"{adv.get('pred_min', 0):.4f}", f"{adv.get('pred_max', 0):.4f}", ""))
+            self.gui.eval_tree.insert(range_node, "end", values=("真实值范围", f"{adv.get('true_min', 0):.4f}", f"{adv.get('true_max', 0):.4f}", ""))
+            self.gui.eval_tree.insert(range_node, "end", values=("范围误差", "", "", f"{adv.get('range_error', 0):.4f}"))
+
+        # 添加频率分解指标
         freq_metrics = results['frequencies']
         if len(freq_metrics['mse']) > 1:
-            freq_node = self.gui.eval_tree.insert("", "end", text="频率指标")
+            freq_node = self.gui.eval_tree.insert("", "end", text="📡 频率分解指标")
             freq_labels = ['1.5GHz', '3GHz'] if len(freq_metrics['mse']) == 2 else [f'Freq{i+1}' for i in range(len(freq_metrics['mse']))]
 
             for metric in ['mse', 'rmse', 'mae']:
@@ -242,6 +298,45 @@ class EvaluationManager:
                     self.gui.eval_tree.insert(freq_node, "end", values=(metric.upper(), values[0], values[1], ""))
                 else:
                     self.gui.eval_tree.insert(freq_node, "end", values=(metric.upper(), str(values), "", ""))
+    def save_detailed_evaluation_report(self):
+        """保存详细评估报告（AutoEncoder专用）"""
+        if not hasattr(self.gui, 'evaluation_results') or not self.gui.evaluation_results:
+            from tkinter import messagebox
+            messagebox.showwarning("警告", "请先进行AutoEncoder评估")
+            return
+
+        results = self.gui.evaluation_results
+        if results.get('model_type') != 'autoencoder':
+            from tkinter import messagebox
+            messagebox.showwarning("警告", "详细报告仅支持AutoEncoder模型")
+            return
+
+        if 'detailed_report' not in results:
+            from tkinter import messagebox
+            messagebox.showwarning("警告", "未找到详细报告，请重新评估")
+            return
+
+        # 选择保存位置
+        from tkinter import filedialog
+        filename = filedialog.asksaveasfilename(
+            title="保存详细评估报告",
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(results['detailed_report'])
+
+                from tkinter import messagebox
+                messagebox.showinfo("成功", f"详细报告已保存到: {filename}")
+                self.gui.log_message(f"✅ 详细报告已保存: {filename}")
+            except Exception as e:
+                from tkinter import messagebox
+                messagebox.showerror("错误", f"保存报告失败: {str(e)}")
+                self.gui.log_message(f"❌ 报告保存失败: {e}")
+
     def _display_traditional_results(self, results):
         """显示传统网络评估结果"""
         # 添加回归指标
