@@ -3156,6 +3156,23 @@ class RCSWaveletGUI:
                 self.ae_log("🔧 正在自动重建AutoEncoder系统...")
                 activation = config.get('activation', 'relu')  # 从config获取，默认relu
                 self.ae_log(f"  激活函数: {activation}")
+
+                # ⚠️ 处理旧版模型的向后兼容：正确推断normalization_method
+                # 旧版模型只有 normalize (bool)，新版有 normalization_method (str)
+                normalization_method = config.get('normalization_method', None)
+                db_transform = config.get('db_transform', False)
+
+                if normalization_method is None:
+                    # 旧版模型：根据normalize推断normalization_method
+                    if normalize:
+                        normalization_method = 'zscore'  # 旧版默认使用zscore
+                        self.ae_log(f"  ⚠️ 旧版模型，从normalize={normalize}推断 normalization_method='zscore'")
+                    else:
+                        normalization_method = 'none'
+                        self.ae_log(f"  ⚠️ 旧版模型，从normalize={normalize}推断 normalization_method='none'")
+                else:
+                    self.ae_log(f"  标准化方法: {normalization_method}")
+
                 self.ae_system = create_autoencoder_system(
                     config_name=freq_config,
                     latent_dim=latent_dim,
@@ -3164,7 +3181,9 @@ class RCSWaveletGUI:
                     normalize=normalize,
                     mode=mode,
                     architecture=architecture,
-                    activation=activation
+                    activation=activation,
+                    db_transform=db_transform,
+                    normalization_method=normalization_method
                 )
 
                 # 加载模型权重
@@ -3182,8 +3201,7 @@ class RCSWaveletGUI:
                 else:
                     self.ae_log(f"⚠️ 模型文件不包含adapter统计信息（可能是旧版模型）")
 
-                # 更新GUI中的预处理选项
-                db_transform = config.get('db_transform', False)
+                # 更新GUI中的预处理选项（db_transform已在上面获取）
                 self.ae_normalize.set(normalize)
                 self.ae_db_transform.set(db_transform)
                 self.ae_system['data_adapter'].normalize = normalize
