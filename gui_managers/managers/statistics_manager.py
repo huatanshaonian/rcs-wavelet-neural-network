@@ -619,6 +619,9 @@ class StatisticsManager:
             # 首先创建并保存散点图
             self.gui._save_scatter_plots(all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir)
 
+            # 创建并保存分布对比图
+            self._save_distribution_plots(all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir)
+
             # 子图1: 1.5GHz 模型均值对比图 (dBsm单位)
             ax1 = self.gui.vis_fig.add_subplot(2, 3, 1)
             stats_1_5_list = [s for s in model_stats if s['freq'] == '1.5GHz']
@@ -837,4 +840,111 @@ class StatisticsManager:
 
         except Exception as e:
             print(f"保存散点图失败: {e}")
+
+    def _save_distribution_plots(self, all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir):
+        """保存RCS分布对比图到文件"""
+        try:
+            import numpy as np
+            import matplotlib.pyplot as plt
+            import os
+
+            # 创建分布对比图
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+            # ===== 1.5GHz 分布对比 =====
+            # 转换为dBsm单位
+            actual_1_5g_linear = np.maximum(all_actual_1_5g, 1e-12)
+            predicted_1_5g_linear = np.maximum(all_predicted_1_5g, 1e-12)
+            actual_1_5g_dbsm = 10 * np.log10(actual_1_5g_linear)
+            predicted_1_5g_dbsm = 10 * np.log10(predicted_1_5g_linear)
+
+            # 计算合理的bins范围（使用99%分位数避免异常值影响）
+            data_min = min(np.percentile(actual_1_5g_dbsm, 1), np.percentile(predicted_1_5g_dbsm, 1))
+            data_max = max(np.percentile(actual_1_5g_dbsm, 99), np.percentile(predicted_1_5g_dbsm, 99))
+            bins = np.linspace(data_min, data_max, 60)  # 60个bins
+
+            # 绘制直方图
+            ax1.hist(actual_1_5g_dbsm, bins=bins, alpha=0.6, label='真实值', color='blue',
+                    edgecolor='black', linewidth=0.5, density=True)
+            ax1.hist(predicted_1_5g_dbsm, bins=bins, alpha=0.6, label='预测值', color='red',
+                    edgecolor='black', linewidth=0.5, density=True)
+
+            # 添加统计信息
+            actual_mean = np.mean(actual_1_5g_dbsm)
+            actual_std = np.std(actual_1_5g_dbsm)
+            pred_mean = np.mean(predicted_1_5g_dbsm)
+            pred_std = np.std(predicted_1_5g_dbsm)
+
+            # 在图上标注均值线
+            ax1.axvline(actual_mean, color='blue', linestyle='--', linewidth=2, alpha=0.8,
+                       label=f'真实均值: {actual_mean:.2f} dBsm')
+            ax1.axvline(pred_mean, color='red', linestyle='--', linewidth=2, alpha=0.8,
+                       label=f'预测均值: {pred_mean:.2f} dBsm')
+
+            ax1.set_xlabel('RCS值 (dBsm)', fontsize=12)
+            ax1.set_ylabel('概率密度', fontsize=12)
+            ax1.set_title(f'1.5GHz RCS分布对比\n真实: μ={actual_mean:.2f}, σ={actual_std:.2f}\n预测: μ={pred_mean:.2f}, σ={pred_std:.2f}',
+                         fontsize=11, fontweight='bold')
+            ax1.legend(loc='upper right', fontsize=9)
+            ax1.grid(True, alpha=0.3)
+
+            # ===== 3GHz 分布对比 =====
+            # 转换为dBsm单位
+            actual_3g_linear = np.maximum(all_actual_3g, 1e-12)
+            predicted_3g_linear = np.maximum(all_predicted_3g, 1e-12)
+            actual_3g_dbsm = 10 * np.log10(actual_3g_linear)
+            predicted_3g_dbsm = 10 * np.log10(predicted_3g_linear)
+
+            # 计算合理的bins范围
+            data_min_3g = min(np.percentile(actual_3g_dbsm, 1), np.percentile(predicted_3g_dbsm, 1))
+            data_max_3g = max(np.percentile(actual_3g_dbsm, 99), np.percentile(predicted_3g_dbsm, 99))
+            bins_3g = np.linspace(data_min_3g, data_max_3g, 60)
+
+            # 绘制直方图
+            ax2.hist(actual_3g_dbsm, bins=bins_3g, alpha=0.6, label='真实值', color='blue',
+                    edgecolor='black', linewidth=0.5, density=True)
+            ax2.hist(predicted_3g_dbsm, bins=bins_3g, alpha=0.6, label='预测值', color='red',
+                    edgecolor='black', linewidth=0.5, density=True)
+
+            # 添加统计信息
+            actual_mean_3g = np.mean(actual_3g_dbsm)
+            actual_std_3g = np.std(actual_3g_dbsm)
+            pred_mean_3g = np.mean(predicted_3g_dbsm)
+            pred_std_3g = np.std(predicted_3g_dbsm)
+
+            # 在图上标注均值线
+            ax2.axvline(actual_mean_3g, color='blue', linestyle='--', linewidth=2, alpha=0.8,
+                       label=f'真实均值: {actual_mean_3g:.2f} dBsm')
+            ax2.axvline(pred_mean_3g, color='red', linestyle='--', linewidth=2, alpha=0.8,
+                       label=f'预测均值: {pred_mean_3g:.2f} dBsm')
+
+            ax2.set_xlabel('RCS值 (dBsm)', fontsize=12)
+            ax2.set_ylabel('概率密度', fontsize=12)
+            ax2.set_title(f'3GHz RCS分布对比\n真实: μ={actual_mean_3g:.2f}, σ={actual_std_3g:.2f}\n预测: μ={pred_mean_3g:.2f}, σ={pred_std_3g:.2f}',
+                         fontsize=11, fontweight='bold')
+            ax2.legend(loc='upper right', fontsize=9)
+            ax2.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            distribution_plot_path = os.path.join(results_dir, 'distribution_plots.png')
+            plt.savefig(distribution_plot_path, dpi=150, bbox_inches='tight')
+            plt.close()
+
+            print(f"RCS分布对比图已保存到: {distribution_plot_path}")
+
+            # 打印分布统计摘要
+            print(f"\n=== RCS分布统计摘要 ===")
+            print(f"1.5GHz:")
+            print(f"  真实值: μ={actual_mean:.2f} dBsm, σ={actual_std:.2f} dBsm, 范围=[{actual_1_5g_dbsm.min():.2f}, {actual_1_5g_dbsm.max():.2f}]")
+            print(f"  预测值: μ={pred_mean:.2f} dBsm, σ={pred_std:.2f} dBsm, 范围=[{predicted_1_5g_dbsm.min():.2f}, {predicted_1_5g_dbsm.max():.2f}]")
+            print(f"  均值偏差: {abs(pred_mean - actual_mean):.2f} dBsm ({abs(pred_mean - actual_mean)/abs(actual_mean)*100:.2f}%)")
+            print(f"3GHz:")
+            print(f"  真实值: μ={actual_mean_3g:.2f} dBsm, σ={actual_std_3g:.2f} dBsm, 范围=[{actual_3g_dbsm.min():.2f}, {actual_3g_dbsm.max():.2f}]")
+            print(f"  预测值: μ={pred_mean_3g:.2f} dBsm, σ={pred_std_3g:.2f} dBsm, 范围=[{predicted_3g_dbsm.min():.2f}, {predicted_3g_dbsm.max():.2f}]")
+            print(f"  均值偏差: {abs(pred_mean_3g - actual_mean_3g):.2f} dBsm ({abs(pred_mean_3g - actual_mean_3g)/abs(actual_mean_3g)*100:.2f}%)")
+
+        except Exception as e:
+            print(f"保存RCS分布对比图失败: {e}")
+            import traceback
+            traceback.print_exc()
 
