@@ -3192,7 +3192,9 @@ class RCSWaveletGUI:
 
                 # ⚠️ 后处理选项控制逻辑
                 # 根据模型训练时是否使用dB变换来决定是否启用后处理分贝转换
+                self.ae_log(f"🔍 调试: hasattr(ae_extension)={hasattr(self, 'ae_extension')}, ae_extension={getattr(self, 'ae_extension', None)}")
                 if hasattr(self, 'ae_extension') and self.ae_extension is not None:
+                    self.ae_log(f"🔍 调试: 找到ae_extension，准备配置后处理选项")
                     postprocess_checkbox = self.ae_extension.postprocess_abs_db_checkbox
                     postprocess_help_label = self.ae_extension.postprocess_help_label
 
@@ -3214,6 +3216,8 @@ class RCSWaveletGUI:
                             foreground="gray"
                         )
                         self.ae_log(f"🔓 后处理分贝转换: 已启用（模型线性训练，可选择后处理转分贝）")
+                else:
+                    self.ae_log(f"⚠️ 调试: 未找到ae_extension，无法配置后处理选项")
 
                 # 如果有数据，也加载到系统中
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
