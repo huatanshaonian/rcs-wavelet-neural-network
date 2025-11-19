@@ -230,8 +230,8 @@ class RCSWaveletApp:
             try:
                 from gui_batch_experiment_extension import BatchExperimentExtension
                 print("正在集成批量实验扩展...")
-                batch_extension = BatchExperimentExtension(app)
-                batch_extension.extend_batch_experiment_tab()
+                app.batch_extension = BatchExperimentExtension(app)
+                app.batch_extension.extend_batch_experiment_tab()
                 print("✅ 批量实验扩展已加载")
 
             except ImportError as ext_e:
