@@ -3670,8 +3670,8 @@ def main():
     # 初始化AutoEncoder扩展（如果可用）
     try:
         from gui_autoencoder_extension import AutoEncoderExtension
-        ae_extension = AutoEncoderExtension(app)
-        ae_extension.extend_autoencoder_tab()
+        app.ae_extension = AutoEncoderExtension(app)
+        app.ae_extension.extend_autoencoder_tab()
         print("✓ AutoEncoder扩展已加载")
     except ImportError:
         print("⚠ AutoEncoderExtension未找到")
