@@ -216,8 +216,8 @@ class RCSWaveletApp:
             try:
                 from gui_autoencoder_extension import AutoEncoderExtension
                 print("正在集成AutoEncoder扩展...")
-                ae_extension = AutoEncoderExtension(app)
-                ae_extension.extend_autoencoder_tab()
+                app.ae_extension = AutoEncoderExtension(app)
+                app.ae_extension.extend_autoencoder_tab()
                 print("✅ AutoEncoder扩展已加载")
 
             except ImportError as ext_e:
