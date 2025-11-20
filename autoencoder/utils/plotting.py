@@ -571,15 +571,16 @@ def plot_wavelet_coefficients_comparison(
 
 def plot_ae_training_progress(
     ae_training_history: Dict,
-    figsize: Tuple[int, int] = (15, 10),
+    figsize: Tuple[int, int] = (18, 12),
     fontsize_scale: float = 1.0,
     save_path: Optional[str] = None,
     fig: Optional[Figure] = None,
     use_log_scale: bool = True,
-    show_best_epoch: bool = True
+    show_best_epoch: bool = True,
+    show_gradient: bool = True
 ) -> Figure:
     """
-    绘制AutoEncoder训练进度（支持三阶段训练）
+    绘制AutoEncoder训练进度（支持三阶段训练 + 梯度监控）
 
     供GUI和批量实验复用，统一绘制AE训练进度可视化。
 
@@ -591,7 +592,15 @@ def plot_ae_training_progress(
                         'train_losses': List[float],
                         'val_losses': List[float],
                         'best_val_loss': float (可选),
-                        'best_epoch': int (可选)
+                        'best_epoch': int (可选),
+                        'gradient_history': {  # 梯度历史（可选）
+                            'epochs': List[int],
+                            'grad_norm': List[float],
+                            'grad_mean': List[float],
+                            'grad_std': List[float],
+                            'grad_max': List[float],
+                            'grad_min': List[float]
+                        }
                     },
                     'stage2': {...},
                     'stage3': {...}
@@ -603,6 +612,7 @@ def plot_ae_training_progress(
         fig: 复用的Figure对象（GUI使用）
         use_log_scale: 是否使用对数坐标
         show_best_epoch: 是否显示最佳epoch标记
+        show_gradient: 是否显示梯度变化图（默认True）
 
     Returns:
         matplotlib.figure.Figure对象
@@ -648,9 +658,22 @@ def plot_ae_training_progress(
             fig.savefig(save_path, dpi=150, bbox_inches='tight')
         return fig
 
-    # 创建子图布局（两列布局）
-    rows = (num_stages + 1) // 2
-    cols = 2 if num_stages > 1 else 1
+    # 检查是否有梯度数据
+    has_gradient = any(
+        'gradient_history' in stage_data and
+        stage_data['gradient_history'] and
+        len(stage_data['gradient_history'].get('grad_norm', [])) > 0
+        for stage_data in stage_histories.values()
+    )
+
+    # 确定布局：如果有梯度数据且需要显示，使用2行布局；否则使用单行布局
+    if show_gradient and has_gradient:
+        rows = 2
+        cols = min(num_stages, 3)  # 最多3列
+    else:
+        # 原始布局（两列）
+        rows = (num_stages + 1) // 2
+        cols = 2 if num_stages > 1 else 1
 
     stage_colors = ['blue', 'green', 'red', 'orange']
     stage_names = ['阶段1(AE预训练)', '阶段2(参数映射)', '阶段3(端到端)', '完整训练']
@@ -660,44 +683,84 @@ def plot_ae_training_progress(
             continue
 
         # 计算子图位置
-        if num_stages == 1:
-            ax = fig.add_subplot(1, 1, 1)
+        if show_gradient and has_gradient:
+            # 2行布局：第1行显示训练曲线
+            ax_loss = fig.add_subplot(rows, cols, i + 1)
         else:
-            row = i // cols
-            col = i % cols
-            ax = fig.add_subplot(rows, cols, i + 1)
+            # 原始布局
+            if num_stages == 1:
+                ax_loss = fig.add_subplot(1, 1, 1)
+            else:
+                row = i // cols
+                col = i % cols
+                ax_loss = fig.add_subplot(rows, cols, i + 1)
 
         # 绘制训练和验证损失
         epochs = range(1, len(stage_data['train_losses']) + 1)
         color = stage_colors[i % len(stage_colors)]
 
-        ax.plot(epochs, stage_data['train_losses'], color=color, linestyle='-',
-               label='训练损失', linewidth=2)
-        ax.plot(epochs, stage_data['val_losses'], color=color, linestyle='--',
-               label='验证损失', linewidth=2)
+        ax_loss.plot(epochs, stage_data['train_losses'], color=color, linestyle='-',
+                    label='训练损失', linewidth=2)
+        ax_loss.plot(epochs, stage_data['val_losses'], color=color, linestyle='--',
+                    label='验证损失', linewidth=2)
 
-        ax.set_xlabel('训练轮数', fontsize=int(20*fontsize_scale), fontweight='bold')
-        ax.set_ylabel('损失值', fontsize=int(20*fontsize_scale), fontweight='bold')
-        ax.set_title(f'{stage_names[i] if i < len(stage_names) else stage_name}',
-                     fontsize=int(20*fontsize_scale), fontweight='bold')
-        ax.legend(fontsize=int(14*fontsize_scale))
-        ax.grid(True, alpha=0.3)
+        ax_loss.set_xlabel('训练轮数', fontsize=int(16*fontsize_scale), fontweight='bold')
+        ax_loss.set_ylabel('损失值', fontsize=int(16*fontsize_scale), fontweight='bold')
+        ax_loss.set_title(f'{stage_names[i] if i < len(stage_names) else stage_name}',
+                         fontsize=int(18*fontsize_scale), fontweight='bold')
+        ax_loss.legend(fontsize=int(12*fontsize_scale), loc='best')
+        ax_loss.grid(True, alpha=0.3)
 
         # 使用对数坐标
         if use_log_scale:
-            ax.set_yscale('log')
+            ax_loss.set_yscale('log')
 
-        ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+        ax_loss.tick_params(axis='both', labelsize=int(14*fontsize_scale))
 
         # 添加最佳损失标记
         if show_best_epoch and 'best_val_loss' in stage_data:
             best_epoch = stage_data.get('best_epoch', len(stage_data['val_losses']))
-            ax.axvline(x=best_epoch, color='red', linestyle=':', alpha=0.7,
-                       label=f'最佳: Epoch {best_epoch}')
-            ax.legend(fontsize=int(14*fontsize_scale))
+            ax_loss.axvline(x=best_epoch, color='red', linestyle=':', alpha=0.7,
+                           label=f'最佳: Epoch {best_epoch}')
+            ax_loss.legend(fontsize=int(12*fontsize_scale), loc='best')
 
-    fig.suptitle('AutoEncoder训练进度',
-                 fontsize=int(24*fontsize_scale), fontweight='bold')
+        # 绘制梯度变化图（第2行）
+        if show_gradient and has_gradient and 'gradient_history' in stage_data:
+            grad_hist = stage_data['gradient_history']
+            if grad_hist and len(grad_hist.get('grad_norm', [])) > 0:
+                ax_grad = fig.add_subplot(rows, cols, cols + i + 1)
+
+                grad_epochs = grad_hist['epochs']
+
+                # 主要显示梯度范数（最重要的指标）
+                ax_grad.plot(grad_epochs, grad_hist['grad_norm'],
+                            color='purple', linestyle='-', marker='o', markersize=4,
+                            label='梯度范数 (L2)', linewidth=2)
+
+                # 添加警告阈值线（如果超出阈值会有视觉提示）
+                warn_high = 10.0
+                warn_low = 1e-5
+                ax_grad.axhline(y=warn_high, color='red', linestyle='--', alpha=0.5,
+                               linewidth=1.5, label=f'爆炸阈值 ({warn_high})')
+                ax_grad.axhline(y=warn_low, color='orange', linestyle='--', alpha=0.5,
+                               linewidth=1.5, label=f'消失阈值 ({warn_low})')
+
+                ax_grad.set_xlabel('训练轮数', fontsize=int(16*fontsize_scale), fontweight='bold')
+                ax_grad.set_ylabel('梯度范数', fontsize=int(16*fontsize_scale), fontweight='bold')
+                ax_grad.set_title(f'{stage_names[i]} - 梯度监控',
+                                 fontsize=int(18*fontsize_scale), fontweight='bold')
+                ax_grad.legend(fontsize=int(10*fontsize_scale), loc='best')
+                ax_grad.grid(True, alpha=0.3)
+                ax_grad.set_yscale('log')  # 梯度范数通常需要对数坐标
+                ax_grad.tick_params(axis='both', labelsize=int(14*fontsize_scale))
+
+    if show_gradient and has_gradient:
+        fig.suptitle('AutoEncoder训练进度 + 梯度监控',
+                     fontsize=int(24*fontsize_scale), fontweight='bold', y=0.98)
+    else:
+        fig.suptitle('AutoEncoder训练进度',
+                     fontsize=int(24*fontsize_scale), fontweight='bold')
+
     fig.tight_layout()
 
     if save_path:

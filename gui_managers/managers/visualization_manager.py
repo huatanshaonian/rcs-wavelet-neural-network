@@ -1311,7 +1311,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 fontsize_scale=fontsize_scale,
                 fig=self.gui.vis_fig,
                 use_log_scale=True,
-                show_best_epoch=True
+                show_best_epoch=True,
+                show_gradient=True  # 显示梯度监控曲线
             )
 
             # 刷新画布
