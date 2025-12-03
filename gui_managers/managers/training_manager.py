@@ -940,16 +940,42 @@ class TrainingManager:
                 self.gui.ae_log("🚀 开始AutoEncoder重建训练 (Stage 1 Only):")
                 self.gui.ae_log("📌 模式说明: 专注于AutoEncoder的重建性能研究，不训练参数映射器")
 
-                # 初始化训练历史
-                self.gui.ae_training_history = {
-                    'training_mode': 'stage1_only',
-                    'stage_histories': {},
-                    'training_config': training_config  # ✅ 保存训练配置
-                }
+                # ✅ 智能处理训练历史：继续训练 vs 新训练
+                if hasattr(self.gui, 'ae_training_history') and self.gui.ae_training_history:
+                    # 已有训练历史，保留并追加
+                    if 'stage_histories' in self.gui.ae_training_history and 'stage1' in self.gui.ae_training_history['stage_histories']:
+                        self.gui.ae_log("🔄 检测到已有Stage 1训练历史，继续训练（权重将从当前状态继续）")
+                        self.gui.ae_log(f"  之前最佳epoch: {self.gui.ae_training_history['stage_histories']['stage1'].get('best_epoch', 'N/A')}")
+                        self.gui.ae_log(f"  之前最佳损失: {self.gui.ae_training_history['stage_histories']['stage1'].get('best_val_loss', 'N/A'):.6f}")
+                    else:
+                        self.gui.ae_log("🆕 首次训练Stage 1")
+
+                    # 更新配置，保留stage_histories
+                    self.gui.ae_training_history['training_mode'] = 'stage1_only'
+                    self.gui.ae_training_history['training_config'] = training_config
+                    if 'stage_histories' not in self.gui.ae_training_history:
+                        self.gui.ae_training_history['stage_histories'] = {}
+                else:
+                    # 无历史，初始化新的
+                    self.gui.ae_log("🆕 首次训练Stage 1")
+                    self.gui.ae_training_history = {
+                        'training_mode': 'stage1_only',
+                        'stage_histories': {},
+                        'training_config': training_config
+                    }
 
                 # 阶段1: AutoEncoder预训练
                 self.gui.ae_log("📊 开始阶段1: AutoEncoder预训练...")
                 stage1_history = self.gui._train_autoencoder_stage1_v2(rcs_data, training_config)
+
+                # ✅ 追加/更新训练历史（保留之前的记录）
+                if 'stage1' in self.gui.ae_training_history['stage_histories']:
+                    # 已有Stage 1历史，合并训练曲线
+                    old_history = self.gui.ae_training_history['stage_histories']['stage1']
+                    stage1_history['train_losses'] = old_history.get('train_losses', []) + stage1_history['train_losses']
+                    stage1_history['val_losses'] = old_history.get('val_losses', []) + stage1_history['val_losses']
+                    self.gui.ae_log(f"✅ 训练历史已合并，总共 {len(stage1_history['train_losses'])} 个epoch")
+
                 self.gui.ae_training_history['stage_histories']['stage1'] = stage1_history
 
                 self.gui.ae_log("🎉 AutoEncoder重建训练完成!")
@@ -970,7 +996,13 @@ class TrainingManager:
                 # 完整三阶段模式
                 self.gui.ae_log("🚀 开始三阶段训练流程 (v2统一配置):")
 
-                # 初始化训练历史
+                # ✅ 检查是否已有训练历史
+                if hasattr(self.gui, 'ae_training_history') and self.gui.ae_training_history:
+                    if 'stage_histories' in self.gui.ae_training_history and self.gui.ae_training_history['stage_histories']:
+                        self.gui.ae_log("⚠️ 检测到已有训练历史，将被新训练覆盖")
+                        self.gui.ae_log("  💡 如果只想微调，建议选择'端到端训练'模式")
+
+                # 初始化训练历史（三阶段训练会重新训练所有阶段）
                 self.gui.ae_training_history = {
                     'training_mode': 'three_stage',
                     'stage_histories': {},
