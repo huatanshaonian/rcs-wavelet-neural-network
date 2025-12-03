@@ -3270,6 +3270,55 @@ class RCSWaveletGUI:
                 # 设置训练历史（来自load_ae_model_from_file的返回值）
                 if training_history:
                     self.ae_training_history = training_history
+
+                    # ✅ 恢复训练配置到GUI（用于继续训练）
+                    if 'training_config' in training_history:
+                        saved_config = training_history['training_config']
+                        self.ae_log(f"📋 恢复训练配置:")
+
+                        # 恢复学习率参数
+                        if 'learning_rate' in saved_config:
+                            self.ae_learning_rate.set(saved_config['learning_rate'])
+                            self.ae_log(f"  学习率: {saved_config['learning_rate']}")
+
+                        if 'min_lr' in saved_config:
+                            self.ae_min_lr.set(saved_config['min_lr'])
+                            self.ae_log(f"  最小LR: {saved_config['min_lr']}")
+
+                        if 'lr_scheduler' in saved_config:
+                            self.ae_lr_scheduler.set(saved_config['lr_scheduler'])
+                            self.ae_log(f"  LR调度器: {saved_config['lr_scheduler']}")
+
+                        # 恢复其他训练参数
+                        if 'batch_size' in saved_config:
+                            self.ae_batch_size.set(saved_config['batch_size'])
+
+                        if 'restart_period' in saved_config:
+                            self.ae_restart_period.set(saved_config['restart_period'])
+
+                        # 恢复patience参数
+                        if 'patience' in saved_config:
+                            patience_dict = saved_config['patience']
+                            if 'stage1' in patience_dict:
+                                self.ae_patience_stage1.set(patience_dict['stage1'])
+                            if 'stage2' in patience_dict:
+                                self.ae_patience_stage2.set(patience_dict['stage2'])
+                            if 'stage3' in patience_dict:
+                                self.ae_patience_stage3.set(patience_dict['stage3'])
+
+                        # 恢复epochs参数
+                        if 'epochs' in saved_config:
+                            epochs_dict = saved_config['epochs']
+                            if 'stage1' in epochs_dict:
+                                self.ae_epochs_stage1.set(epochs_dict['stage1'])
+                            if 'stage2' in epochs_dict:
+                                self.ae_epochs_stage2.set(epochs_dict['stage2'])
+                            if 'stage3' in epochs_dict:
+                                self.ae_epochs_stage3.set(epochs_dict['stage3'])
+
+                        self.ae_log(f"✅ 训练配置已恢复，可修改学习率后继续训练")
+                    else:
+                        self.ae_log(f"⚠️ 模型未包含训练配置（可能是旧版模型）")
                 else:
                     self.ae_training_history = None
 

@@ -885,11 +885,13 @@ class TrainingManager:
             if not hasattr(self.gui, 'ae_training_history') or self.gui.ae_training_history is None:
                 self.gui.ae_training_history = {
                     'training_mode': 'three_stage',
-                    'stage_histories': {}
+                    'stage_histories': {},
+                    'training_config': training_config  # ✅ 保存训练配置
                 }
             else:
                 # 更新训练模式为three_stage
                 self.gui.ae_training_history['training_mode'] = 'three_stage'
+                self.gui.ae_training_history['training_config'] = training_config  # ✅ 更新训练配置
                 if 'stage_histories' not in self.gui.ae_training_history:
                     self.gui.ae_training_history['stage_histories'] = {}
 
@@ -941,7 +943,8 @@ class TrainingManager:
                 # 初始化训练历史
                 self.gui.ae_training_history = {
                     'training_mode': 'stage1_only',
-                    'stage_histories': {}
+                    'stage_histories': {},
+                    'training_config': training_config  # ✅ 保存训练配置
                 }
 
                 # 阶段1: AutoEncoder预训练
@@ -970,7 +973,8 @@ class TrainingManager:
                 # 初始化训练历史
                 self.gui.ae_training_history = {
                     'training_mode': 'three_stage',
-                    'stage_histories': {}
+                    'stage_histories': {},
+                    'training_config': training_config  # ✅ 保存训练配置
                 }
 
                 # 阶段1: AutoEncoder预训练
