@@ -1272,7 +1272,7 @@ class TrainingManager:
                 if current_lr < old_lr and best_model_state is not None:
                     self.gui.ae_log(f"  🔄 学习率降低 {old_lr:.2e} → {current_lr:.2e}，回退到最佳模型 (Epoch {best_epoch})")
                     autoencoder.load_state_dict(best_model_state['autoencoder'])
-                    parameter_mapper.load_state_dict(best_model_state['parameter_mapper'])
+                    # Stage 1只有autoencoder，没有parameter_mapper
                     patience_counter = 0  # 重置patience计数器
 
                 # 早停检查
@@ -1281,11 +1281,10 @@ class TrainingManager:
                     best_epoch = epoch + 1
                     patience_counter = 0
 
-                    # ✅ 保存最佳模型权重到内存
+                    # ✅ 保存最佳模型权重到内存（Stage 1只保存autoencoder）
                     from copy import deepcopy
                     best_model_state = {
-                        'autoencoder': deepcopy(autoencoder.state_dict()),
-                        'parameter_mapper': deepcopy(parameter_mapper.state_dict())
+                        'autoencoder': deepcopy(autoencoder.state_dict())
                     }
                 else:
                     patience_counter += 1
@@ -1325,7 +1324,7 @@ class TrainingManager:
             if best_model_state is not None:
                 self.gui.ae_log(f"🔄 恢复最佳epoch {best_epoch}的模型权重 (最佳验证损失: {best_val_loss:.6f})")
                 autoencoder.load_state_dict(best_model_state['autoencoder'])
-                parameter_mapper.load_state_dict(best_model_state['parameter_mapper'])
+                # Stage 1只有autoencoder，没有parameter_mapper
             else:
                 self.gui.ae_log(f"⚠️ 未找到最佳模型检查点，使用当前模型")
 
