@@ -1026,6 +1026,15 @@ class TrainingManager:
                 self.gui.ae_log("🚀 开始AutoEncoder重建训练 (Stage 1 Only):")
                 self.gui.ae_log("📌 模式说明: 专注于AutoEncoder的重建性能研究，不训练参数映射器")
 
+                # ✅ 数据集变化检测（继续训练场景）
+                data_adapter = self.gui.ae_system.get('data_adapter', None)
+                if data_adapter and hasattr(data_adapter, 'data_stats') and data_adapter.data_stats:
+                    current_data_size = len(rcs_data)
+                    self.gui.ae_log(f"📊 当前数据集大小: {current_data_size} 样本")
+                    self.gui.ae_log(f"⚠️ 数据预处理统计信息将基于当前数据集重新计算")
+                    self.gui.ae_log(f"  原因: 数据集扩充后，mean/std需要更新以反映新的数据分布")
+                    self.gui.ae_log(f"  影响: 训练将使用新的标准化参数，模型保存时会更新adapter统计信息")
+
                 # ✅ 智能处理训练历史：继续训练 vs 新训练
                 if hasattr(self.gui, 'ae_training_history') and self.gui.ae_training_history:
                     # 已有训练历史，保留并追加
@@ -1087,6 +1096,15 @@ class TrainingManager:
                     if 'stage_histories' in self.gui.ae_training_history and self.gui.ae_training_history['stage_histories']:
                         self.gui.ae_log("⚠️ 检测到已有训练历史，将被新训练覆盖")
                         self.gui.ae_log("  💡 如果只想微调，建议选择'端到端训练'模式")
+
+                # ✅ 数据集变化检测（继续训练场景）
+                data_adapter = self.gui.ae_system.get('data_adapter', None)
+                if data_adapter and hasattr(data_adapter, 'data_stats') and data_adapter.data_stats:
+                    current_data_size = len(rcs_data)
+                    self.gui.ae_log(f"📊 当前数据集大小: {current_data_size} 样本")
+                    self.gui.ae_log(f"⚠️ 数据预处理统计信息将基于当前数据集重新计算")
+                    self.gui.ae_log(f"  原因: 数据集扩充后，mean/std需要更新以反映新的数据分布")
+                    self.gui.ae_log(f"  影响: 训练将使用新的标准化参数，模型保存时会更新adapter统计信息")
 
                 # 初始化训练历史（三阶段训练会重新训练所有阶段）
                 self.gui.ae_training_history = {
