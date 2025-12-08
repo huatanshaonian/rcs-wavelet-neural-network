@@ -2962,6 +2962,10 @@ class RCSWaveletGUI:
         """开始AutoEncoder训练 (使用统一配置管理器)"""
         return self.training_manager.start_ae_training()
 
+    def resume_ae_training(self):
+        """继续训练AutoEncoder（从加载的权重继续）"""
+        return self.training_manager.resume_ae_training()
+
     def stop_ae_training(self):
         """停止AutoEncoder训练"""
         return self.training_manager.stop_ae_training()
