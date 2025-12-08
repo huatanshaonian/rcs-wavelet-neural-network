@@ -650,6 +650,11 @@ class AutoEncoderExtension:
 
     def _update_model_selection(self):
         """更新模型选择列表"""
+        # ✅ 防御性检查：确保控件存在
+        if not hasattr(self, 'wavelet_model_selection'):
+            # 控件未初始化，静默跳过（可能是界面初始化未完成）
+            return
+
         if hasattr(self.main_gui, 'rcs_data') and self.main_gui.rcs_data is not None:
             num_models = len(self.main_gui.rcs_data)
             model_options = [f"{i+1:03d}" for i in range(num_models)]
