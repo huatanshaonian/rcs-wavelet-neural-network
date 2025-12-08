@@ -3212,12 +3212,47 @@ class RCSWaveletGUI:
                 else:
                     self.ae_log(f"⚠️ 模型文件不包含adapter统计信息（可能是旧版模型）")
 
-                # 更新GUI中的预处理选项（db_transform已在上面获取）
+                # ✅ 恢复所有GUI配置选项（让用户能看到模型的完整配置）
+                self.ae_log(f"📋 恢复GUI配置选项...")
+
+                # 1. 预处理选项
                 self.ae_normalize.set(normalize)
                 self.ae_db_transform.set(db_transform)
                 self.ae_system['data_adapter'].normalize = normalize
                 self.ae_system['data_adapter'].db_transform = db_transform
-                self.ae_log(f"🔧 数据预处理: 标准化={normalize}, dB变换={db_transform}")
+                self.ae_log(f"  数据预处理: 标准化={normalize}, dB变换={db_transform}")
+
+                # 2. 模型配置选项
+                self.ae_freq_config.set(freq_config)
+                self.ae_latent_dim.set(str(latent_dim))
+                self.ae_dropout_rate.set(str(dropout_rate))
+                self.ae_wavelet_type.set(wavelet_type)
+                self.ae_log(f"  模型配置: 频率={freq_config}, 隐空间={latent_dim}, Dropout={dropout_rate}, 小波={wavelet_type}")
+
+                # 3. 架构和激活函数（需要大小写转换）
+                # 架构类型转换：cnn → CNN, mlp → MLP, enhanced_cnn → Enhanced_CNN等
+                architecture_display = architecture.replace('_', ' ').title().replace(' ', '_')
+                if architecture_display.lower() == 'cnn':
+                    architecture_display = 'CNN'
+                elif architecture_display.lower() == 'mlp':
+                    architecture_display = 'MLP'
+                elif architecture_display.lower() == 'enhanced_cnn':
+                    architecture_display = 'Enhanced_CNN'
+                elif architecture_display.lower() == 'deep_cnn':
+                    architecture_display = 'Deep_CNN'
+
+                self.ae_architecture_type.set(architecture_display)
+                self.ae_activation.set(activation)
+                self.ae_log(f"  架构类型: {architecture_display}, 激活函数: {activation}")
+
+                # 4. 模式选项（ae_mode由ae_extension初始化到main_gui）
+                if hasattr(self, 'ae_mode'):
+                    self.ae_mode.set(mode)
+                    self.ae_log(f"  运行模式: {mode}")
+                else:
+                    self.ae_log(f"  ⚠️ ae_mode未定义（ae_extension可能未加载），跳过模式恢复")
+
+                self.ae_log(f"✅ GUI配置选项已全部恢复")
 
                 # ⚠️ 后处理选项控制逻辑
                 # 根据模型训练时是否使用dB变换来决定是否启用后处理分贝转换
