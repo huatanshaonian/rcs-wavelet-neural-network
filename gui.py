@@ -186,6 +186,8 @@ class RCSWaveletGUI:
         self.ae_system = None
         self.ae_training_history = {}
         self.ae_trained = False
+        self.ae_model_loaded = False  # 标记是否加载了模型
+        self.ae_loaded_weights = None  # 保存加载的权重副本（用于继续训练）
 
         # 学习率调度策略信息
         self.scheduler_descriptions = {
@@ -3399,12 +3401,29 @@ class RCSWaveletGUI:
                 # 更新状态栏显示网络参数
                 self._update_status_bar_with_model_info()
 
+                # ✅ 保存加载的权重副本（用于"继续训练"功能）
+                from copy import deepcopy
+                self.ae_loaded_weights = {
+                    'autoencoder': deepcopy(self.ae_system['autoencoder'].state_dict()),
+                    'parameter_mapper': deepcopy(self.ae_system['parameter_mapper'].state_dict())
+                }
+                self.ae_model_loaded = True
+                self.ae_log("✅ 已保存模型权重副本，可使用'继续训练'功能")
+
+                # 启用"继续训练"按钮
+                if hasattr(self, 'ae_extension') and self.ae_extension:
+                    self.ae_extension.continue_training_btn.config(state='normal')
+                    self.ae_log("✅ '继续训练'按钮已启用")
+
                 messagebox.showinfo("成功",
                     f"模型已加载并自动重建系统!\n\n"
                     f"文件: {filename}\n"
                     f"模式: {mode}\n"
                     f"架构: {architecture}\n"
-                    f"频率: {freq_config} ({model_num_freq}频)")
+                    f"频率: {freq_config} ({model_num_freq}频)\n\n"
+                    f"💡 提示:\n"
+                    f"• 点击'开始训练'：重新初始化权重训练\n"
+                    f"• 点击'继续训练'：从加载的权重继续训练")
 
         except Exception as e:
             error_msg = f"加载模型失败: {e}"

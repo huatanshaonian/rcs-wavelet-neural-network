@@ -363,6 +363,8 @@ class AutoEncoderExtension:
 
         # 训练控制按钮
         ttk.Button(button_frame, text="开始训练", command=self.main_gui.start_ae_training, width=7).pack(side=tk.LEFT, padx=(0, 2))
+        self.continue_training_btn = ttk.Button(button_frame, text="继续训练", command=self.main_gui.resume_ae_training, width=7, state='disabled')
+        self.continue_training_btn.pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(button_frame, text="停止训练", command=self.main_gui.stop_ae_training, width=7).pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(button_frame, text="保存模型", command=self.main_gui.save_ae_model, width=7).pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(button_frame, text="加载模型", command=self.main_gui.load_ae_model, width=7).pack(side=tk.LEFT)

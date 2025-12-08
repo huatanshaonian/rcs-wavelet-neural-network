@@ -717,6 +717,71 @@ class TrainingManager:
             self.gui.log_message(f"CUDA初始化出现未知错误: {e}")
             self.gui.log_message("将尝试继续使用当前设置")
 
+    def resume_ae_training(self):
+        """继续训练AutoEncoder（从加载的权重继续）"""
+        try:
+            if self.gui.ae_system is None:
+                messagebox.showwarning("警告", "请先创建AutoEncoder系统!")
+                return
+
+            if not self.gui.data_loaded:
+                messagebox.showwarning("警告", "请先加载数据!")
+                return
+
+            if not self.gui.ae_model_loaded or self.gui.ae_loaded_weights is None:
+                messagebox.showwarning("警告", "请先加载模型!\n\n'继续训练'功能需要先加载已训练的模型。")
+                return
+
+            self.gui.ae_log("🔄 继续训练：从加载的模型权重继续...")
+
+            # ✅ 恢复加载的权重
+            self.gui.ae_system['autoencoder'].load_state_dict(self.gui.ae_loaded_weights['autoencoder'])
+            self.gui.ae_system['parameter_mapper'].load_state_dict(self.gui.ae_loaded_weights['parameter_mapper'])
+            self.gui.ae_log("✅ 已恢复加载的模型权重")
+            self.gui.ae_log("  💡 训练历史将保留并追加新记录")
+
+            # 创建训练配置
+            training_config = self.gui._create_ae_training_config()
+
+            self.gui.ae_log(f"📊 训练配置:")
+            self.gui.ae_log(f"  批次大小: {training_config['batch_size']}")
+            self.gui.ae_log(f"  学习率: {training_config['learning_rate']} (min: {training_config['min_lr']})")
+            self.gui.ae_log(f"  调度策略: {training_config['lr_scheduler']}")
+
+            training_mode = self.gui.ae_training_mode.get()
+            if training_mode == "三阶段训练":
+                self.gui.ae_log(f"  🚀 阶段1(AE预训练): {training_config['epochs']['stage1']} epochs")
+                self.gui.ae_log(f"  🎯 阶段2(参数映射): {training_config['epochs']['stage2']} epochs")
+                self.gui.ae_log(f"  ⚡ 阶段3(端到端): {training_config['epochs']['stage3']} epochs")
+            elif training_mode == "仅Stage 1":
+                self.gui.ae_log(f"  🎯 Stage 1重建训练: {training_config['epochs']['stage1']} epochs")
+            else:
+                total_epochs = sum(training_config['epochs'].values())
+                self.gui.ae_log(f"  🔄 端到端训练: {total_epochs} epochs")
+
+            # 获取数据
+            if 'rcs_data' not in self.gui.ae_system or 'param_data' not in self.gui.ae_system:
+                self.gui.ae_log("❌ 数据未正确集成到AutoEncoder系统")
+                messagebox.showerror("错误", "数据未正确集成，请重新创建AutoEncoder系统")
+                return
+
+            rcs_data = self.gui.ae_system['rcs_data']
+            param_data = self.gui.ae_system['param_data']
+
+            # 在后台线程启动训练
+            import threading
+            self.training_thread = threading.Thread(
+                target=self._run_ae_training_in_background,
+                args=(rcs_data, param_data, training_config, training_mode),
+                daemon=True
+            )
+            self.training_thread.start()
+
+        except Exception as e:
+            error_msg = f"继续训练失败: {e}"
+            self.gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
     def start_ae_training(self):
         """开始AutoEncoder训练 (使用统一配置管理器)"""
         try:
@@ -747,6 +812,27 @@ class TrainingManager:
                 )
                 self.training_thread.start()
                 return
+
+            # ✅ "开始训练"按钮：重新初始化模型权重
+            if self.gui.ae_model_loaded:
+                self.gui.ae_log("🔄 检测到已加载模型，重新初始化权重...")
+                self.gui.ae_log("  💡 提示：使用'继续训练'按钮可从加载的权重继续训练")
+
+                # 重新初始化模型权重（保留架构配置）
+                import torch.nn as nn
+                def init_weights(m):
+                    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
+                        nn.init.xavier_uniform_(m.weight)
+                        if m.bias is not None:
+                            nn.init.zeros_(m.bias)
+
+                self.gui.ae_system['autoencoder'].apply(init_weights)
+                self.gui.ae_system['parameter_mapper'].apply(init_weights)
+                self.gui.ae_log("✅ 模型权重已重新初始化（随机）")
+
+                # 清除训练历史
+                self.gui.ae_training_history = {}
+                self.gui.ae_log("  训练历史已清空，将从头开始训练")
 
             self.gui.ae_log("🚀 开始AutoEncoder训练...")
 
