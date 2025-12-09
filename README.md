@@ -601,6 +601,47 @@ batch_experiments/activation_comparison_20250107_143000/
 
 ## 📝 更新日志
 
+### v0.4.0 (2025-01-18) 🔥
+
+**🚀 重大功能**
+- ✅ **继续训练功能**: 支持从已训练模型继续训练，区分"开始训练"和"继续训练"按钮
+  - 加载模型后保留权重副本，可使用扩充数据集继续训练
+  - 自动检测数据集变化并提示adapter统计信息重新计算
+  - 训练历史保留并追加新记录
+- ✅ **GUI配置自动恢复**: 加载模型时自动恢复所有配置到GUI界面
+  - 自动恢复：模式、架构、激活函数、隐空间维度、学习率、epochs等
+  - 用户可在恢复的基础上修改参数（如降低学习率）再继续训练
+- ✅ **Dual-Branch V2架构**: 修复V1架构缺陷，实现正确的对称双分支设计
+  - Encoder和Decoder都采用双分支（ll_branch + hf_branch）
+  - ll_ratio参数真正控制隐空间分配（V1中硬编码为128）
+  - 新增V2版本：`DualBranchDifferentiableWaveletAutoEncoderV2`和`DualBranchDifferentiableWaveletMLPAutoEncoderV2`
+
+**✨ 新功能**
+- ✅ **设计参数标准化**: 支持Z-score标准化设计参数，提升映射器泛化能力
+- ✅ **隐空间统计信息**: 训练后自动打印隐空间维度分布统计
+- ✅ **梯度监控集成**: AE训练进度可视化集成梯度监控曲线
+- ✅ **RCS分布对比**: 新增RCS数值分布直方图对比功能
+- ✅ **ReconstructionMetrics**: 集成完整的重建质量评估指标体系
+
+**🔧 重要修复**
+- ✅ **训练未保存最佳模型**: 修复AutoEncoder训练过程中未保存最佳模型的严重Bug
+- ✅ **Stage 1训练Bug**: 修复Stage 1训练中parameter_mapper未定义的错误
+- ✅ **decoder逆变换缺失**: 修复Three Stage评估和可视化中decoder输出未逆标准化的严重Bug
+- ✅ **数据处理顺序**: 修复小波变换在标准化之后执行的严重错误（应在之前）
+- ✅ **旧模型兼容性**: 修复加载旧模型时normalization_method推断错误
+
+**🎨 用户体验改进**
+- ✅ **训练模式简化**: 自动根据模型类型设置训练模式，移除加载时弹窗
+- ✅ **GUI错误处理**: 修复数据加载时wavelet_model_selection属性缺失错误
+- ✅ **状态栏增强**: 显示创建网络的完整参数信息
+- ✅ **关闭确认**: 添加关闭程序时的确认对话框，防止误操作
+
+**📚 文档更新**
+- ✅ 新增`DUAL_BRANCH_V1_VS_V2_COMPARISON.md` - V1和V2架构详细对比
+- ✅ 更新`CLAUDE.md` - 添加decoder逆变换规范和继续训练说明
+- ✅ 更新`PARAMETERS_REFERENCE.md` - 所有参数命名规范
+- ✅ 新增`DESIGN_ANALYSIS.md` - 架构设计问题分析
+
 ### v0.3.0 (2025-01-10) 🎉
 
 **🚀 新功能**
