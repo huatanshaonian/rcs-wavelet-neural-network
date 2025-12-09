@@ -3309,6 +3309,27 @@ class RCSWaveletGUI:
                 else:
                     self.ae_log(f"⚠️ 模型文件不包含adapter统计信息（可能是旧版模型）")
 
+                # 恢复param_scaler统计信息
+                if 'param_scaler_stats' in checkpoint and checkpoint['param_scaler_stats']:
+                    from sklearn.preprocessing import StandardScaler
+                    import numpy as np
+
+                    scaler_stats = checkpoint['param_scaler_stats']
+                    if scaler_stats['mean'] is not None and scaler_stats['scale'] is not None:
+                        # 创建新的StandardScaler并恢复统计信息
+                        param_scaler = StandardScaler()
+                        param_scaler.mean_ = np.array(scaler_stats['mean'])
+                        param_scaler.scale_ = np.array(scaler_stats['scale'])
+                        param_scaler.n_features_in_ = scaler_stats['n_features_in']
+
+                        # 保存到ae_system
+                        self.ae_system['param_scaler'] = param_scaler
+                        self.ae_log(f"✅ 已恢复param_scaler统计信息 (参数数量: {scaler_stats['n_features_in']})")
+                    else:
+                        self.ae_log(f"⚠️ param_scaler统计信息不完整")
+                else:
+                    self.ae_log(f"⚠️ 模型文件不包含param_scaler统计信息（可能是旧版模型，参数未标准化）")
+
                 # ✅ 恢复所有GUI配置选项（让用户能看到模型的完整配置）
                 self.ae_log(f"📋 恢复GUI配置选项...")
 

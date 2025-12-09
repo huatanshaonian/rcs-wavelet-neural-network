@@ -1474,9 +1474,6 @@ class TrainingManager:
                 data_adapter = RCS_DataAdapter(normalize=True, mode=current_mode)
                 self.gui.ae_log(f"⚠️ 未找到data_adapter，使用默认配置 (mode={current_mode})")
 
-            # 应用数据预处理（必须与Stage 1保持一致）
-            param_tensor = torch.FloatTensor(param_data)
-
             # 获取目标隐空间表示
             autoencoder.eval()
             mode = self.gui.ae_system.get('mode', 'wavelet')
@@ -1498,6 +1495,35 @@ class TrainingManager:
                 _, target_latents = autoencoder(input_data.to(device))
                 target_latents = target_latents.cpu()
                 self.gui.ae_log(f"📊 隐空间维度: {target_latents.shape}")
+
+            # ===== 标准化设计参数 =====
+            from sklearn.preprocessing import StandardScaler
+            import numpy as np
+
+            self.gui.ae_log("🔧 标准化设计参数...")
+            param_scaler = StandardScaler()
+            param_normalized = param_scaler.fit_transform(param_data)
+
+            # 打印标准化前后的统计信息
+            self.gui.ae_log(f"📊 参数标准化统计:")
+            self.gui.ae_log(f"  原始参数范围:")
+            for i in range(min(5, param_data.shape[1])):
+                self.gui.ae_log(f"    参数{i}: [{param_data[:, i].min():.3f}, {param_data[:, i].max():.3f}], "
+                               f"mean={param_data[:, i].mean():.3f}, std={param_data[:, i].std():.3f}")
+            if param_data.shape[1] > 5:
+                self.gui.ae_log(f"    ... (共{param_data.shape[1]}个参数)")
+
+            self.gui.ae_log(f"  标准化后范围:")
+            for i in range(min(5, param_normalized.shape[1])):
+                self.gui.ae_log(f"    参数{i}: [{param_normalized[:, i].min():.3f}, {param_normalized[:, i].max():.3f}], "
+                               f"mean={param_normalized[:, i].mean():.3f}, std={param_normalized[:, i].std():.3f}")
+
+            # 保存scaler到ae_system
+            self.gui.ae_system['param_scaler'] = param_scaler
+            self.gui.ae_log(f"✅ param_scaler已保存到ae_system")
+
+            # 转换为tensor
+            param_tensor = torch.FloatTensor(param_normalized)
 
             # 数据划分
             dataset = TensorDataset(param_tensor, target_latents)
@@ -1738,8 +1764,15 @@ class TrainingManager:
                 data_adapter = RCS_DataAdapter(normalize=True, mode=current_mode)
                 self.gui.ae_log(f"⚠️ 未找到data_adapter，使用默认配置 (mode={current_mode})")
 
-            # 应用数据预处理（必须与Stage 1和Stage 2保持一致）
-            param_tensor = torch.FloatTensor(param_data)
+            # ===== 使用已保存的param_scaler标准化参数 =====
+            param_scaler = self.gui.ae_system.get('param_scaler', None)
+            if param_scaler is None:
+                self.gui.ae_log("❌ 未找到param_scaler，Stage 3需要在Stage 2之后执行")
+                raise ValueError("param_scaler未找到，请先完成Stage 2训练")
+
+            self.gui.ae_log("🔧 使用Stage 2保存的scaler标准化参数...")
+            param_normalized = param_scaler.transform(param_data)
+            param_tensor = torch.FloatTensor(param_normalized)
 
             # ⚠️ 关键: 数据处理顺序必须与Stage 1和Stage 2一致
             self.gui.ae_log(f"🔧 准备目标数据 (mode={mode})...")

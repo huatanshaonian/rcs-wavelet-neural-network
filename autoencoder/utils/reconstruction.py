@@ -55,14 +55,22 @@ def reconstruct_from_params(
     data_adapter = ae_system.get('data_adapter', None)
     wavelet_transform = ae_system.get('wavelet_transform', None)
     mode = ae_system.get('mode', 'wavelet')
+    param_scaler = ae_system.get('param_scaler', None)
 
     # 设置为评估模式
     autoencoder.to(device).eval()
     parameter_mapper.to(device).eval()
 
     with torch.no_grad():
+        # Step 0: 标准化参数（如果有scaler）
+        if param_scaler is not None:
+            params_normalized = param_scaler.transform(params)
+        else:
+            # 向后兼容：旧模型没有param_scaler
+            params_normalized = params
+
         # Step 1: 参数 → ParameterMapper → Latent
-        param_tensor = torch.FloatTensor(params).to(device)
+        param_tensor = torch.FloatTensor(params_normalized).to(device)
         predicted_latents = parameter_mapper(param_tensor)
 
         # Step 2: Latent → Decoder → 标准化输出
@@ -210,14 +218,22 @@ def reconstruct_with_latents(
     data_adapter = ae_system.get('data_adapter', None)
     wavelet_transform = ae_system.get('wavelet_transform', None)
     mode = ae_system.get('mode', 'wavelet')
+    param_scaler = ae_system.get('param_scaler', None)
 
     # 设置为评估模式
     autoencoder.to(device).eval()
     parameter_mapper.to(device).eval()
 
     with torch.no_grad():
+        # Step 0: 标准化参数（如果有scaler）
+        if param_scaler is not None:
+            params_normalized = param_scaler.transform(params)
+        else:
+            # 向后兼容：旧模型没有param_scaler
+            params_normalized = params
+
         # Step 1: 参数 → Latent
-        param_tensor = torch.FloatTensor(params).to(device)
+        param_tensor = torch.FloatTensor(params_normalized).to(device)
         predicted_latents = parameter_mapper(param_tensor)
         latents_np = predicted_latents.cpu().numpy()
 

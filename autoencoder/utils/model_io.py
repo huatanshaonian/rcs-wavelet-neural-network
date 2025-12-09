@@ -77,6 +77,17 @@ def create_model_state_dict(
                 adapter_stats[key] = value
         model_state['adapter_stats'] = adapter_stats
 
+    # 保存param_scaler统计信息
+    param_scaler = ae_system.get('param_scaler', None)
+    if param_scaler is not None:
+        # 保存StandardScaler的统计信息（mean_和scale_）
+        param_scaler_stats = {
+            'mean': param_scaler.mean_.tolist() if hasattr(param_scaler, 'mean_') else None,
+            'scale': param_scaler.scale_.tolist() if hasattr(param_scaler, 'scale_') else None,
+            'n_features_in': int(param_scaler.n_features_in_) if hasattr(param_scaler, 'n_features_in_') else None
+        }
+        model_state['param_scaler_stats'] = param_scaler_stats
+
     # 保存训练历史
     if training_history:
         model_state['training_history'] = training_history
