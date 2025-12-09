@@ -732,39 +732,20 @@ class TrainingManager:
                 messagebox.showwarning("警告", "请先加载模型!\n\n'继续训练'功能需要先加载已训练的模型。")
                 return
 
-            # ✅ 智能检测Stage 1 Only模型
+            self.gui.ae_log("🔄 继续训练：从加载的模型权重继续...")
+
+            # ✅ 根据加载模型的训练模式，自动设置训练模式
             loaded_training_mode = self.gui.ae_system.get('training_mode', 'three_stage')
 
             if loaded_training_mode == 'stage1_only':
-                # 询问用户如何继续训练
-                choice = messagebox.askyesnocancel(
-                    "检测到Stage 1 Only模型",
-                    "检测到该模型仅完成了Stage 1训练（AutoEncoder重建）\n\n"
-                    "如何继续训练？\n\n"
-                    "• 点击'是'：完成Stage 2和3（参数映射+端到端微调）\n"
-                    "• 点击'否'：继续训练Stage 1（调整学习率等参数）\n"
-                    "• 点击'取消'：取消操作"
-                )
-
-                if choice is None:  # 取消
-                    self.gui.ae_log("ℹ️ 用户取消继续训练")
-                    return
-                elif choice:  # 是 - 完成Stage 2和3
-                    self.gui.ae_log("🔄 继续训练：跳过Stage 1，完成Stage 2和Stage 3...")
-                    # 调用专门的函数从Stage 2开始
-                    import threading
-                    self.training_thread = threading.Thread(
-                        target=self._continue_training_from_stage1,
-                        daemon=True
-                    )
-                    self.training_thread.start()
-                    return
-                else:  # 否 - 继续训练Stage 1
-                    self.gui.ae_log("🔄 继续训练：Stage 1（调整参数后继续）...")
-                    # 继续下面的正常流程，但确保训练模式是stage1_only
-                    self.gui.ae_training_mode.set("仅Stage 1")
-
-            self.gui.ae_log("🔄 继续训练：从加载的模型权重继续...")
+                # Stage 1 Only模型 → 继续训练Stage 1
+                self.gui.ae_training_mode.set("仅Stage 1")
+                self.gui.ae_log("  💡 检测到Stage 1 Only模型，自动设置为'仅Stage 1'模式")
+            elif loaded_training_mode == 'three_stage':
+                # 三阶段模型 → 从Stage 1开始继续训练
+                self.gui.ae_training_mode.set("三阶段训练")
+                self.gui.ae_log("  💡 检测到三阶段模型，自动设置为'三阶段训练'模式")
+                self.gui.ae_log("     提示：若想跳过某阶段，可将对应epochs设为0")
 
             # ✅ 恢复加载的权重
             self.gui.ae_system['autoencoder'].load_state_dict(self.gui.ae_loaded_weights['autoencoder'])
