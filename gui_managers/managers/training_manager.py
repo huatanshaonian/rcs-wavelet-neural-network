@@ -1427,6 +1427,10 @@ class TrainingManager:
 
             self.gui.ae_log(f"✅ 阶段1: AutoEncoder预训练完成，最佳验证损失: {best_val_loss:.6f}")
 
+            # 📊 打印隐空间统计信息
+            self.gui.ae_log("\n📊 分析训练完成后的隐空间分布...")
+            self.gui._print_latent_space_statistics(rcs_data)
+
             # 返回历史数据
             return {
                 'train_losses': train_losses,

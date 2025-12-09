@@ -2755,6 +2755,103 @@ class RCSWaveletGUI:
         except Exception as e:
             print(f"更新AE状态失败: {e}")
 
+    def _print_latent_space_statistics(self, rcs_data):
+        """
+        打印隐空间统计信息
+
+        Args:
+            rcs_data: RCS数据 [N, 91, 91, num_freq]
+        """
+        try:
+            import torch
+            import numpy as np
+
+            # 获取组件
+            autoencoder = self.ae_system['autoencoder']
+            wavelet_transform = self.ae_system.get('wavelet_transform', None)
+            data_adapter = self.ae_system.get('data_adapter', None)
+            mode = self.ae_system.get('mode', 'wavelet')
+
+            # 设置设备
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device)
+            autoencoder.eval()
+
+            self.ae_log("\n" + "="*60)
+            self.ae_log("📊 隐空间统计分析")
+            self.ae_log("="*60)
+
+            # 数据预处理（与训练时保持一致）
+            with torch.no_grad():
+                if mode == 'wavelet':
+                    # 先小波变换，再预处理
+                    rcs_tensor = torch.FloatTensor(rcs_data)
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                    input_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
+                else:
+                    # 直接预处理RCS
+                    input_data = data_adapter.adapt_rcs_data(rcs_data)
+
+                # 获取隐空间表示
+                input_data = input_data.to(device)
+                _, latent_space = autoencoder(input_data)
+                latent_space = latent_space.cpu().numpy()
+
+            # 打印前5个样本的完整隐空间数据
+            num_samples_to_show = min(5, latent_space.shape[0])
+            self.ae_log(f"\n【前{num_samples_to_show}个样本的隐空间表示】")
+            self.ae_log(f"隐空间维度: {latent_space.shape[1]}")
+            self.ae_log("-" * 60)
+
+            for i in range(num_samples_to_show):
+                self.ae_log(f"\n样本 #{i}:")
+                # 将隐空间向量格式化为多行显示
+                latent_vec = latent_space[i]
+                # 每行显示10个数值
+                for j in range(0, len(latent_vec), 10):
+                    chunk = latent_vec[j:j+10]
+                    chunk_str = ', '.join([f'{val:8.4f}' for val in chunk])
+                    self.ae_log(f"  [{j:3d}-{min(j+9, len(latent_vec)-1):3d}]: {chunk_str}")
+
+            # 计算每个维度的统计信息
+            self.ae_log("\n" + "-" * 60)
+            self.ae_log("【隐空间每个维度的统计信息】")
+            self.ae_log("-" * 60)
+
+            dim_means = np.mean(latent_space, axis=0)
+            dim_stds = np.std(latent_space, axis=0)
+
+            self.ae_log(f"总样本数: {latent_space.shape[0]}")
+            self.ae_log(f"隐空间维度: {latent_space.shape[1]}")
+            self.ae_log(f"\n每个维度的均值（前20维）:")
+            for i in range(min(20, len(dim_means))):
+                self.ae_log(f"  维度 {i:3d}: mean = {dim_means[i]:8.4f}, std = {dim_stds[i]:7.4f}")
+
+            if len(dim_means) > 20:
+                self.ae_log(f"  ... (共{len(dim_means)}维，仅显示前20维)")
+
+            # 整体统计
+            self.ae_log(f"\n【隐空间整体统计】")
+            self.ae_log(f"  全局均值: {np.mean(latent_space):8.4f}")
+            self.ae_log(f"  全局标准差: {np.std(latent_space):8.4f}")
+            self.ae_log(f"  最小值: {np.min(latent_space):8.4f}")
+            self.ae_log(f"  最大值: {np.max(latent_space):8.4f}")
+            self.ae_log(f"  数值范围: [{np.min(latent_space):8.4f}, {np.max(latent_space):8.4f}]")
+
+            # 维度间的统计
+            self.ae_log(f"\n【维度间统计】")
+            self.ae_log(f"  各维度均值的均值: {np.mean(dim_means):8.4f}")
+            self.ae_log(f"  各维度均值的标准差: {np.std(dim_means):8.4f}")
+            self.ae_log(f"  各维度标准差的均值: {np.mean(dim_stds):8.4f}")
+            self.ae_log(f"  各维度标准差的标准差: {np.std(dim_stds):8.4f}")
+
+            self.ae_log("="*60 + "\n")
+
+        except Exception as e:
+            self.ae_log(f"⚠️ 打印隐空间统计信息失败: {e}")
+            import traceback
+            self.ae_log(traceback.format_exc())
+
     def _update_status_bar_with_model_info(self):
         """更新状态栏显示网络参数信息"""
         try:
@@ -3433,6 +3530,10 @@ class RCSWaveletGUI:
                 }
                 self.ae_model_loaded = True
                 self.ae_log("✅ 已保存模型权重副本，可使用'继续训练'功能")
+
+                # 📊 打印隐空间统计信息（如果有数据）
+                if hasattr(self, 'rcs_data') and self.rcs_data is not None:
+                    self._print_latent_space_statistics(self.rcs_data)
 
                 # 启用"继续训练"按钮
                 if hasattr(self, 'ae_extension') and self.ae_extension:
