@@ -3386,26 +3386,11 @@ class RCSWaveletGUI:
                 self.ae_log(f"  训练模式: {training_mode_display}")
                 self.ae_log(f"🕐 新会话时间戳: {session_ts}")
 
-                # 如果是Stage 1 Only模式，给出提示并询问是否继续训练
+                # 如果是Stage 1 Only模式，给出提示
                 if training_mode == 'stage1_only':
                     self.ae_log(f"💡 提示: 该模型仅训练了AutoEncoder重建，不能从参数预测RCS")
                     self.ae_log(f"  评估方式: 直接从RCS数据测试重建能力")
-
-                    # 询问用户是否要继续训练Stage 2和Stage 3
-                    continue_training = messagebox.askyesno(
-                        "检测到Stage 1模型",
-                        "检测到该模型仅完成了Stage 1训练（AutoEncoder重建）\n\n"
-                        "是否要继续训练Stage 2（参数映射）和Stage 3（端到端微调）？\n\n"
-                        "选择'是'：继续训练，完成完整三阶段训练\n"
-                        "选择'否'：保持当前状态，仅用于重建评估"
-                    )
-
-                    if continue_training:
-                        # 存储标志，稍后执行继续训练
-                        self.ae_system['continue_from_stage1'] = True
-                        self.ae_log(f"✅ 用户选择继续训练Stage 2和Stage 3")
-                    else:
-                        self.ae_log(f"ℹ️ 用户选择保持Stage 1 Only模式")
+                    self.ae_log(f"  💡 可使用'继续训练'完成Stage 2/3，或'开始训练'选择其他模式")
                 else:
                     self.ae_log(f"  评估方式: 从参数预测RCS")
 

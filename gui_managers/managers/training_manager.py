@@ -732,6 +732,38 @@ class TrainingManager:
                 messagebox.showwarning("警告", "请先加载模型!\n\n'继续训练'功能需要先加载已训练的模型。")
                 return
 
+            # ✅ 智能检测Stage 1 Only模型
+            loaded_training_mode = self.gui.ae_system.get('training_mode', 'three_stage')
+
+            if loaded_training_mode == 'stage1_only':
+                # 询问用户如何继续训练
+                choice = messagebox.askyesnocancel(
+                    "检测到Stage 1 Only模型",
+                    "检测到该模型仅完成了Stage 1训练（AutoEncoder重建）\n\n"
+                    "如何继续训练？\n\n"
+                    "• 点击'是'：完成Stage 2和3（参数映射+端到端微调）\n"
+                    "• 点击'否'：继续训练Stage 1（调整学习率等参数）\n"
+                    "• 点击'取消'：取消操作"
+                )
+
+                if choice is None:  # 取消
+                    self.gui.ae_log("ℹ️ 用户取消继续训练")
+                    return
+                elif choice:  # 是 - 完成Stage 2和3
+                    self.gui.ae_log("🔄 继续训练：跳过Stage 1，完成Stage 2和Stage 3...")
+                    # 调用专门的函数从Stage 2开始
+                    import threading
+                    self.training_thread = threading.Thread(
+                        target=self._continue_training_from_stage1,
+                        daemon=True
+                    )
+                    self.training_thread.start()
+                    return
+                else:  # 否 - 继续训练Stage 1
+                    self.gui.ae_log("🔄 继续训练：Stage 1（调整参数后继续）...")
+                    # 继续下面的正常流程，但确保训练模式是stage1_only
+                    self.gui.ae_training_mode.set("仅Stage 1")
+
             self.gui.ae_log("🔄 继续训练：从加载的模型权重继续...")
 
             # ✅ 恢复加载的权重
@@ -791,26 +823,6 @@ class TrainingManager:
 
             if not self.gui.data_loaded:
                 messagebox.showwarning("警告", "请先加载数据!")
-                return
-
-            # 检查是否需要从Stage 1继续训练
-            continue_from_stage1 = self.gui.ae_system.get('continue_from_stage1', False)
-
-            if continue_from_stage1:
-                self.gui.ae_log("🔄 检测到Stage 1模型，继续训练Stage 2和Stage 3...")
-                self.gui.ae_log("  💡 AutoEncoder权重将保持不变（已训练）")
-                self.gui.ae_log("  🎯 将训练参数映射器（Stage 2）和端到端微调（Stage 3）")
-
-                # 清除标志，避免重复触发
-                self.gui.ae_system['continue_from_stage1'] = False
-
-                # 在后台线程执行从Stage 2开始的训练
-                import threading
-                self.training_thread = threading.Thread(
-                    target=self._continue_training_from_stage1,
-                    daemon=True
-                )
-                self.training_thread.start()
                 return
 
             # ✅ "开始训练"按钮：重新初始化模型权重
