@@ -317,10 +317,16 @@ class AutoEncoderExtension:
         ttk.Label(lr_frame, text="阶段数:").grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
         ttk.Entry(lr_frame, textvariable=self.main_gui.ae_num_lr_stages, width=8).grid(row=2, column=3, sticky="w", pady=(5, 0))
 
-        # 第四行：学习率衰减因子（用于multi_stage策略）
+        # 第四行：学习率衰减因子和patience倍增因子（用于multi_stage策略）
         ttk.Label(lr_frame, text="LR衰减因子:").grid(row=3, column=0, sticky="w", pady=(5, 0))
         ttk.Entry(lr_frame, textvariable=self.main_gui.ae_lr_decay_factor, width=8).grid(row=3, column=1, sticky="w", pady=(5, 0))
-        ttk.Label(lr_frame, text="(multi_stage专用)", font=("", 8)).grid(row=3, column=2, columnspan=2, sticky="w", padx=(5, 0), pady=(5, 0))
+        ttk.Label(lr_frame, text="Patience倍增:").grid(row=3, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_patience_multiplier, width=8).grid(row=3, column=3, sticky="w", pady=(5, 0))
+
+        # 第五行：multi_stage说明
+        info_label = ttk.Label(lr_frame, text="💡 multi_stage: patience耗尽时自动降低LR并翻倍patience",
+                               font=("", 8), foreground="gray")
+        info_label.grid(row=4, column=0, columnspan=4, sticky="w", pady=(5, 0))
 
         # 6. 早停配置组
         patience_group = ttk.LabelFrame(right_column, text="⏹️ 早停配置")
