@@ -264,6 +264,9 @@ class RCSWaveletGUI:
         self.ae_lr_scheduler = tk.StringVar(value="constant")
         self.ae_min_lr = tk.StringVar(value="1e-5")
         self.ae_restart_period = tk.StringVar(value="50")
+        # 多阶段学习率调度器参数
+        self.ae_num_lr_stages = tk.StringVar(value="3")  # 阶段数量
+        self.ae_lr_decay_factor = tk.StringVar(value="0.1")  # 学习率衰减因子
 
         # 早停配置 (分阶段可配置)
         self.ae_patience_stage1 = tk.StringVar(value="10")  # 阶段1早停耐心值

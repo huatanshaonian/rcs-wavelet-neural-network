@@ -297,10 +297,12 @@ class AutoEncoderExtension:
 
         # 第一行：调度策略选择
         # constant: 固定学习率 | cosine_restart: 余弦退火+周期重启 | cosine_simple: 简单余弦退火 | adaptive: 自适应调整(ReduceLROnPlateau)
+        # multi_stage: 多阶段学习率衰减 | adaptive_multi_stage: 自适应多阶段学习率衰减
         ttk.Label(lr_frame, text="调度策略:").grid(row=0, column=0, sticky="w")
         lr_scheduler_combo = ttk.Combobox(lr_frame, textvariable=self.main_gui.ae_lr_scheduler,
-                                        values=['constant', 'cosine_restart', 'cosine_simple', 'adaptive'],
-                                        state="readonly", width=12)
+                                        values=['constant', 'cosine_restart', 'cosine_simple', 'adaptive',
+                                                'multi_stage', 'adaptive_multi_stage'],
+                                        state="readonly", width=18)
         lr_scheduler_combo.grid(row=0, column=1, columnspan=3, sticky="ew")
 
         # 第二行：初始学习率和最小学习率
@@ -309,9 +311,16 @@ class AutoEncoderExtension:
         ttk.Label(lr_frame, text="最小学习率:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
         ttk.Entry(lr_frame, textvariable=self.main_gui.ae_min_lr, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
-        # 第三行：重启周期（用于cosine_restart策略）
+        # 第三行：重启周期（用于cosine_restart策略）和多阶段参数
         ttk.Label(lr_frame, text="重启周期:").grid(row=2, column=0, sticky="w", pady=(5, 0))
         ttk.Entry(lr_frame, textvariable=self.main_gui.ae_restart_period, width=8).grid(row=2, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(lr_frame, text="阶段数:").grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_num_lr_stages, width=8).grid(row=2, column=3, sticky="w", pady=(5, 0))
+
+        # 第四行：学习率衰减因子（用于multi_stage策略）
+        ttk.Label(lr_frame, text="LR衰减因子:").grid(row=3, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.main_gui.ae_lr_decay_factor, width=8).grid(row=3, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(lr_frame, text="(multi_stage专用)", font=("", 8)).grid(row=3, column=2, columnspan=2, sticky="w", padx=(5, 0), pady=(5, 0))
 
         # 6. 早停配置组
         patience_group = ttk.LabelFrame(right_column, text="⏹️ 早停配置")
