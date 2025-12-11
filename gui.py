@@ -376,6 +376,14 @@ class RCSWaveletGUI:
         if hasattr(self, 'log_file'):
             self.log_file.close()
 
+    def setup_layout(self):
+        """设置布局"""
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 设置样式
+        style = ttk.Style()
+        style.configure("Accent.TButton")
+
     def create_widgets(self):
         """创建界面组件"""
 
