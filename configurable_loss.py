@@ -41,6 +41,9 @@ class ConfigurableLoss(nn.Module):
         """
         losses = {}
 
+        # 检查输入维度，如果是2D（Stage 2隐空间），仅支持基础损失
+        is_spatial = pred.dim() == 4
+        
         # 基础损失函数
         if self.config.get('use_mse', False):
             losses['mse'] = self.mse_loss(pred, target)
@@ -51,20 +54,24 @@ class ConfigurableLoss(nn.Module):
         if self.config.get('use_l1', False):
             losses['l1'] = self.l1_loss(pred, target)
 
-        # 物理约束损失
-        if self.config.get('use_symmetry', False):
-            losses['symmetry'] = self._symmetry_loss(pred, target)
+        # 物理约束损失 (仅对4D空间数据有效)
+        if is_spatial:
+            if self.config.get('use_symmetry', False):
+                losses['symmetry'] = self._symmetry_loss(pred, target)
 
-        if self.config.get('use_freq_consistency', False):
-            freq_type = self.config.get('freq_consistency_type', 'diff')
-            losses['freq_consistency'] = self._frequency_consistency_loss(pred, target, freq_type)
+            if self.config.get('use_freq_consistency', False):
+                freq_type = self.config.get('freq_consistency_type', 'diff')
+                losses['freq_consistency'] = self._frequency_consistency_loss(pred, target, freq_type)
 
-        if self.config.get('use_continuity', False):
-            continuity_type = self.config.get('continuity_type', 'standard')
-            losses['continuity'] = self._continuity_loss(pred, target, continuity_type)
+            if self.config.get('use_continuity', False):
+                continuity_type = self.config.get('continuity_type', 'standard')
+                losses['continuity'] = self._continuity_loss(pred, target, continuity_type)
 
-        if self.config.get('use_multiscale', False):
-            losses['multiscale'] = self._multiscale_loss(pred, target)
+            if self.config.get('use_multiscale', False):
+                losses['multiscale'] = self._multiscale_loss(pred, target)
+                
+            if self.config.get('use_ssim', False):
+                losses['ssim'] = self._ssim_loss(pred, target)
 
         # 计算加权总损失
         total_loss = 0
@@ -78,32 +85,102 @@ class ConfigurableLoss(nn.Module):
 
     def _symmetry_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
-        对称性损失 (φ=0°平面对称性)
+        对称性损失 (φ=0°平面对称性) - 优化版
         """
+        # 假设数据格式 [B, 91, 91, 2]
+        # 对称轴在 phi=45 (index 45, start from 0)
+        # 左右两侧索引: [44, 43, ..., 0] 和 [46, 47, ..., 90]
+        # 切片长度: 45
+        
+        # 仅当H, W足够大时才计算
+        if pred.size(1) < 91 or pred.size(2) < 91:
+            return torch.tensor(0.0, device=pred.device)
+            
         center_phi = 45
-        symmetry_loss = 0.0
-        count = 0
+        # 取左侧切片并翻转，使其与右侧对齐
+        # left: indices 0 to 44 (length 45) -> reverse -> indices 44 to 0
+        # right: indices 46 to 90 (length 45)
+        
+        # 注意：这里假设phi在第2维 (index 2)
+        # pred shape: [B, theta, phi, freq]
+        
+        pred_left = pred[:, :, :center_phi, :]       # [B, 91, 45, 2]
+        pred_right = pred[:, :, center_phi+1:, :]    # [B, 91, 45, 2]
+        
+        target_left = target[:, :, :center_phi, :]
+        target_right = target[:, :, center_phi+1:, :]
+        
+        # 翻转左侧使其与右侧对应 (dim=2 is phi)
+        pred_left_flipped = torch.flip(pred_left, [2])
+        target_left_flipped = torch.flip(target_left, [2])
+        
+        # 计算对称性差异
+        pred_sym_diff = pred_left_flipped - pred_right
+        target_sym_diff = target_left_flipped - target_right
+        
+        # 我们希望预测的对称性误差接近目标的对称性误差（保持物理一致性）
+        # 或者仅仅希望预测是对称的（如果目标是对称的）
+        # 这里使用一致性约束：预测的对称偏差应该匹配目标的对称偏差
+        return F.mse_loss(pred_sym_diff, target_sym_diff)
 
-        for i in range(1, center_phi + 1):
-            left_idx = center_phi - i
-            right_idx = center_phi + i
+    def _ssim_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        SSIM (Structural Similarity) 损失
+        """
+        def gaussian_window(size, sigma):
+            coords = torch.arange(size, dtype=torch.float)
+            coords -= size // 2
+            g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+            g /= g.sum()
+            return g.reshape(1, 1, 1, -1)  # [1, 1, 1, size]
 
-            if right_idx < 91:
-                # 预测的对称性误差
-                pred_left = pred[:, :, left_idx, :]
-                pred_right = pred[:, :, right_idx, :]
-                pred_sym_diff = pred_left - pred_right
+        def ssim_map(x, y, window_size=11, sigma=1.5):
+            # x, y: [B, C, H, W]
+            channels = x.size(1)
+            
+            # 生成1D高斯窗口
+            window_1d = gaussian_window(window_size, sigma).to(x.device)  # [1, 1, 1, size]
+            
+            # 生成2D高斯窗口: [1, 1, size, 1] @ [1, 1, 1, size] -> [1, 1, size, size]
+            # 或者是 outer product
+            window_1d_t = window_1d.transpose(3, 2) # [1, 1, size, 1]
+            window_2d = torch.matmul(window_1d_t, window_1d) # [1, 1, size, size]
+            
+            # 扩展到所有通道: [C, 1, size, size] (depthwise convolution)
+            window = window_2d.expand(channels, 1, window_size, window_size).contiguous()
+            
+            mu1 = F.conv2d(x, window, padding=window_size//2, groups=channels)
+            mu2 = F.conv2d(y, window, padding=window_size//2, groups=channels)
 
-                # 目标的对称性误差
-                target_left = target[:, :, left_idx, :]
-                target_right = target[:, :, right_idx, :]
-                target_sym_diff = target_left - target_right
+            mu1_sq = mu1.pow(2)
+            mu2_sq = mu2.pow(2)
+            mu1_mu2 = mu1 * mu2
 
-                # 计算对称性损失
-                symmetry_loss += F.mse_loss(pred_sym_diff, target_sym_diff)
-                count += 1
+            sigma1_sq = F.conv2d(x * x, window, padding=window_size//2, groups=channels) - mu1_sq
+            sigma2_sq = F.conv2d(y * y, window, padding=window_size//2, groups=channels) - mu2_sq
+            sigma12 = F.conv2d(x * y, window, padding=window_size//2, groups=channels) - mu1_mu2
 
-        return symmetry_loss / count if count > 0 else torch.tensor(0.0, device=pred.device)
+            C1 = 0.01 ** 2
+            C2 = 0.03 ** 2
+
+            ssim_val = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
+                       ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+            return ssim_val
+
+        # 调整输入格式 [B, H, W, C] -> [B, C, H, W]
+        if pred.dim() == 4:
+            # 确保输入在 [0, 1] 或 [-1, 1] 范围（如果未归一化可能会影响C1/C2常数的效果）
+            # 这里假设输入已经适当归一化，或者依靠C1/C2的相对值
+            pred_n = pred.permute(0, 3, 1, 2)
+            target_n = target.permute(0, 3, 1, 2)
+        else:
+            return torch.tensor(0.0, device=pred.device)
+
+        # 计算 SSIM
+        ssim_val = ssim_map(pred_n, target_n)
+        
+        # SSIM Loss = 1 - mean(SSIM)
+        return 1.0 - ssim_val.mean()
 
     def _frequency_consistency_loss(self, pred: torch.Tensor, target: torch.Tensor, freq_type: str) -> torch.Tensor:
         """
@@ -327,6 +404,23 @@ PRESET_CONFIGS = {
         'use_freq_consistency': True, 'freq_consistency_weight': 0.05, 'freq_consistency_type': 'diff',
         'use_continuity': True, 'continuity_weight': 0.05, 'continuity_type': 'standard',
         'use_multiscale': True, 'multiscale_weight': 0.1
+    },
+
+    'perceptual': {
+        'use_mse': False, 
+        'use_huber': True, 'huber_weight': 0.1,
+        'use_l1': True, 'l1_weight': 0.1,
+        'use_ssim': True, 'ssim_weight': 0.8,
+        'use_symmetry': True, 'symmetry_weight': 0.02,
+        'use_multiscale': False
+    },
+
+    'stage2_default': {
+        'use_mse': True, 'mse_weight': 1.0,
+        'use_huber': False, 'use_l1': False,
+        'use_symmetry': False, 'use_ssim': False,
+        'use_freq_consistency': False, 'use_continuity': False,
+        'use_multiscale': False
     }
 }
 

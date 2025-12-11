@@ -298,6 +298,10 @@ class RCSWaveletGUI:
         self.use_l1_loss = tk.BooleanVar(value=False)
         self.l1_weight = tk.StringVar(value="0.5")
 
+        # SSIM Loss (感知/结构损失)
+        self.use_ssim_loss = tk.BooleanVar(value=False)
+        self.ssim_weight = tk.StringVar(value="0.8")
+
         # 物理约束损失配置
         self.use_symmetry_loss = tk.BooleanVar(value=True)
         self.symmetry_weight = tk.StringVar(value="0.01")
@@ -903,6 +907,7 @@ class RCSWaveletGUI:
         ttk.Button(preset_frame, text="Robust", command=self.load_robust_preset).pack(side=tk.LEFT, padx=2)
         ttk.Button(preset_frame, text="High-Freq", command=self.load_highfreq_preset).pack(side=tk.LEFT, padx=2)
         ttk.Button(preset_frame, text="Smooth", command=self.load_smooth_preset).pack(side=tk.LEFT, padx=2)
+        ttk.Button(preset_frame, text="Perceptual", command=self.load_perceptual_preset).pack(side=tk.LEFT, padx=2)
 
         # 基础损失函数组
         basic_group = ttk.LabelFrame(left_panel, text="基础损失函数")
@@ -930,6 +935,13 @@ class RCSWaveletGUI:
         ttk.Checkbutton(l1_frame, text="L1 Loss", variable=self.use_l1_loss).pack(side=tk.LEFT)
         ttk.Label(l1_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
         ttk.Entry(l1_frame, textvariable=self.l1_weight, width=8).pack(side=tk.LEFT)
+
+        # SSIM Loss
+        ssim_frame = ttk.Frame(basic_group)
+        ssim_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Checkbutton(ssim_frame, text="SSIM Loss", variable=self.use_ssim_loss).pack(side=tk.LEFT)
+        ttk.Label(ssim_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Entry(ssim_frame, textvariable=self.ssim_weight, width=8).pack(side=tk.LEFT)
 
         # 物理约束损失组
         physics_group = ttk.LabelFrame(left_panel, text="物理约束损失")
@@ -2448,6 +2460,8 @@ class RCSWaveletGUI:
                 config_text += f"  ✅ Huber Loss (权重: {self.huber_weight.get()}, Delta: {self.huber_delta.get()})\n"
             if self.use_l1_loss.get():
                 config_text += f"  ✅ L1 Loss (权重: {self.l1_weight.get()})\n"
+            if self.use_ssim_loss.get():
+                config_text += f"  ✅ SSIM Loss (权重: {self.ssim_weight.get()})\n"
 
             # 物理约束损失
             config_text += "\n🔬 物理约束损失:\n"
@@ -2468,6 +2482,8 @@ class RCSWaveletGUI:
                 total_weight += float(self.huber_weight.get())
             if self.use_l1_loss.get():
                 total_weight += float(self.l1_weight.get())
+            if self.use_ssim_loss.get():
+                total_weight += float(self.ssim_weight.get())
             if self.use_symmetry_loss.get():
                 total_weight += float(self.symmetry_weight.get())
             if self.use_freq_consistency.get():
@@ -2513,6 +2529,9 @@ class RCSWaveletGUI:
                 'use_l1': self.use_l1_loss.get(),
                 'l1_weight': float(self.l1_weight.get()) if self.use_l1_loss.get() else 0,
 
+                'use_ssim': self.use_ssim_loss.get(),
+                'ssim_weight': float(self.ssim_weight.get()) if self.use_ssim_loss.get() else 0,
+
                 'use_symmetry': self.use_symmetry_loss.get(),
                 'symmetry_weight': float(self.symmetry_weight.get()) if self.use_symmetry_loss.get() else 0,
 
@@ -2551,6 +2570,9 @@ class RCSWaveletGUI:
         self.use_l1_loss.set(False)
         self.l1_weight.set("0.5")
 
+        self.use_ssim_loss.set(False)
+        self.ssim_weight.set("0.8")
+
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.01")
 
@@ -2571,10 +2593,9 @@ class RCSWaveletGUI:
     def load_original_preset(self):
         """加载Original预设配置"""
         self.use_mse_loss.set(True)
-        self.mse_weight.set("1.0")
-
         self.use_huber_loss.set(False)
         self.use_l1_loss.set(False)
+        self.use_ssim_loss.set(False)
 
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.02")
@@ -2596,6 +2617,7 @@ class RCSWaveletGUI:
         self.huber_delta.set("0.1")
 
         self.use_l1_loss.set(False)
+        self.use_ssim_loss.set(False)
 
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.01")
@@ -2622,6 +2644,7 @@ class RCSWaveletGUI:
 
         self.use_l1_loss.set(True)
         self.l1_weight.set("0.1")
+        self.use_ssim_loss.set(False)
 
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.005")
@@ -2638,10 +2661,9 @@ class RCSWaveletGUI:
     def load_highfreq_preset(self):
         """加载高频信息保持预设配置"""
         self.use_mse_loss.set(True)
-        self.mse_weight.set("0.9")
-
         self.use_huber_loss.set(False)
         self.use_l1_loss.set(False)
+        self.use_ssim_loss.set(False)
 
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.005")
@@ -2665,6 +2687,7 @@ class RCSWaveletGUI:
 
         self.use_huber_loss.set(False)
         self.use_l1_loss.set(False)
+        self.use_ssim_loss.set(False)
 
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.02")
@@ -2679,6 +2702,29 @@ class RCSWaveletGUI:
 
         self.use_multiscale_loss.set(True)
         self.multiscale_weight.set("0.1")
+
+        self.update_loss_config_preview()
+
+    def load_perceptual_preset(self):
+        """加载感知优化预设配置 (包含SSIM)"""
+        self.use_mse_loss.set(False)
+
+        self.use_huber_loss.set(True)
+        self.huber_weight.set("0.1")
+        self.huber_delta.set("0.1")
+
+        self.use_l1_loss.set(True)
+        self.l1_weight.set("0.1")
+
+        self.use_ssim_loss.set(True)
+        self.ssim_weight.set("0.8")
+
+        self.use_symmetry_loss.set(True)
+        self.symmetry_weight.set("0.02")
+
+        self.use_freq_consistency.set(False)
+        self.use_continuity_loss.set(False)
+        self.use_multiscale_loss.set(False)
 
         self.update_loss_config_preview()
 
@@ -3736,13 +3782,9 @@ class RCSWaveletGUI:
         """创建AutoEncoder优化器和学习率调度器 (复用项目标准)"""
         return self.training_manager._create_ae_optimizer_and_scheduler(model_params, training_config)
 
-    def _create_ae_loss_function(self, training_config):
-        """创建AutoEncoder损失函数 (用于阶段1重建任务)"""
-        return self.training_manager._create_ae_loss_function(training_config)
-
-    def _create_end_to_end_loss_function(self, training_config):
-        """创建端到端损失函数 (用于阶段3 RCS预测，与其他网络相同)"""
-        return self.training_manager._create_end_to_end_loss_function(training_config)
+    def _create_stage_loss_function(self, training_config, stage='stage1'):
+        """创建AutoEncoder损失函数 (通用阶段损失函数创建)"""
+        return self.training_manager._create_stage_loss_function(training_config, stage=stage)
 
     def _ae_step_scheduler(self, scheduler, scheduler_type, val_loss=None):
         """AutoEncoder学习率调度器步进 (复用项目调度逻辑)"""

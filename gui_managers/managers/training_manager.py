@@ -1260,8 +1260,8 @@ class TrainingManager:
             # 创建优化器和调度器 (复用项目标准)
             optimizer, scheduler = self.gui._create_ae_optimizer_and_scheduler(autoencoder.parameters(), training_config)
 
-            # 创建损失函数 (复用项目损失函数系统)
-            criterion = self.gui._create_ae_loss_function(training_config)
+            # 创建损失函数 (支持三阶段独立配置)
+            criterion = self.gui._create_stage_loss_function(training_config, stage='stage1')
 
             # 训练配置
             epochs = training_config['epochs']['stage1']
@@ -1588,11 +1588,8 @@ class TrainingManager:
             # 创建优化器和调度器
             optimizer, scheduler = self.gui._create_ae_optimizer_and_scheduler(parameter_mapper.parameters(), training_config)
 
-            # 创建损失函数 - 参数映射阶段使用MSE损失
-            # 配置化损失函数是为4D RCS数据设计的，不适用于2D隐空间向量
-            import torch.nn as nn
-            criterion = nn.MSELoss()
-            self.gui.ae_log("阶段2使用MSE损失函数 (隐空间向量匹配)")
+            # 创建损失函数 - 支持配置化 (Stage 2通常使用MSE，但也支持配置)
+            criterion = self.gui._create_stage_loss_function(training_config, stage='stage2')
 
             # 训练配置
             epochs = training_config['epochs']['stage2']
@@ -1889,8 +1886,8 @@ class TrainingManager:
                 training_config_fine
             )
 
-            # 创建端到端损失函数 - 专门用于RCS预测，与其他网络相同
-            criterion = self.gui._create_end_to_end_loss_function(training_config)
+            # 创建端到端损失函数 - 专门用于RCS预测
+            criterion = self.gui._create_stage_loss_function(training_config, stage='stage3')
 
             # 训练配置
             epochs = training_config['epochs']['stage3']
@@ -2295,7 +2292,18 @@ class TrainingManager:
 
         # 如果使用自定义损失函数，复用项目的损失函数配置
         if config['use_custom_loss'] and hasattr(self.gui, 'training_config') and 'custom_loss_config' in self.gui.training_config:
-            config['custom_loss_config'] = self.gui.training_config['custom_loss_config']
+            user_loss_config = self.gui.training_config['custom_loss_config']
+            config['custom_loss_config'] = user_loss_config
+            
+            # 为各阶段分配配置
+            # Stage 1 (AE重建) 和 Stage 3 (端到端) 使用用户选择的配置 (支持SSIM等)
+            config['stage1_loss_config'] = user_loss_config
+            config['stage3_loss_config'] = user_loss_config
+            
+            # Stage 2 (参数映射) 使用专用配置 (仅MSE)，因为它是Latent Space (2D)
+            # 用户配置的SSIM/Symmetry在2D空间无意义
+            from configurable_loss import get_preset_config
+            config['stage2_loss_config'] = get_preset_config('stage2_default')
 
         return config
 
@@ -2357,39 +2365,45 @@ class TrainingManager:
 
         return optimizer, scheduler
 
-    def _create_ae_loss_function(self, training_config):
-        """创建AutoEncoder损失函数 (用于阶段1重建任务)"""
+    def _create_stage_loss_function(self, training_config, stage='stage1'):
+        """
+        创建指定阶段的损失函数
+        支持配置化损失函数，为每个阶段独立配置
+        """
         import torch.nn as nn
-
-        # 阶段1专用：根据模式决定重建目标
-        mode = self.gui.ae_system.get('mode', 'wavelet')
-        if mode == 'wavelet':
-            self.gui.ae_log("阶段1使用MSE损失函数 (小波系数重建)")
-        else:
-            self.gui.ae_log("阶段1使用MSE损失函数 (RCS数据重建)")
-
-        return nn.MSELoss()
-
-    def _create_end_to_end_loss_function(self, training_config):
-        """创建端到端损失函数 (用于阶段3 RCS预测，与其他网络相同)"""
-        import torch.nn as nn
-
-        if training_config['use_custom_loss'] and 'custom_loss_config' in training_config:
-            # 使用自定义损失函数配置 - 这与项目其他网络完全相同
-            self.gui.ae_log("阶段3使用配置化损失函数 (与其他网络相同)")
-            from configurable_loss import create_loss_function as create_configurable_loss
-            configurable_loss = create_configurable_loss(training_config['custom_loss_config'])
-
+        from configurable_loss import create_loss_function as create_configurable_loss
+        
+        # 确定使用的配置
+        loss_config = None
+        use_custom = False
+        
+        # 1. 优先查找阶段特定的配置
+        stage_config_key = f'{stage}_loss_config'
+        if stage_config_key in training_config:
+            loss_config = training_config[stage_config_key]
+            use_custom = True
+            self.gui.ae_log(f"🔧 {stage}: 使用独立配置的损失函数")
+            
+        # 2. 其次查找全局自定义配置 (如果启用了全局开关)
+        elif training_config.get('use_custom_loss', False) and 'custom_loss_config' in training_config:
+            loss_config = training_config['custom_loss_config']
+            use_custom = True
+            self.gui.ae_log(f"🔧 {stage}: 使用全局配置的损失函数")
+            
+        if use_custom and loss_config:
+            # 创建可配置损失函数
+            configurable_loss = create_configurable_loss(loss_config)
+            
             # 创建包装函数，确保返回tensor而不是字典
             def loss_wrapper(pred, target):
                 loss_dict = configurable_loss(pred, target)
                 return loss_dict['total']  # 返回总损失tensor
-
+                
             return loss_wrapper
-        else:
-            # 使用标准MSE损失
-            self.gui.ae_log("阶段3使用标准MSE损失函数")
-            return nn.MSELoss()
+            
+        # 3. 默认回退到MSE
+        self.gui.ae_log(f"🔧 {stage}: 使用标准MSE损失函数 (默认)")
+        return nn.MSELoss()
 
     def _ae_step_scheduler(self, scheduler, scheduler_type, val_loss=None):
         """AutoEncoder学习率调度器步进 (复用项目调度逻辑)"""
