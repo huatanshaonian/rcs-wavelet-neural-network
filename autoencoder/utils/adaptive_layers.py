@@ -129,7 +129,7 @@ def build_fc_encoder(input_dim: int,
         layers.append(nn.Linear(current_dim, intermediate_dim))
         if use_bn:
             layers.append(nn.BatchNorm1d(intermediate_dim))
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.ReLU(inplace=False))
         layers.append(nn.Dropout(dropout_rate))
         current_dim = intermediate_dim
 
@@ -172,7 +172,7 @@ def build_fc_decoder(latent_dim: int,
         layers.append(nn.Linear(current_dim, intermediate_dim))
         if use_bn:
             layers.append(nn.BatchNorm1d(intermediate_dim))
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.ReLU(inplace=False))
         layers.append(nn.Dropout(dropout_rate))
         current_dim = intermediate_dim
 
@@ -181,7 +181,7 @@ def build_fc_decoder(latent_dim: int,
 
     # 可选的输出激活
     if use_output_activation:
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.ReLU(inplace=False))
 
     decoder = nn.Sequential(*layers)
     return decoder
