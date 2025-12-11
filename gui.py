@@ -455,6 +455,15 @@ class RCSWaveletGUI:
         )
         info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
+    def create_loss_config_tab(self):
+        """创建损失配置标签页"""
+
+        # 使用新重构的标签页类
+        # 代码已迁移至 gui_managers/tabs/loss_config_tab.py
+        self.loss_config_tab = LossConfigTab(self.loss_config_frame, self)
+        self.loss_config_tab.pack(fill=tk.BOTH, expand=True)
+        return
+
     def create_training_tab(self):
         """创建模型训练标签页"""
 
@@ -463,6 +472,56 @@ class RCSWaveletGUI:
         self.training_tab = TrainingTab(self.training_frame, self)
         self.training_tab.pack(fill=tk.BOTH, expand=True)
         return
+
+    def create_evaluation_tab(self):
+        """创建评估标签页"""
+
+        # 使用新重构的标签页类
+        # 代码已迁移至 gui_managers/tabs/evaluation_tab.py
+        self.evaluation_tab = EvaluationTab(self.evaluation_frame, self)
+        self.evaluation_tab.pack(fill=tk.BOTH, expand=True)
+        return
+
+    def create_prediction_tab(self):
+        """创建预测标签页"""
+
+        # 使用新重构的标签页类
+        # 代码已迁移至 gui_managers/tabs/prediction_tab.py
+        self.prediction_tab = PredictionTab(self.prediction_frame, self)
+        self.prediction_tab.pack(fill=tk.BOTH, expand=True)
+        return
+
+    def create_visualization_tab(self):
+        """创建可视化标签页"""
+
+        # 使用新重构的标签页类
+        # 代码已迁移至 gui_managers/tabs/visualization_tab.py
+        self.visualization_tab = VisualizationTab(self.visualization_frame, self)
+        self.visualization_tab.pack(fill=tk.BOTH, expand=True)
+        return
+
+    def create_batch_experiment_tab(self):
+        """创建批量实验标签页
+
+        ⚠️ 此方法已移除！实际界面由 gui_batch_experiment_extension.py 提供
+        ==========================================
+        此标签页的内容在 main.py 启动时会被 BatchExperimentExtension 覆盖
+
+        如需修改批量实验界面，请修改：
+        - gui_batch_experiment_extension.py: BatchExperimentExtension类
+        ==========================================
+        """
+        # 创建占位框架，将被extension覆盖
+        placeholder = ttk.Frame(self.batch_experiment_frame)
+        placeholder.pack(fill=tk.BOTH, expand=True)
+
+        info_label = ttk.Label(
+            placeholder,
+            text="批量实验界面正在加载...\n请稍候，界面将由扩展模块提供",
+            font=self.font_medium,
+            justify=tk.CENTER
+        )
+        info_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
 
 
