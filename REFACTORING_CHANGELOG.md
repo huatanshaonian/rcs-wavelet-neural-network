@@ -100,3 +100,15 @@ self.notebook.add(self.data_tab, text="数据管理")
     *   `_plot_wavelet_coefficients_comparison`
     *   `save_current_visualization`
 *   **依赖关系**: `VisualizationTab` 接收主应用程序实例 (`app`) 作为参数，并通过 `app.visualization_manager`, `app.statistics_manager` 等访问共享状态和管理器。它还直接管理 Matplotlib `Figure` 和 `Canvas`。
+
+#### 4. 损失配置标签页 (Loss Config Tab)
+*   **新位置**: `gui_managers/tabs/loss_config_tab.py` 中的 `LossConfigTab` 类。
+*   **移动的方法**: `create_loss_config_tab`, `init_loss_config_vars`, `load_*_preset`, `update_loss_config_preview`, `apply_loss_config`, `reset_loss_config`。
+
+#### 5. 评估标签页 (Evaluation Tab)
+*   **新位置**: `gui_managers/tabs/evaluation_tab.py` 中的 `EvaluationTab` 类。
+*   **移动的方法**: `create_evaluation_tab`, `start_evaluation`, `_evaluate_*_model`, `generate_report`, `export_results`, `save_detailed_evaluation_report`。
+
+#### 6. 预测标签页 (Prediction Tab)
+*   **新位置**: `gui_managers/tabs/prediction_tab.py` 中的 `PredictionTab` 类。
+*   **移动的方法**: `create_prediction_tab`, `load_param_template`, `generate_random_params`, `make_prediction`, `_plot_prediction_results`。

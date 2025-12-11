@@ -29,15 +29,23 @@ class VisualizationManager:
         """
         self.gui = parent_gui
 
-    def _plot_2d_heatmap(self, model_id, freq):
+    def _plot_2d_heatmap(self, model_id, freq, fig=None, canvas=None):
         """绘制2D热图"""
-        self.gui.vis_fig.clear()
+        # 如果未提供fig和canvas，尝试从gui获取（向后兼容）
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+
+        if target_fig is None or target_canvas is None:
+            self.gui.log_message("错误: 无法获取绘图目标 (Figure/Canvas)")
+            return
+
+        target_fig.clear()
 
         try:
             # 使用现有的可视化函数
             data = rv.get_rcs_matrix(model_id, freq, self.gui.data_config['rcs_data_dir'])
 
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            ax = target_fig.add_subplot(1, 1, 1)
 
             # 获取实际的角度范围
             phi_values = data['phi_values']
@@ -45,7 +53,14 @@ class VisualizationManager:
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                # 尝试从gui或visualization_tab获取fontsize_scale_var
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
+                
                 # 限制范围在0.5-3.0之间
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
@@ -63,29 +78,41 @@ class VisualizationManager:
             ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 添加colorbar并设置字号
-            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
+            cbar = target_fig.colorbar(im, ax=ax, label='RCS (dB)')
             cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
         except Exception as e:
             self.gui.log_message(f"无法生成2D热图: {str(e)}")
 
-    def _plot_3d_surface(self, model_id, freq):
+    def _plot_3d_surface(self, model_id, freq, fig=None, canvas=None):
         """绘制3D表面图"""
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+
+        if target_fig is None or target_canvas is None:
+            self.gui.log_message("错误: 无法获取绘图目标")
+            return
+
         try:
             import numpy as np
             from matplotlib import pyplot as plt
             from mpl_toolkits.mplot3d import Axes3D
 
-            self.gui.vis_fig.clear()
+            target_fig.clear()
             self.gui.log_message(f"绘制模型 {model_id} - {freq} 的3D表面图...")
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
@@ -100,7 +127,7 @@ class VisualizationManager:
             Theta, Phi = np.meshgrid(theta_range, phi_range, indexing='ij')
 
             # 创建3D子图
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1, projection='3d')
+            ax = target_fig.add_subplot(1, 1, 1, projection='3d')
 
             # 绘制表面图
             surf = ax.plot_surface(Theta, Phi, rcs_data,
@@ -115,7 +142,7 @@ class VisualizationManager:
                          fontsize=int(24*fontsize_scale), fontweight='bold')
 
             # 添加颜色条
-            cbar = self.gui.vis_fig.colorbar(surf, ax=ax, shrink=0.5, aspect=20, label='RCS (dB)')
+            cbar = target_fig.colorbar(surf, ax=ax, shrink=0.5, aspect=20, label='RCS (dB)')
             cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
@@ -124,7 +151,7 @@ class VisualizationManager:
             ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
             ax.zaxis.set_tick_params(labelsize=int(16*fontsize_scale))
 
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
             self.gui.log_message("3D表面图绘制完成")
 
         except Exception as e:
@@ -132,19 +159,31 @@ class VisualizationManager:
             self.gui.log_message(error_msg)
             messagebox.showerror("错误", error_msg)
 
-    def _plot_spherical(self, model_id, freq):
+    def _plot_spherical(self, model_id, freq, fig=None, canvas=None):
         """绘制球坐标图"""
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+
+        if target_fig is None or target_canvas is None:
+            self.gui.log_message("错误: 无法获取绘图目标")
+            return
+
         try:
             import numpy as np
             from matplotlib import pyplot as plt
             from mpl_toolkits.mplot3d import Axes3D
 
-            self.gui.vis_fig.clear()
+            target_fig.clear()
             self.gui.log_message(f"绘制模型 {model_id} - {freq} 的球坐标图...")
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
@@ -174,7 +213,7 @@ class VisualizationManager:
             Z = R * np.cos(Theta)
 
             # 创建3D子图
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1, projection='3d')
+            ax = target_fig.add_subplot(1, 1, 1, projection='3d')
 
             # 绘制球面图
             surf = ax.plot_surface(X, Y, Z,
@@ -198,7 +237,7 @@ class VisualizationManager:
             # 添加颜色映射说明
             sm = plt.cm.ScalarMappable(cmap='jet')
             sm.set_array(data['rcs_db'])
-            cbar = self.gui.vis_fig.colorbar(sm, ax=ax, shrink=0.5, aspect=20)
+            cbar = target_fig.colorbar(sm, ax=ax, shrink=0.5, aspect=20)
             cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
@@ -207,7 +246,7 @@ class VisualizationManager:
             ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
             ax.zaxis.set_tick_params(labelsize=int(16*fontsize_scale))
 
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
             self.gui.log_message("球坐标图绘制完成")
 
         except Exception as e:
@@ -215,10 +254,24 @@ class VisualizationManager:
             self.gui.log_message(error_msg)
             messagebox.showerror("错误", error_msg)
 
-    def _plot_comparison(self, model_id):
+    def _plot_comparison(self, model_id, current_model=None, fig=None, canvas=None, rcs_data=None, param_data=None, log_callback=None):
         """绘制原始RCS vs 神经网络预测RCS对比图"""
-        if not self.gui.model_trained or self.gui.current_model is None:
+        # 获取依赖项，优先使用传入参数，否则回退到self.gui
+        model = current_model if current_model is not None else getattr(self.gui, 'current_model', None)
+        is_trained = (model is not None) if current_model is not None else getattr(self.gui, 'model_trained', False)
+        
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        
+        # 获取回调函数
+        log_msg = log_callback if log_callback is not None else self.gui.log_message
+
+        if not is_trained or model is None:
             messagebox.showwarning("警告", "请先训练模型")
+            return
+
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
             return
 
         try:
@@ -226,17 +279,22 @@ class VisualizationManager:
             from matplotlib import pyplot as plt
 
             # 清除当前图形
-            self.gui.vis_fig.clear()
+            target_fig.clear()
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
 
             # 获取原始RCS数据
-            print(f"加载模型 {model_id} 的原始RCS数据...")
+            log_msg(f"加载模型 {model_id} 的原始RCS数据...")
             data_1_5g = rv.get_rcs_matrix(model_id, "1.5G", self.gui.data_config['rcs_data_dir'])
             data_3g = rv.get_rcs_matrix(model_id, "3G", self.gui.data_config['rcs_data_dir'])
 
@@ -249,13 +307,13 @@ class VisualizationManager:
             model_params = params_df.iloc[int(model_id) - 1].values.astype(np.float32)
 
             # 使用神经网络进行预测
-            print(f"使用神经网络预测模型 {model_id} 的RCS...")
+            log_msg(f"使用神经网络预测模型 {model_id} 的RCS...")
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            self.gui.current_model.to(device)
-            self.gui.current_model.eval()
+            model.to(device)
+            model.eval()
             with torch.no_grad():
                 params_tensor = torch.FloatTensor(model_params).unsqueeze(0).to(device)
-                predicted_rcs = self.gui.current_model(params_tensor).cpu().numpy().squeeze()
+                predicted_rcs = model(params_tensor).cpu().numpy().squeeze()
 
             # predicted_rcs shape: [91, 91, 2]
             predicted_rcs_1_5g = predicted_rcs[:, :, 0]  # 1.5GHz
@@ -267,18 +325,21 @@ class VisualizationManager:
             original_rcs_3g_db = 10 * np.log10(np.maximum(original_rcs_3g, epsilon))
 
             # 预测RCS转换为dB：检查是否为对数域输出
-            if hasattr(self.gui, 'preprocessing_stats') and self.gui.preprocessing_stats:
+            # 优先检查self.gui.preprocessing_stats
+            preprocessing_stats = getattr(self.gui, 'preprocessing_stats', None)
+            
+            if preprocessing_stats:
                 # 新格式：网络输出是标准化的dB值，需要反标准化
-                mean = self.gui.preprocessing_stats['mean']
-                std = self.gui.preprocessing_stats['std']
+                mean = preprocessing_stats['mean']
+                std = preprocessing_stats['std']
                 predicted_rcs_1_5g_db = predicted_rcs_1_5g * std + mean
                 predicted_rcs_3g_db = predicted_rcs_3g * std + mean
-                print(f"使用preprocessing_stats反标准化: mean={mean:.2f}, std={std:.2f}")
+                log_msg(f"使用preprocessing_stats反标准化: mean={mean:.2f}, std={std:.2f}")
             else:
                 # 旧格式或无preprocessing_stats：假设是线性值，转dB
                 predicted_rcs_1_5g_db = 10 * np.log10(np.maximum(predicted_rcs_1_5g, epsilon))
                 predicted_rcs_3g_db = 10 * np.log10(np.maximum(predicted_rcs_3g, epsilon))
-                print("警告: 无preprocessing_stats，假设网络输出为线性值")
+                log_msg("警告: 无preprocessing_stats，假设网络输出为线性值")
 
             # 计算统一的colorbar范围（对于每个频率）
             vmin_1_5g = min(original_rcs_1_5g_db.min(), predicted_rcs_1_5g_db.min())
@@ -286,19 +347,17 @@ class VisualizationManager:
             vmin_3g = min(original_rcs_3g_db.min(), predicted_rcs_3g_db.min())
             vmax_3g = max(original_rcs_3g_db.max(), predicted_rcs_3g_db.max())
 
-            print(f"1.5GHz dB范围: {vmin_1_5g:.1f} ~ {vmax_1_5g:.1f}")
-            print(f"3GHz dB范围: {vmin_3g:.1f} ~ {vmax_3g:.1f}")
+            log_msg(f"1.5GHz dB范围: {vmin_1_5g:.1f} ~ {vmax_1_5g:.1f}")
+            log_msg(f"3GHz dB范围: {vmin_3g:.1f} ~ {vmax_3g:.1f}")
 
             # 创建2x2子图布局
-            fig = self.gui.vis_fig
-
             # 定义角度范围 (基于实际数据)
             phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
             theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
             extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
 
             # 1.5GHz频率对比 (dB显示) - 使用统一的colorbar范围
-            ax1 = fig.add_subplot(2, 2, 1)
+            ax1 = target_fig.add_subplot(2, 2, 1)
             im1 = ax1.imshow(original_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_1_5g, vmax=vmax_1_5g)
             ax1.set_title(f'原始RCS - 1.5GHz (模型{model_id})',
@@ -309,7 +368,7 @@ class VisualizationManager:
             cbar1.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
 
-            ax2 = fig.add_subplot(2, 2, 2)
+            ax2 = target_fig.add_subplot(2, 2, 2)
             im2 = ax2.imshow(predicted_rcs_1_5g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_1_5g, vmax=vmax_1_5g)
             ax2.set_title(f'神经网络预测RCS - 1.5GHz',
@@ -321,7 +380,7 @@ class VisualizationManager:
             cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             # 3GHz频率对比 (dB显示) - 使用统一的colorbar范围
-            ax3 = fig.add_subplot(2, 2, 3)
+            ax3 = target_fig.add_subplot(2, 2, 3)
             im3 = ax3.imshow(original_rcs_3g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_3g, vmax=vmax_3g)
             ax3.set_title(f'原始RCS - 3GHz (模型{model_id})',
@@ -332,7 +391,7 @@ class VisualizationManager:
             cbar3.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar3.ax.tick_params(labelsize=int(16*fontsize_scale))
 
-            ax4 = fig.add_subplot(2, 2, 4)
+            ax4 = target_fig.add_subplot(2, 2, 4)
             im4 = ax4.imshow(predicted_rcs_3g_db, cmap='jet', aspect='equal', extent=extent,
                             vmin=vmin_3g, vmax=vmax_3g)
             ax4.set_title(f'神经网络预测RCS - 3GHz',
@@ -350,39 +409,58 @@ class VisualizationManager:
             rmse_db_3g = np.sqrt(mse_db_3g)
 
             # 在图上添加误差信息
-            fig.suptitle(f'RCS对比分析 (dB) - 模型{model_id}\n1.5GHz RMSE: {rmse_db_1_5g:.2f} dB, 3GHz RMSE: {rmse_db_3g:.2f} dB',
+            target_fig.suptitle(f'RCS对比分析 (dB) - 模型{model_id}\n1.5GHz RMSE: {rmse_db_1_5g:.2f} dB, 3GHz RMSE: {rmse_db_3g:.2f} dB',
                         fontsize=int(24*fontsize_scale), fontweight='bold', y=0.95)
 
             for axis in (ax1, ax2, ax3, ax4):
                 axis.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             plt.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
-            print(f"对比图生成完成")
-            print(f"1.5GHz预测误差(MSE): {mse_db_1_5g:.6f} dB²")
-            print(f"3GHz预测误差(MSE): {mse_db_3g:.6f} dB²")
+            log_msg(f"对比图生成完成")
+            log_msg(f"1.5GHz预测误差(MSE): {mse_db_1_5g:.6f} dB²")
+            log_msg(f"3GHz预测误差(MSE): {mse_db_3g:.6f} dB²")
 
         except Exception as e:
-            print(f"对比图生成失败: {str(e)}")
+            log_msg(f"对比图生成失败: {str(e)}")
             messagebox.showerror("错误", f"对比图生成失败: {str(e)}")
 
-    def _plot_difference_analysis(self, model_id):
+    def _plot_difference_analysis(self, model_id, current_model=None, fig=None, canvas=None, rcs_data=None, param_data=None, log_callback=None):
         """绘制差值分析图（原始RCS - 预测RCS）"""
-        if not self.gui.model_trained or self.gui.current_model is None:
+        # 获取依赖项
+        model = current_model if current_model is not None else getattr(self.gui, 'current_model', None)
+        is_trained = (model is not None) if current_model is not None else getattr(self.gui, 'model_trained', False)
+        
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        
+        # 获取回调函数
+        log_msg = log_callback if log_callback is not None else self.gui.log_message
+
+        if not is_trained or model is None:
             messagebox.showwarning("警告", "请先训练模型")
+            return
+
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
             return
 
         try:
             import numpy as np
             from matplotlib import pyplot as plt
 
-            self.gui.vis_fig.clear()
-            print(f"加载模型 {model_id} 进行差值分析...")
+            target_fig.clear()
+            log_msg(f"加载模型 {model_id} 进行差值分析...")
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
@@ -398,11 +476,11 @@ class VisualizationManager:
             model_params = params_df.iloc[int(model_id) - 1].values.astype(np.float32)
 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            self.gui.current_model.to(device)
-            self.gui.current_model.eval()
+            model.to(device)
+            model.eval()
             with torch.no_grad():
                 params_tensor = torch.FloatTensor(model_params).unsqueeze(0).to(device)
-                predicted_rcs = self.gui.current_model(params_tensor).cpu().numpy().squeeze()
+                predicted_rcs = model(params_tensor).cpu().numpy().squeeze()
 
             # 原始RCS转换为分贝
             epsilon = 1e-10
@@ -410,10 +488,12 @@ class VisualizationManager:
             original_rcs_3g_db = 10 * np.log10(np.maximum(original_rcs_3g, epsilon))
 
             # 预测RCS转换为dB：检查是否为对数域输出
-            if hasattr(self.gui, 'preprocessing_stats') and self.gui.preprocessing_stats:
+            preprocessing_stats = getattr(self.gui, 'preprocessing_stats', None)
+            
+            if preprocessing_stats:
                 # 新格式：网络输出是标准化的dB值，需要反标准化
-                mean = self.gui.preprocessing_stats['mean']
-                std = self.gui.preprocessing_stats['std']
+                mean = preprocessing_stats['mean']
+                std = preprocessing_stats['std']
                 predicted_rcs_1_5g_db = predicted_rcs[:, :, 0] * std + mean
                 predicted_rcs_3g_db = predicted_rcs[:, :, 1] * std + mean
             else:
@@ -430,7 +510,7 @@ class VisualizationManager:
             max_diff_3g = max(abs(diff_3g_db.min()), abs(diff_3g_db.max()))
 
             # 创建子图
-            ax1 = self.gui.vis_fig.add_subplot(2, 2, 1)
+            ax1 = target_fig.add_subplot(2, 2, 1)
             im1 = ax1.imshow(diff_1_5g_db, cmap='RdBu_r', aspect='equal',
                             vmin=-max_diff_1_5g, vmax=max_diff_1_5g)
             ax1.set_title(f'差值图 - 1.5GHz (原始-预测)',
@@ -439,7 +519,7 @@ class VisualizationManager:
             cbar1.set_label('差值 (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar1.ax.tick_params(labelsize=int(16*fontsize_scale))
 
-            ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
+            ax2 = target_fig.add_subplot(2, 2, 2)
             im2 = ax2.imshow(diff_3g_db, cmap='RdBu_r', aspect='equal',
                             vmin=-max_diff_3g, vmax=max_diff_3g)
             ax2.set_title(f'差值图 - 3GHz (原始-预测)',
@@ -449,7 +529,7 @@ class VisualizationManager:
             cbar2.ax.tick_params(labelsize=int(16*fontsize_scale))
 
             # 误差统计
-            ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
+            ax3 = target_fig.add_subplot(2, 2, 3)
             ax3.hist(np.abs(diff_1_5g_db).flatten(), bins=30, alpha=0.7, label='1.5GHz', density=True)
             ax3.hist(np.abs(diff_3g_db).flatten(), bins=30, alpha=0.7, label='3GHz', density=True)
             ax3.set_xlabel('绝对误差 (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
@@ -459,7 +539,7 @@ class VisualizationManager:
             ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 统计信息
-            ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
+            ax4 = target_fig.add_subplot(2, 2, 4)
             ax4.axis('off')
             stats_text = f"""误差统计 (dB) - 模型{model_id}:
 
@@ -480,17 +560,31 @@ class VisualizationManager:
                 axis.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             plt.tight_layout()
-            self.gui.vis_canvas.draw()
-            print("差值分析图生成完成")
+            target_canvas.draw()
+            log_msg("差值分析图生成完成")
 
         except Exception as e:
-            print(f"差值分析失败: {str(e)}")
+            log_msg(f"差值分析失败: {str(e)}")
             messagebox.showerror("错误", f"差值分析失败: {str(e)}")
 
-    def _plot_correlation_analysis(self, model_id):
+    def _plot_correlation_analysis(self, model_id, current_model=None, fig=None, canvas=None, rcs_data=None, param_data=None, log_callback=None):
         """绘制相关性分析图"""
-        if not self.gui.model_trained or self.gui.current_model is None:
+        # 获取依赖项
+        model = current_model if current_model is not None else getattr(self.gui, 'current_model', None)
+        is_trained = (model is not None) if current_model is not None else getattr(self.gui, 'model_trained', False)
+        
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        
+        # 获取回调函数
+        log_msg = log_callback if log_callback is not None else self.gui.log_message
+
+        if not is_trained or model is None:
             messagebox.showwarning("警告", "请先训练模型")
+            return
+
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
             return
 
         try:
@@ -498,12 +592,17 @@ class VisualizationManager:
             from matplotlib import pyplot as plt
             from scipy import stats
 
-            self.gui.vis_fig.clear()
-            print(f"加载模型 {model_id} 进行相关性分析...")
+            target_fig.clear()
+            log_msg(f"加载模型 {model_id} 进行相关性分析...")
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
@@ -519,18 +618,18 @@ class VisualizationManager:
             model_params = params_df.iloc[int(model_id) - 1].values.astype(np.float32)
 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            self.gui.current_model.to(device)
-            self.gui.current_model.eval()
+            model.to(device)
+            model.eval()
             with torch.no_grad():
                 params_tensor = torch.FloatTensor(model_params).unsqueeze(0).to(device)
-                predicted_rcs = self.gui.current_model(params_tensor).cpu().numpy().squeeze()
+                predicted_rcs = model(params_tensor).cpu().numpy().squeeze()
 
             # 相关性分析
             x1, y1 = original_rcs_1_5g.flatten(), predicted_rcs[:, :, 0].flatten()
             x2, y2 = original_rcs_3g.flatten(), predicted_rcs[:, :, 1].flatten()
 
             # 1.5GHz散点图
-            ax1 = self.gui.vis_fig.add_subplot(2, 2, 1)
+            ax1 = target_fig.add_subplot(2, 2, 1)
             ax1.scatter(x1, y1, alpha=0.5, s=1)
             r1, p1 = stats.pearsonr(x1, y1)
             ax1.plot([x1.min(), x1.max()], [x1.min(), x1.max()], 'k-', alpha=0.5)
@@ -541,7 +640,7 @@ class VisualizationManager:
             ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 3GHz散点图
-            ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
+            ax2 = target_fig.add_subplot(2, 2, 2)
             ax2.scatter(x2, y2, alpha=0.5, s=1)
             r2, p2 = stats.pearsonr(x2, y2)
             ax2.plot([x2.min(), x2.max()], [x2.min(), x2.max()], 'k-', alpha=0.5)
@@ -552,7 +651,7 @@ class VisualizationManager:
             ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 残差分析
-            ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
+            ax3 = target_fig.add_subplot(2, 2, 3)
             residuals1, residuals2 = y1 - x1, y2 - x2
             ax3.scatter(x1, residuals1, alpha=0.5, s=1, label='1.5GHz')
             ax3.scatter(x2, residuals2, alpha=0.5, s=1, label='3GHz')
@@ -564,7 +663,7 @@ class VisualizationManager:
             ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 统计摘要
-            ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
+            ax4 = target_fig.add_subplot(2, 2, 4)
             ax4.axis('off')
             summary = f"""相关性报告 - 模型{model_id}:
 
@@ -584,12 +683,12 @@ class VisualizationManager:
                      fontsize=int(20*fontsize_scale), verticalalignment='top')
 
             plt.tight_layout()
-            self.gui.vis_canvas.draw()
-            print("相关性分析完成")
-            print(f"相关系数 - 1.5GHz: {r1:.6f}, 3GHz: {r2:.6f}")
+            target_canvas.draw()
+            log_msg("相关性分析完成")
+            log_msg(f"相关系数 - 1.5GHz: {r1:.6f}, 3GHz: {r2:.6f}")
 
         except Exception as e:
-            print(f"相关性分析失败: {str(e)}")
+            log_msg(f"相关性分析失败: {str(e)}")
             messagebox.showerror("错误", f"相关性分析失败: {str(e)}")
 
     def _plot_training_history(self):

@@ -70,6 +70,9 @@ from gui_managers.managers import StatisticsManager, VisualizationManager, Train
 from gui_managers.tabs.data_management_tab import DataManagementTab
 from gui_managers.tabs.training_tab import TrainingTab
 from gui_managers.tabs.visualization_tab import VisualizationTab
+from gui_managers.tabs.loss_config_tab import LossConfigTab
+from gui_managers.tabs.evaluation_tab import EvaluationTab
+from gui_managers.tabs.prediction_tab import PredictionTab
 
 # 导入项目模块
 try:
@@ -289,37 +292,8 @@ class RCSWaveletGUI:
         self.ae_use_custom_loss = tk.BooleanVar(value=False)  # 是否使用自定义损失函数
 
     def init_loss_config_vars(self):
-        """初始化损失函数配置变量"""
-
-        # 基础损失函数配置
-        self.use_mse_loss = tk.BooleanVar(value=True)
-        self.mse_weight = tk.StringVar(value="0.8")
-
-        self.use_huber_loss = tk.BooleanVar(value=False)
-        self.huber_weight = tk.StringVar(value="0.7")
-        self.huber_delta = tk.StringVar(value="0.1")
-
-        self.use_l1_loss = tk.BooleanVar(value=False)
-        self.l1_weight = tk.StringVar(value="0.5")
-
-        # SSIM Loss (感知/结构损失)
-        self.use_ssim_loss = tk.BooleanVar(value=False)
-        self.ssim_weight = tk.StringVar(value="0.8")
-
-        # 物理约束损失配置
-        self.use_symmetry_loss = tk.BooleanVar(value=True)
-        self.symmetry_weight = tk.StringVar(value="0.01")
-
-        self.use_freq_consistency = tk.BooleanVar(value=False)
-        self.freq_consistency_weight = tk.StringVar(value="0.02")
-        self.freq_consistency_type = tk.StringVar(value="diff")
-
-        self.use_continuity_loss = tk.BooleanVar(value=False)
-        self.continuity_weight = tk.StringVar(value="0.02")
-        self.continuity_type = tk.StringVar(value="standard")
-
-        self.use_multiscale_loss = tk.BooleanVar(value=False)
-        self.multiscale_weight = tk.StringVar(value="0.1")
+        """初始化损失函数配置变量 (已迁移)"""
+        pass
 
     def setup_logging(self):
         """设置日志系统和输出重定向"""
@@ -854,7 +828,13 @@ class RCSWaveletGUI:
 
     def create_evaluation_tab(self):
         """创建模型评估标签页"""
+        
+        # 使用新重构的标签页类
+        self.evaluation_tab = EvaluationTab(self.evaluation_frame, self)
+        self.evaluation_tab.pack(fill=tk.BOTH, expand=True)
+        return
 
+        # 以下代码已废弃，稍后清理
         # 主框架
         main_frame = ttk.Frame(self.evaluation_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -901,7 +881,13 @@ class RCSWaveletGUI:
 
     def create_loss_config_tab(self):
         """创建损失函数配置标签页"""
+        
+        # 使用新重构的标签页类
+        self.loss_config_tab = LossConfigTab(self.loss_config_frame, self)
+        self.loss_config_tab.pack(fill=tk.BOTH, expand=True)
+        return
 
+        # 以下代码已废弃，稍后清理
         # 主框架
         main_frame = ttk.Frame(self.loss_config_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -1034,7 +1020,13 @@ class RCSWaveletGUI:
 
     def create_prediction_tab(self):
         """创建RCS预测标签页"""
+        
+        # 使用新重构的标签页类
+        self.prediction_tab = PredictionTab(self.prediction_frame, self)
+        self.prediction_tab.pack(fill=tk.BOTH, expand=True)
+        return
 
+        # 以下代码已废弃，稍后清理
         # 主框架
         main_frame = ttk.Frame(self.prediction_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -1825,73 +1817,18 @@ class RCSWaveletGUI:
         """加载模型 (已迁移)"""
         pass
 
-    # ======= 评估功能 =======
+    # ======= 评估功能 (已迁移至 EvaluationTab) =======
 
     def start_evaluation(self):
-        """开始评估（支持AutoEncoder和传统网络）"""
-        # 检查是否有训练好的模型（传统网络或AutoEncoder）
-        has_traditional_model = self.model_trained and self.current_model is not None
-        has_ae_model = hasattr(self, 'ae_system') and self.ae_system is not None
-
-        if not has_traditional_model and not has_ae_model:
-            messagebox.showwarning("警告", "请先训练或加载模型（传统网络或AutoEncoder）")
-            return
-
-        if not self.data_loaded:
-            messagebox.showwarning("警告", "请先加载数据")
-            return
-
-        try:
-            # 根据模型类型选择评估路径
-            if has_ae_model:
-                self.log_message("🔬 开始AutoEncoder模型评估...")
-                self._evaluate_autoencoder_model()
-            else:
-                self.log_message("🔬 开始传统网络模型评估...")
-                self._evaluate_traditional_model()
-
-            messagebox.showinfo("成功", "模型评估完成")
-
-        except Exception as e:
-            messagebox.showerror("错误", f"评估失败: {str(e)}")
+        """开始评估（支持AutoEncoder和传统网络）(已迁移)"""
+        pass
 
     def _evaluate_traditional_model(self):
-        """评估传统网络模型"""
-        return self.evaluation_manager._evaluate_traditional_model()
+        """评估传统网络模型 (已迁移)"""
+        pass
 
     def _reconstruct_rcs(self, input_data=None, input_type='auto', model_ids=None, return_latents=False, return_wavelet_coeffs=False):
-        """
-        统一的RCS重建函数 - 支持多种输入方式
-
-        根据训练模式自动选择重建路径：
-        - Three-Stage模式: 参数 → ParameterMapper → Decoder → RCS
-        - Stage1-Only模式: RCS → Encoder → Decoder → RCS
-
-        Args:
-            input_data: 输入数据（可选）
-                - 如果input_type='params': np.ndarray [N, 9] 设计参数
-                - 如果input_type='rcs': np.ndarray [N, H, W, C] RCS数据
-                - 如果input_type='auto': 根据training_mode自动推断
-            input_type: 输入类型
-                - 'auto': 根据training_mode自动判断（默认）
-                - 'params': 从参数重建（需要Three-Stage模式）
-                - 'rcs': 从RCS重建（Stage1-Only模式）
-                - 'model_ids': 从模型ID列表重建
-            model_ids: 模型ID列表（当input_type='model_ids'时使用）
-                - 可以是字符串列表 ['001', '002'] 或整数列表 [0, 1]
-            return_latents: 是否返回隐空间表示（默认False）
-            return_wavelet_coeffs: 是否返回小波系数（仅Wavelet模式，默认False）
-
-        Returns:
-            dict: {
-                'reconstructed_rcs': np.ndarray [N, 91, 91, num_freq] 重建的RCS（线性域）
-                'latents': np.ndarray [N, latent_dim] 隐空间表示（如果return_latents=True）
-                'original_wavelet_coeffs': np.ndarray [N, 49, 49, 8] 原始小波系数（如果return_wavelet_coeffs=True且mode='wavelet'）
-                'reconstructed_wavelet_coeffs': np.ndarray [N, 49, 49, 8] 重建小波系数（如果return_wavelet_coeffs=True且mode='wavelet'）
-                'input_type_used': str 实际使用的输入类型
-                'training_mode': str 训练模式
-            }
-        """
+        """统一的RCS重建函数 (已迁移，请使用 self.reconstruction_manager._reconstruct_rcs)"""
         return self.reconstruction_manager._reconstruct_rcs(
             input_data=input_data,
             input_type=input_type,
@@ -1901,245 +1838,50 @@ class RCSWaveletGUI:
         )
 
     def _evaluate_autoencoder_model(self):
-        """评估AutoEncoder模型 - 使用统一重建函数"""
-        return self.evaluation_manager._evaluate_autoencoder_model()
+        """评估AutoEncoder模型 (已迁移)"""
+        pass
 
     def _update_evaluation_display(self):
-        """更新评估结果显示（支持AutoEncoder和传统网络）"""
-        return self.evaluation_manager._update_evaluation_display()
+        """更新评估结果显示 (已迁移)"""
+        pass
 
     def _display_autoencoder_results(self, results):
-        """显示AutoEncoder评估结果"""
-        return self.evaluation_manager._display_autoencoder_results(results)
+        """显示AutoEncoder评估结果 (已迁移)"""
+        pass
 
     def _display_traditional_results(self, results):
-        """显示传统网络评估结果"""
-        return self.evaluation_manager._display_traditional_results(results)
+        """显示传统网络评估结果 (已迁移)"""
+        pass
 
     def save_detailed_evaluation_report(self):
-        """保存详细评估报告（AutoEncoder专用）"""
-        return self.evaluation_manager.save_detailed_evaluation_report()
+        """保存详细评估报告 (已迁移)"""
+        pass
 
     def generate_report(self):
-        """生成评估报告"""
-        if not self.evaluation_results:
-            messagebox.showwarning("警告", "请先进行模型评估")
-            return
-
-        # 选择保存位置
-        filename = filedialog.asksaveasfilename(
-            title="保存评估报告",
-            defaultextension=".txt",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
-        )
-
-        if filename:
-            try:
-                evaluator = RCSEvaluator(self.current_model)
-                evaluator.evaluation_results = self.evaluation_results
-                report = evaluator.generate_evaluation_report(filename)
-                messagebox.showinfo("成功", f"评估报告已保存到: {filename}")
-            except Exception as e:
-                messagebox.showerror("错误", f"报告生成失败: {str(e)}")
+        """生成评估报告 (已迁移)"""
+        pass
 
     def export_results(self):
-        """导出评估结果"""
-        if not self.evaluation_results:
-            messagebox.showwarning("警告", "请先进行模型评估")
-            return
+        """导出评估结果 (已迁移)"""
+        pass
 
-        filename = filedialog.asksaveasfilename(
-            title="导出评估结果",
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
-
-        if filename:
-            try:
-                with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(self.evaluation_results, f, indent=2, ensure_ascii=False, default=str)
-                messagebox.showinfo("成功", f"评估结果已导出到: {filename}")
-            except Exception as e:
-                messagebox.showerror("错误", f"结果导出失败: {str(e)}")
-
-    # ======= 预测功能 =======
+    # ======= 预测功能 (已迁移至 PredictionTab) =======
 
     def load_param_template(self):
-        """加载参数模板"""
-        if not self.data_loaded:
-            messagebox.showwarning("警告", "请先加载数据")
-            return
-
-        # 使用第一个样本作为模板
-        template_params = self.param_data[0]
-        for i, var in enumerate(self.param_vars):
-            var.set(f"{template_params[i]:.6f}")
+        """加载参数模板 (已迁移)"""
+        pass
 
     def generate_random_params(self):
-        """生成随机参数"""
-        if not self.data_loaded:
-            messagebox.showwarning("警告", "请先加载数据")
-            return
-
-        # 基于已有数据的分布生成随机参数
-        for i, var in enumerate(self.param_vars):
-            param_col = self.param_data[:, i]
-            mean = np.mean(param_col)
-            std = np.std(param_col)
-            random_val = np.random.normal(mean, std)
-            var.set(f"{random_val:.6f}")
+        """生成随机参数 (已迁移)"""
+        pass
 
     def make_prediction(self):
-        """执行RCS预测（支持传统网络和AutoEncoder）"""
-        # 检查选择的模型类型
-        model_type = self.pred_model_type_var.get()
-
-        # 检查模型是否可用
-        if model_type == "传统网络":
-            if not self.model_trained or self.current_model is None:
-                messagebox.showwarning("警告", "请先训练或加载传统神经网络模型")
-                return
-        elif model_type == "AutoEncoder":
-            if not hasattr(self, 'ae_system') or self.ae_system is None:
-                messagebox.showwarning("警告", "请先训练或加载AutoEncoder模型")
-                return
-
-        try:
-            # 获取输入参数
-            params = []
-            for var in self.param_vars:
-                params.append(float(var.get()))
-
-            params = np.array(params).reshape(1, -1)
-
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-            if model_type == "传统网络":
-                # 传统网络需要标准化参数
-                if hasattr(self, 'param_data'):
-                    from sklearn.preprocessing import StandardScaler
-                    scaler = StandardScaler()
-                    scaler.fit(self.param_data)
-                    params_scaled = scaler.transform(params)
-                else:
-                    params_scaled = params
-                # 使用传统神经网络预测
-                self.current_model.to(device)
-                self.current_model.eval()
-
-                with torch.no_grad():
-                    params_tensor = torch.tensor(params_scaled, dtype=torch.float32).to(device)
-                    prediction = self.current_model(params_tensor)
-                    prediction = prediction.cpu().numpy()[0]  # [91, 91, 2]
-
-                # 可视化预测结果
-                self._plot_prediction_results(prediction, model_type="传统网络")
-
-            elif model_type == "AutoEncoder":
-                # 使用AutoEncoder预测
-                # ⚠️ 注意：AutoEncoder的ParameterMapper在训练时接收的是**未标准化的原始参数**
-                # 因此预测时也必须使用未标准化的参数，与训练时保持一致
-                autoencoder = self.ae_system['autoencoder']
-                parameter_mapper = self.ae_system['parameter_mapper']
-                wavelet_transform = self.ae_system.get('wavelet_transform', None)
-                data_adapter = self.ae_system.get('data_adapter', None)
-                mode = self.ae_system.get('mode', 'wavelet')
-                config_info = self.ae_system.get('config_info', {})
-                num_frequencies = config_info.get('num_frequencies', 2)
-
-                autoencoder.to(device).eval()
-                parameter_mapper.to(device).eval()
-
-                with torch.no_grad():
-                    # Step 1: 参数 → 隐空间（使用未标准化的原始参数）
-                    params_tensor = torch.tensor(params, dtype=torch.float32).to(device)
-                    predicted_latents = parameter_mapper(params_tensor)
-
-                    # Step 2: 隐空间 → 重建输出
-                    predicted_output = autoencoder.decode(predicted_latents)
-
-                    # Step 3: 逆变换到原始RCS空间
-                    if mode == 'wavelet':
-                        # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
-                        if data_adapter:
-                            predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
-                            predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
-                        else:
-                            predicted_coeffs = predicted_output
-
-                        prediction = wavelet_transform.inverse_transform(predicted_coeffs)
-                    else:
-                        # 直接模式：标准化RCS → 逆标准化 → RCS
-                        if data_adapter:
-                            prediction_np = data_adapter.inverse_adapt(predicted_output)
-                            prediction = torch.FloatTensor(prediction_np).to(device)
-                        else:
-                            prediction = predicted_output
-
-                    prediction = prediction.cpu().numpy()[0]  # [91, 91, num_freq]
-
-                # 可视化预测结果
-                self._plot_prediction_results(prediction, model_type="AutoEncoder", num_frequencies=num_frequencies)
-
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            messagebox.showerror("错误", f"预测失败: {str(e)}")
+        """执行RCS预测（支持传统网络和AutoEncoder）(已迁移)"""
+        pass
 
     def _plot_prediction_results(self, prediction, model_type="传统网络", num_frequencies=2):
-        """绘制预测结果（支持2freq和3freq）"""
-        self.pred_fig.clear()
-
-        # 获取字号缩放因子
-        try:
-            fontsize_scale = self.fontsize_scale_var.get()
-            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
-        except:
-            fontsize_scale = 1.0
-
-        # 定义角度范围 (基于实际数据)
-        phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
-        theta_range = (45.0, 135.0)  # θ范围: 45° 到 135°
-
-        # 定义频率标签
-        freq_labels = ['1.5GHz', '3GHz', '6GHz']
-
-        # 根据频率数量创建子图
-        if num_frequencies == 2:
-            # 2频率：1.5GHz 和 3GHz
-            ax1 = self.pred_fig.add_subplot(1, 2, 1)
-            ax2 = self.pred_fig.add_subplot(1, 2, 2)
-            axes = [ax1, ax2]
-        elif num_frequencies == 3:
-            # 3频率：1.5GHz, 3GHz 和 6GHz
-            ax1 = self.pred_fig.add_subplot(1, 3, 1)
-            ax2 = self.pred_fig.add_subplot(1, 3, 2)
-            ax3 = self.pred_fig.add_subplot(1, 3, 3)
-            axes = [ax1, ax2, ax3]
-        else:
-            messagebox.showerror("错误", f"不支持的频率数量: {num_frequencies}")
-            return
-
-        # 绘制每个频率的结果
-        for idx, ax in enumerate(axes):
-            # ⚠️ 重要：prediction是线性值，需要转换为dB显示
-            # AutoEncoder的inverse_adapt输出是线性域RCS
-            prediction_db = 10 * np.log10(np.clip(prediction[:, :, idx], 1e-10, None))
-
-            im = ax.imshow(prediction_db, cmap='jet', aspect='equal',
-                          extent=[phi_range[0], phi_range[1], theta_range[1], theta_range[0]])
-            ax.set_title(f'{freq_labels[idx]} RCS预测 ({model_type})',
-                        fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax.set_xlabel('φ (方位角, 度)', fontsize=int(16*fontsize_scale), fontweight='bold')
-            ax.set_ylabel('θ (俯仰角, 度)', fontsize=int(16*fontsize_scale), fontweight='bold')
-            ax.tick_params(axis='both', labelsize=int(14*fontsize_scale))
-
-            cbar = self.pred_fig.colorbar(im, ax=ax)
-            cbar.set_label('RCS (dB)', fontsize=int(16*fontsize_scale), fontweight='bold')
-            cbar.ax.tick_params(labelsize=int(14*fontsize_scale))
-
-        self.pred_fig.tight_layout()
-        self.pred_canvas.draw()
+        """绘制预测结果 (已迁移)"""
+        pass
 
     # ======= 可视化功能 (已迁移至 VisualizationTab) =======
 
@@ -2201,288 +1943,43 @@ class RCSWaveletGUI:
         """记录日志消息 - 现在直接使用print输出，会被自动捕获"""
         print(message)
 
-    # ======= 损失函数配置方法 =======
+    # ======= 损失函数配置方法 (已迁移至 LossConfigTab) =======
 
     def update_loss_config_preview(self):
-        """更新损失函数配置预览"""
-        try:
-            config_text = "=== 当前损失函数配置 ===\n\n"
-
-            # 基础损失函数
-            config_text += "📊 基础损失函数:\n"
-            if self.use_mse_loss.get():
-                config_text += f"  ✅ MSE Loss (权重: {self.mse_weight.get()})\n"
-            if self.use_huber_loss.get():
-                config_text += f"  ✅ Huber Loss (权重: {self.huber_weight.get()}, Delta: {self.huber_delta.get()})\n"
-            if self.use_l1_loss.get():
-                config_text += f"  ✅ L1 Loss (权重: {self.l1_weight.get()})\n"
-            if self.use_ssim_loss.get():
-                config_text += f"  ✅ SSIM Loss (权重: {self.ssim_weight.get()})\n"
-
-            # 物理约束损失
-            config_text += "\n🔬 物理约束损失:\n"
-            if self.use_symmetry_loss.get():
-                config_text += f"  ✅ 对称性约束 (权重: {self.symmetry_weight.get()})\n"
-            if self.use_freq_consistency.get():
-                config_text += f"  ✅ 频率一致性 (权重: {self.freq_consistency_weight.get()}, 类型: {self.freq_consistency_type.get()})\n"
-            if self.use_continuity_loss.get():
-                config_text += f"  ✅ 空间连续性 (权重: {self.continuity_weight.get()}, 类型: {self.continuity_type.get()})\n"
-            if self.use_multiscale_loss.get():
-                config_text += f"  ✅ 多尺度损失 (权重: {self.multiscale_weight.get()})\n"
-
-            # 计算总权重
-            total_weight = 0
-            if self.use_mse_loss.get():
-                total_weight += float(self.mse_weight.get())
-            if self.use_huber_loss.get():
-                total_weight += float(self.huber_weight.get())
-            if self.use_l1_loss.get():
-                total_weight += float(self.l1_weight.get())
-            if self.use_ssim_loss.get():
-                total_weight += float(self.ssim_weight.get())
-            if self.use_symmetry_loss.get():
-                total_weight += float(self.symmetry_weight.get())
-            if self.use_freq_consistency.get():
-                total_weight += float(self.freq_consistency_weight.get())
-            if self.use_continuity_loss.get():
-                total_weight += float(self.continuity_weight.get())
-            if self.use_multiscale_loss.get():
-                total_weight += float(self.multiscale_weight.get())
-
-            config_text += f"\n📈 总权重: {total_weight:.3f}\n"
-
-            # 显示配置建议
-            config_text += "\n💡 配置建议:\n"
-            if total_weight > 2.0:
-                config_text += "  ⚠️ 总权重较高，可能导致过度约束\n"
-            elif total_weight < 0.5:
-                config_text += "  ⚠️ 总权重较低，约束可能不足\n"
-            else:
-                config_text += "  ✅ 权重配置合理\n"
-
-            if self.use_freq_consistency.get() and self.use_continuity_loss.get():
-                config_text += "  ⚠️ 同时启用频率和连续性约束可能过度平滑\n"
-
-            self.loss_config_text.delete(1.0, tk.END)
-            self.loss_config_text.insert(1.0, config_text)
-
-        except Exception as e:
-            self.loss_config_text.delete(1.0, tk.END)
-            self.loss_config_text.insert(1.0, f"配置预览错误: {e}")
+        """更新损失函数配置预览 (已迁移)"""
+        pass
 
     def apply_loss_config(self):
-        """应用损失函数配置"""
-        try:
-            # 构建损失函数配置字典
-            loss_config = {
-                'use_mse': self.use_mse_loss.get(),
-                'mse_weight': float(self.mse_weight.get()) if self.use_mse_loss.get() else 0,
-
-                'use_huber': self.use_huber_loss.get(),
-                'huber_weight': float(self.huber_weight.get()) if self.use_huber_loss.get() else 0,
-                'huber_delta': float(self.huber_delta.get()) if self.use_huber_loss.get() else 0.1,
-
-                'use_l1': self.use_l1_loss.get(),
-                'l1_weight': float(self.l1_weight.get()) if self.use_l1_loss.get() else 0,
-
-                'use_ssim': self.use_ssim_loss.get(),
-                'ssim_weight': float(self.ssim_weight.get()) if self.use_ssim_loss.get() else 0,
-
-                'use_symmetry': self.use_symmetry_loss.get(),
-                'symmetry_weight': float(self.symmetry_weight.get()) if self.use_symmetry_loss.get() else 0,
-
-                'use_freq_consistency': self.use_freq_consistency.get(),
-                'freq_consistency_weight': float(self.freq_consistency_weight.get()) if self.use_freq_consistency.get() else 0,
-                'freq_consistency_type': self.freq_consistency_type.get(),
-
-                'use_continuity': self.use_continuity_loss.get(),
-                'continuity_weight': float(self.continuity_weight.get()) if self.use_continuity_loss.get() else 0,
-                'continuity_type': self.continuity_type.get(),
-
-                'use_multiscale': self.use_multiscale_loss.get(),
-                'multiscale_weight': float(self.multiscale_weight.get()) if self.use_multiscale_loss.get() else 0,
-            }
-
-            # 保存到训练配置中
-            self.training_config['custom_loss_config'] = loss_config
-
-            messagebox.showinfo("成功", "损失函数配置已应用！\n训练时将使用自定义损失函数。")
-            self.log_message("损失函数配置已更新")
-
-        except ValueError as e:
-            messagebox.showerror("错误", f"权重值格式错误: {e}")
-        except Exception as e:
-            messagebox.showerror("错误", f"应用配置失败: {e}")
+        """应用损失函数配置 (已迁移)"""
+        pass
 
     def reset_loss_config(self):
-        """重置损失函数配置为默认值"""
-        self.use_mse_loss.set(True)
-        self.mse_weight.set("0.8")
-
-        self.use_huber_loss.set(False)
-        self.huber_weight.set("0.7")
-        self.huber_delta.set("0.1")
-
-        self.use_l1_loss.set(False)
-        self.l1_weight.set("0.5")
-
-        self.use_ssim_loss.set(False)
-        self.ssim_weight.set("0.8")
-
-        self.use_symmetry_loss.set(True)
-        self.symmetry_weight.set("0.01")
-
-        self.use_freq_consistency.set(False)
-        self.freq_consistency_weight.set("0.02")
-        self.freq_consistency_type.set("diff")
-
-        self.use_continuity_loss.set(False)
-        self.continuity_weight.set("0.02")
-        self.continuity_type.set("standard")
-
-        self.use_multiscale_loss.set(False)
-        self.multiscale_weight.set("0.1")
-
-        self.update_loss_config_preview()
-        messagebox.showinfo("完成", "损失函数配置已重置为默认值")
+        """重置损失函数配置为默认值 (已迁移)"""
+        pass
 
     def load_original_preset(self):
-        """加载Original预设配置"""
-        self.use_mse_loss.set(True)
-        self.use_huber_loss.set(False)
-        self.use_l1_loss.set(False)
-        self.use_ssim_loss.set(False)
-
-        self.use_symmetry_loss.set(True)
-        self.symmetry_weight.set("0.02")
-
-        self.use_freq_consistency.set(False)
-        self.use_continuity_loss.set(False)
-
-        self.use_multiscale_loss.set(True)
-        self.multiscale_weight.set("0.1")
-
-        self.update_loss_config_preview()
+        """加载Original预设配置 (已迁移)"""
+        pass
 
     def load_enhanced_preset(self):
-        """加载Enhanced预设配置"""
-        self.use_mse_loss.set(False)
-
-        self.use_huber_loss.set(True)
-        self.huber_weight.set("0.7")
-        self.huber_delta.set("0.1")
-
-        self.use_l1_loss.set(False)
-        self.use_ssim_loss.set(False)
-
-        self.use_symmetry_loss.set(True)
-        self.symmetry_weight.set("0.01")
-
-        self.use_freq_consistency.set(True)
-        self.freq_consistency_weight.set("0.02")
-        self.freq_consistency_type.set("diff")
-
-        self.use_continuity_loss.set(True)
-        self.continuity_weight.set("0.02")
-        self.continuity_type.set("standard")
-
-        self.use_multiscale_loss.set(False)
-
-        self.update_loss_config_preview()
+        """加载Enhanced预设配置 (已迁移)"""
+        pass
 
     def load_robust_preset(self):
-        """加载鲁棒训练预设配置"""
-        self.use_mse_loss.set(False)
-
-        self.use_huber_loss.set(True)
-        self.huber_weight.set("0.8")
-        self.huber_delta.set("0.2")
-
-        self.use_l1_loss.set(True)
-        self.l1_weight.set("0.1")
-        self.use_ssim_loss.set(False)
-
-        self.use_symmetry_loss.set(True)
-        self.symmetry_weight.set("0.005")
-
-        self.use_freq_consistency.set(True)
-        self.freq_consistency_weight.set("0.01")
-        self.freq_consistency_type.set("correlation")
-
-        self.use_continuity_loss.set(False)
-        self.use_multiscale_loss.set(False)
-
-        self.update_loss_config_preview()
+        """加载鲁棒训练预设配置 (已迁移)"""
+        pass
 
     def load_highfreq_preset(self):
-        """加载高频信息保持预设配置"""
-        self.use_mse_loss.set(True)
-        self.use_huber_loss.set(False)
-        self.use_l1_loss.set(False)
-        self.use_ssim_loss.set(False)
-
-        self.use_symmetry_loss.set(True)
-        self.symmetry_weight.set("0.005")
-
-        self.use_freq_consistency.set(True)
-        self.freq_consistency_weight.set("0.005")
-        self.freq_consistency_type.set("local")
-
-        self.use_continuity_loss.set(True)
-        self.continuity_weight.set("0.005")
-        self.continuity_type.set("adaptive")
-
-        self.use_multiscale_loss.set(False)
-
-        self.update_loss_config_preview()
+        """加载高频信息保持预设配置 (已迁移)"""
+        pass
 
     def load_smooth_preset(self):
-        """加载平滑优化预设配置"""
-        self.use_mse_loss.set(True)
-        self.mse_weight.set("0.6")
-
-        self.use_huber_loss.set(False)
-        self.use_l1_loss.set(False)
-        self.use_ssim_loss.set(False)
-
-        self.use_symmetry_loss.set(True)
-        self.symmetry_weight.set("0.02")
-
-        self.use_freq_consistency.set(True)
-        self.freq_consistency_weight.set("0.05")
-        self.freq_consistency_type.set("diff")
-
-        self.use_continuity_loss.set(True)
-        self.continuity_weight.set("0.05")
-        self.continuity_type.set("standard")
-
-        self.use_multiscale_loss.set(True)
-        self.multiscale_weight.set("0.1")
-
-        self.update_loss_config_preview()
+        """加载平滑优化预设配置 (已迁移)"""
+        pass
 
     def load_perceptual_preset(self):
-        """加载感知优化预设配置 (包含SSIM)"""
-        self.use_mse_loss.set(False)
-
-        self.use_huber_loss.set(True)
-        self.huber_weight.set("0.1")
-        self.huber_delta.set("0.1")
-
-        self.use_l1_loss.set(True)
-        self.l1_weight.set("0.1")
-
-        self.use_ssim_loss.set(True)
-        self.ssim_weight.set("0.8")
-
-        self.use_symmetry_loss.set(True)
-        self.symmetry_weight.set("0.02")
-
-        self.use_freq_consistency.set(False)
-        self.use_continuity_loss.set(False)
-        self.use_multiscale_loss.set(False)
-
-        self.update_loss_config_preview()
+        """加载感知优化预设配置 (包含SSIM) (已迁移)"""
+        pass
 
     def on_closing(self):
         """窗口关闭事件处理"""
