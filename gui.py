@@ -66,6 +66,8 @@ import torch
 
 # GUI管理器模块
 from gui_managers.managers import StatisticsManager, VisualizationManager, TrainingManager, EvaluationManager, ReconstructionManager
+# GUI标签页模块
+from gui_managers.tabs.data_management_tab import DataManagementTab
 
 # 导入项目模块
 try:
@@ -453,7 +455,14 @@ class RCSWaveletGUI:
 
     def create_data_tab(self):
         """创建数据管理标签页"""
+        
+        # 使用新重构的标签页类
+        # 代码已迁移至 gui_managers/tabs/data_management_tab.py
+        self.data_tab = DataManagementTab(self.data_frame, self)
+        self.data_tab.pack(fill=tk.BOTH, expand=True)
+        return
 
+        # 以下代码已废弃，稍后清理
         # 主框架
         main_frame = ttk.Frame(self.data_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -1167,27 +1176,23 @@ class RCSWaveletGUI:
         style = ttk.Style()
         style.configure("Accent.TButton")
 
-    # ======= 数据管理功能 =======
+    # ======= 数据管理功能 (已迁移至 DataManagementTab) =======
 
     def browse_params_file(self):
-        """浏览参数文件"""
-        filename = filedialog.askopenfilename(
-            title="选择参数文件",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-        if filename:
-            self.params_path_var.set(filename)
-            self.data_config['params_file'] = filename
+        """浏览参数文件 (已迁移)"""
+        pass
 
     def browse_rcs_dir(self):
-        """浏览RCS数据目录"""
-        dirname = filedialog.askdirectory(title="选择RCS数据目录")
-        if dirname:
-            self.rcs_dir_var.set(dirname)
-            self.data_config['rcs_data_dir'] = dirname
+        """浏览RCS数据目录 (已迁移)"""
+        pass
 
     def load_data(self):
-        """加载数据"""
+        """加载数据 (已迁移)"""
+        if hasattr(self, 'data_tab'):
+            return self.data_tab.load_data()
+        pass
+
+        # 以下代码已废弃
         try:
             self.status_var.set("正在加载数据...")
             self.root.update()
@@ -1263,7 +1268,9 @@ class RCSWaveletGUI:
             messagebox.showerror("错误", f"数据加载失败:\n{str(e)}")
 
     def preview_data(self):
-        """预览数据"""
+        """预览数据 (已迁移)"""
+        pass
+
         if not self.data_loaded:
             messagebox.showwarning("警告", "请先加载数据")
             return
@@ -1311,7 +1318,9 @@ class RCSWaveletGUI:
         self.data_info_text.insert(tk.END, preview_text)
 
     def show_data_stats(self):
-        """显示数据统计"""
+        """显示数据统计 (已迁移)"""
+        pass
+
         if not self.data_loaded:
             messagebox.showwarning("警告", "请先加载数据")
             return
@@ -1380,10 +1389,12 @@ class RCSWaveletGUI:
         self.data_info_text.delete(1.0, tk.END)
         self.data_info_text.insert(tk.END, stats_text)
 
-    # ======= 缓存管理功能 =======
+    # ======= 缓存管理功能 (已迁移) =======
 
     def show_cache_info(self):
-        """显示缓存信息"""
+        """显示缓存信息 (已迁移)"""
+        pass
+        
         try:
             # 创建新窗口显示缓存信息
             cache_window = tk.Toplevel(self.root)
@@ -1429,7 +1440,9 @@ class RCSWaveletGUI:
             messagebox.showerror("错误", f"显示缓存信息失败:\n{str(e)}")
 
     def clear_cache(self):
-        """清除所有缓存"""
+        """清除所有缓存 (已迁移)"""
+        pass
+
         try:
             # 确认对话框
             result = messagebox.askyesno(
@@ -1449,7 +1462,9 @@ class RCSWaveletGUI:
             messagebox.showerror("错误", error_msg)
 
     def force_reload_data(self):
-        """强制重新读取数据（忽略缓存）"""
+        """强制重新读取数据 (已迁移)"""
+        pass
+
         if not self.params_path_var.get() or not self.rcs_dir_var.get():
             messagebox.showwarning("警告", "请先配置数据路径")
             return
@@ -1530,10 +1545,12 @@ class RCSWaveletGUI:
             self.status_var.set("数据读取失败")
             messagebox.showerror("错误", error_msg)
 
-    # ======= 系统管理功能 =======
+    # ======= 系统管理功能 (已迁移) =======
 
     def reset_cuda_manually(self):
-        """手动重置CUDA环境"""
+        """手动重置CUDA环境 (已迁移)"""
+        pass
+        
         try:
             import torch
             import gc
@@ -1588,7 +1605,9 @@ class RCSWaveletGUI:
             messagebox.showerror("错误", f"{error_msg}\n\n建议：\n1. 重启程序\n2. 使用CPU模式训练")
 
     def check_cuda_status(self):
-        """检查CUDA状态并显示详细信息"""
+        """检查CUDA状态 (已迁移)"""
+        pass
+
         try:
             import torch
 
@@ -1640,7 +1659,9 @@ class RCSWaveletGUI:
             messagebox.showerror("错误", error_msg)
 
     def clean_gpu_memory(self):
-        """清理GPU内存"""
+        """清理GPU内存 (已迁移)"""
+        pass
+
         try:
             import torch
             import gc
