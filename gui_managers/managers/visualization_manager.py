@@ -1036,51 +1036,98 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         self.gui.vis_fig.tight_layout()
         self.gui.vis_canvas.draw()
 
-    def _plot_autoencoder_visualization(self, chart_type):
+    def _plot_autoencoder_visualization(self, chart_type, ae_system=None, training_history=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder特定可视化图表"""
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        hist = training_history if training_history is not None else getattr(self.gui, 'ae_training_history', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         try:
-            fontsize_scale = self.gui.fontsize_scale_var.get()
-            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
-        except:
-            fontsize_scale = 1.0
+            # 获取字号缩放因子
+            try:
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
+                fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+            except:
+                fontsize_scale = 1.0
 
-        if chart_type == "AE隐空间分析":
-            self._plot_ae_latent_space()
-        elif chart_type == "AE重建质量":
-            self._plot_ae_reconstruction_quality()
-        elif chart_type == "AE参数映射":
-            self._plot_ae_parameter_mapping()
-        elif chart_type == "AE训练进度":
-            self._plot_ae_training_progress_vis()
-        else:
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
-            ax.text(0.5, 0.5, f'未知的可视化类型: {chart_type}',
-                   transform=ax.transAxes, ha='center', va='center',
-                   fontsize=int(20*fontsize_scale), fontweight='bold')
-            self.gui.vis_canvas.draw()
+            if chart_type == "AE隐空间分析":
+                self._plot_ae_latent_space(sys, target_fig, target_canvas, log_msg, rcs_data)
+            elif chart_type == "AE重建质量":
+                self._plot_ae_reconstruction_quality(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
+            elif chart_type == "AE参数映射":
+                self._plot_ae_parameter_mapping(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
+            elif chart_type == "AE训练进度":
+                self._plot_ae_training_progress_vis(hist, target_fig, target_canvas, log_msg)
+            else:
+                target_fig.clear()
+                ax = target_fig.add_subplot(1, 1, 1)
+                ax.text(0.5, 0.5, f'未知的可视化类型: {chart_type}',
+                       transform=ax.transAxes, ha='center', va='center',
+                       fontsize=int(20*fontsize_scale), fontweight='bold')
+                target_canvas.draw()
+        except Exception as e:
+            log_msg(f"AutoEncoder可视化失败: {str(e)}")
 
-    def _plot_ae_latent_space(self):
+    def _plot_ae_latent_space(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None):
         """绘制AutoEncoder隐空间分析"""
         import torch
         import numpy as np
         from sklearn.decomposition import PCA
         from sklearn.manifold import TSNE
 
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        # rcs_data 如果传入了就用传入的，否则尝试从 sys 中获取，或者从 self.gui.rcs_data 获取
+        data = rcs_data
+        if data is None and sys is not None and 'rcs_data' in sys:
+            data = sys['rcs_data']
+        if data is None:
+            data = getattr(self.gui, 'rcs_data', None)
+
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if data is None:
+            log_msg("错误: RCS数据未加载")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         # 获取字号缩放因子
         try:
-            fontsize_scale = self.gui.fontsize_scale_var.get()
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
             fontsize_scale = max(0.5, min(3.0, fontsize_scale))
         except:
             fontsize_scale = 1.0
 
         try:
             # 获取AutoEncoder组件
-            autoencoder = self.gui.ae_system['autoencoder']
-            wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)  # 直接模式时为None
-            data_adapter = self.gui.ae_system.get('data_adapter', None)
-            rcs_data = self.gui.ae_system['rcs_data']
-            mode = self.gui.ae_system.get('mode', 'direct')
+            autoencoder = sys['autoencoder']
+            wavelet_transform = sys.get('wavelet_transform', None)  # 直接模式时为None
+            data_adapter = sys.get('data_adapter', None)
+            mode = sys.get('mode', 'direct')
 
             # 设置设备和评估模式
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -1089,7 +1136,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 编码所有数据到隐空间
             with torch.no_grad():
                 # 取前50个样本避免内存问题
-                sample_data = rcs_data[:50]
+                sample_data = data[:50]
 
                 # 根据模式准备输入数据
                 if mode in ('wavelet', 'differentiable_wavelet'):
@@ -1117,10 +1164,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 latent_vectors = latent_vectors.cpu().numpy()
 
             # 降维可视化
-            self.gui.vis_fig.clear()
+            target_fig.clear()
 
             # 子图1: PCA降维
-            ax1 = self.gui.vis_fig.add_subplot(2, 2, 1)
+            ax1 = target_fig.add_subplot(2, 2, 1)
             pca = PCA(n_components=2)
             latent_2d_pca = pca.fit_transform(latent_vectors)
             scatter = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
@@ -1134,7 +1181,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图2: t-SNE降维
-            ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
+            ax2 = target_fig.add_subplot(2, 2, 2)
             tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
             latent_2d_tsne = tsne.fit_transform(latent_vectors)
             ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
@@ -1146,7 +1193,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图3: 隐空间维度分布
-            ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
+            ax3 = target_fig.add_subplot(2, 2, 3)
             latent_means = np.mean(latent_vectors, axis=0)
             latent_stds = np.std(latent_vectors, axis=0)
             dims = range(len(latent_means[:20]))  # 只显示前20个维度
@@ -1160,47 +1207,74 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax3.grid(True, alpha=0.3)
 
             # 子图4: 隐空间激活热图
-            ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
+            ax4 = target_fig.add_subplot(2, 2, 4)
             im = ax4.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
             ax4.set_title('隐空间激活模式 (前10样本×前20维)',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
             ax4.set_xlabel('样本索引', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax4.set_ylabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
-            cbar = self.gui.vis_fig.colorbar(im, ax=ax4)
+            cbar = target_fig.colorbar(im, ax=ax4)
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
             cbar.set_label('激活值', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
         except Exception as e:
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'隐空间分析失败:\n{str(e)}',
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
-    def _plot_ae_reconstruction_quality(self):
+    def _plot_ae_reconstruction_quality(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder重建质量分析 - 使用统一重建接口"""
         import numpy as np
         import torch
 
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+        
+        # rcs_data 如果传入了就用传入的，否则尝试从 sys 中获取，或者从 self.gui.rcs_data 获取
+        data = rcs_data
+        if data is None and sys is not None and 'rcs_data' in sys:
+            data = sys['rcs_data']
+        if data is None:
+            data = getattr(self.gui, 'rcs_data', None)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if data is None:
+            log_msg("错误: RCS数据未加载")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         # 获取字号缩放因子
         try:
-            fontsize_scale = self.gui.fontsize_scale_var.get()
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
             fontsize_scale = max(0.5, min(3.0, fontsize_scale))
         except:
             fontsize_scale = 1.0
 
         try:
             # 获取AutoEncoder组件
-            autoencoder = self.gui.ae_system['autoencoder']
-            wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)
-            data_adapter = self.gui.ae_system.get('data_adapter', None)
-            rcs_data = self.gui.ae_system['rcs_data']
-            mode = self.gui.ae_system.get('mode', 'direct')
+            autoencoder = sys['autoencoder']
+            wavelet_transform = sys.get('wavelet_transform', None)
+            data_adapter = sys.get('data_adapter', None)
+            mode = sys.get('mode', 'direct')
 
             # 设置设备和评估模式
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -1208,7 +1282,10 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 选择测试样本
             test_indices = [0, 10, 20, 30]  # 选择几个代表性样本
-            test_samples = rcs_data[test_indices]
+            if len(data) < 31:
+                test_indices = [0] # 数据太少时的回退
+            
+            test_samples = data[test_indices]
 
             # 使用AutoEncoder重建RCS（模拟Stage1-Only的行为）
             with torch.no_grad():
@@ -1253,7 +1330,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                     else:
                         reconstructed_samples = reconstructed_output.cpu().numpy()
 
-            self.gui.vis_fig.clear()
+            target_fig.clear()
 
             for i, sample_idx in enumerate(test_indices):
                 # 原始数据和重建数据
@@ -1261,7 +1338,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 reconstructed_rcs = reconstructed_samples[i]
 
                 # 绘制对比图
-                ax = self.gui.vis_fig.add_subplot(2, 2, i+1)
+                ax = target_fig.add_subplot(2, 2, i+1)
 
                 # 只显示第一个频率的数据
                 freq_idx = 0
@@ -1283,81 +1360,114 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 ax.set_xticks([])
                 ax.set_yticks([])
 
-                cbar = self.gui.vis_fig.colorbar(im, ax=ax, shrink=0.6)
+                cbar = target_fig.colorbar(im, ax=ax, shrink=0.6)
                 cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
                 cbar.set_label('RCS 值', fontsize=int(20*fontsize_scale), fontweight='bold')
 
-            self.gui.vis_fig.suptitle('AutoEncoder重建质量对比',
+            target_fig.suptitle('AutoEncoder重建质量对比',
                                       fontsize=int(24*fontsize_scale), fontweight='bold')
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
         except Exception as e:
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'重建质量分析失败:\n{str(e)}',
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
-    def _plot_ae_parameter_mapping(self):
+    def _plot_ae_parameter_mapping(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder参数映射分析"""
         import torch
         import numpy as np
         from sklearn.decomposition import PCA
 
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+        
+        # param_data
+        params = param_data
+        if params is None and sys is not None and 'param_data' in sys:
+            params = sys['param_data']
+        if params is None:
+            params = getattr(self.gui, 'param_data', None)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if params is None:
+            log_msg("错误: 参数数据未加载")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         # 获取字号缩放因子
         try:
-            fontsize_scale = self.gui.fontsize_scale_var.get()
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
             fontsize_scale = max(0.5, min(3.0, fontsize_scale))
         except:
             fontsize_scale = 1.0
 
         try:
             # 获取组件
-            parameter_mapper = self.gui.ae_system['parameter_mapper']
-            param_data = self.gui.ae_system['param_data']
-
+            parameter_mapper = sys['parameter_mapper']
+            
             # 设置设备和评估模式
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             parameter_mapper.to(device).eval()
 
             # 获取参数映射结果
             with torch.no_grad():
-                param_tensor = torch.FloatTensor(param_data[:50])  # 前50个样本
+                # 取前50个样本
+                num_samples = min(len(params), 50)
+                param_subset = params[:num_samples]
+                param_tensor = torch.FloatTensor(param_subset)  
                 mapped_latents = parameter_mapper(param_tensor.to(device))
                 mapped_latents = mapped_latents.cpu().numpy()
 
-            self.gui.vis_fig.clear()
+            target_fig.clear()
 
             # 子图1: 参数空间分布
-            ax1 = self.gui.vis_fig.add_subplot(2, 2, 1)
+            ax1 = target_fig.add_subplot(2, 2, 1)
             # 假设前两个参数最重要
-            ax1.scatter(param_data[:50, 0], param_data[:50, 1],
-                       c=range(50), cmap='viridis', alpha=0.6)
+            ax1.scatter(param_subset[:, 0], param_subset[:, 1],
+                       c=range(num_samples), cmap='viridis', alpha=0.6)
             ax1.set_title('参数空间分布', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax1.set_xlabel('参数1', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax1.set_ylabel('参数2', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图2: 映射后隐空间分布
-            ax2 = self.gui.vis_fig.add_subplot(2, 2, 2)
+            ax2 = target_fig.add_subplot(2, 2, 2)
             pca = PCA(n_components=2)
             mapped_2d = pca.fit_transform(mapped_latents)
             ax2.scatter(mapped_2d[:, 0], mapped_2d[:, 1],
-                       c=range(50), cmap='viridis', alpha=0.6)
+                       c=range(num_samples), cmap='viridis', alpha=0.6)
             ax2.set_title('映射后隐空间分布', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax2.set_xlabel('隐空间PC1', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax2.set_ylabel('隐空间PC2', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图3: 参数-隐空间相关性
-            ax3 = self.gui.vis_fig.add_subplot(2, 2, 3)
+            ax3 = target_fig.add_subplot(2, 2, 3)
             # 计算每个参数与隐空间主成分的相关性
             correlations = []
-            for param_idx in range(min(param_data.shape[1], 5)):  # 最多5个参数
-                corr = np.corrcoef(param_data[:50, param_idx], mapped_2d[:, 0])[0, 1]
-                correlations.append(abs(corr))
+            for param_idx in range(min(params.shape[1], 5)):  # 最多5个参数
+                if np.std(param_subset[:, param_idx]) > 1e-6: # 避免除零
+                    corr = np.corrcoef(param_subset[:, param_idx], mapped_2d[:, 0])[0, 1]
+                    correlations.append(abs(corr))
+                else:
+                    correlations.append(0)
 
             param_names = [f'参数{i+1}' for i in range(len(correlations))]
             ax3.bar(param_names, correlations)
@@ -1368,7 +1478,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax3.tick_params(axis='y', labelsize=int(16*fontsize_scale))
 
             # 子图4: 隐空间维度激活强度
-            ax4 = self.gui.vis_fig.add_subplot(2, 2, 4)
+            ax4 = target_fig.add_subplot(2, 2, 4)
             latent_means = np.mean(np.abs(mapped_latents), axis=0)
             dims = range(len(latent_means[:20]))  # 前20维
             ax4.bar(dims, latent_means[:20])
@@ -1378,112 +1488,155 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax4.set_ylabel('平均激活强度', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
         except Exception as e:
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'参数映射分析失败:\n{str(e)}',
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
-    def _plot_ae_training_progress_vis(self):
+    def _plot_ae_training_progress_vis(self, training_history=None, fig=None, canvas=None, log_callback=None):
         """绘制AutoEncoder训练进度可视化（使用统一绘图函数）"""
+        
+        hist = training_history if training_history is not None else getattr(self.gui, 'ae_training_history', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if hist is None:
+            log_msg("错误: 没有AutoEncoder训练历史数据")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         try:
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
-
-            # 获取训练历史数据
-            ae_training_history = getattr(self.gui, 'ae_training_history', None)
 
             # 使用统一绘图函数
             from autoencoder.utils.plotting import plot_ae_training_progress
 
             plot_ae_training_progress(
-                ae_training_history=ae_training_history,
+                ae_training_history=hist,
                 fontsize_scale=fontsize_scale,
-                fig=self.gui.vis_fig,
+                fig=target_fig,
                 use_log_scale=True,
                 show_best_epoch=True,
                 show_gradient=True  # 显示梯度监控曲线
             )
 
             # 刷新画布
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
         except Exception as e:
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'AutoEncoder训练进度可视化失败:\n{str(e)}',
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
             ax.set_title('AutoEncoder训练进度',
                          fontsize=int(24*fontsize_scale), fontweight='bold')
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
-    def _plot_autoencoder_prediction_visualization(self, chart_type, freq):
+    def _plot_autoencoder_prediction_visualization(self, chart_type, freq, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """使用AutoEncoder进行预测可视化"""
         import torch
         import numpy as np
 
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         try:
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
 
             if chart_type == "2D热图":
-                self._plot_ae_2d_heatmap(freq)
+                self._plot_ae_2d_heatmap(freq, sys, target_fig, target_canvas, log_msg, rcs_data)
             elif chart_type == "对比图":
-                self._plot_ae_comparison()
+                self._plot_ae_comparison(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
             elif chart_type == "小波系数对比":
-                self._plot_wavelet_coefficients_comparison()
+                self._plot_wavelet_coefficients_comparison(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
             else:
                 # 对其他图表类型，显示提示信息
-                self.gui.vis_fig.clear()
-                ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+                target_fig.clear()
+                ax = target_fig.add_subplot(1, 1, 1)
                 ax.text(0.5, 0.5, f'AutoEncoder暂不支持"{chart_type}"类型\n请选择其他图表类型',
                        transform=ax.transAxes, ha='center', va='center',
                        fontsize=int(20*fontsize_scale), fontweight='bold')
-                self.gui.vis_canvas.draw()
+                target_canvas.draw()
 
         except Exception as e:
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'AutoEncoder预测可视化失败:\n{str(e)}',
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
-    def _plot_ae_2d_heatmap(self, freq):
+    def _plot_ae_2d_heatmap(self, freq, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None):
         """绘制AutoEncoder预测的2D热图 - 支持模型未加载时显示原始数据"""
         import torch
         import numpy as np
 
-        # 检查是否有加载的AutoEncoder系统
-        if (not hasattr(self.gui, 'ae_system') or
-            self.gui.ae_system is None or
-            'autoencoder' not in self.gui.ae_system or
-            self.gui.ae_system['autoencoder'] is None):
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
 
+        # 检查是否有加载的AutoEncoder系统
+        if (sys is None or 'autoencoder' not in sys or sys['autoencoder'] is None):
             # 如果没有加载模型，显示原始RCS数据作为替代
-            self._plot_original_rcs_fallback(freq)
+            self._plot_original_rcs_fallback(freq, rcs_data, target_fig, target_canvas, log_msg)
+            return
+
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
             return
 
         try:
             # 获取组件
-            autoencoder = self.gui.ae_system['autoencoder']
-            parameter_mapper = self.gui.ae_system['parameter_mapper']
-            wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)  # 直接模式时为None
-            param_data = self.gui.ae_system['param_data']
+            autoencoder = sys['autoencoder']
+            parameter_mapper = sys['parameter_mapper']
+            wavelet_transform = sys.get('wavelet_transform', None)  # 直接模式时为None
+            # param_data 必须存在
+            param_data = sys.get('param_data', None)
+            if param_data is None:
+                param_data = getattr(self.gui, 'param_data', None)
+            
+            if param_data is None:
+                log_msg("错误: 参数数据未加载")
+                return
 
             # 设置设备和评估模式
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -1502,7 +1655,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
                 # ⚠️ 关键修复：decoder输出在标准化空间，必须逆变换回原始RCS空间
                 # 获取data_adapter用于逆标准化
-                data_adapter = self.gui.ae_system.get('data_adapter', None)
+                data_adapter = sys.get('data_adapter', None)
 
                 # 根据模式处理输出
                 if wavelet_transform is not None:
@@ -1527,15 +1680,20 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 predicted_rcs = predicted_rcs.cpu().numpy()[0]
 
             # 绘制热图
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
 
             # 选择频率索引
             freq_idx = 0 if freq == "1.5G" else 1
             rcs_2d = predicted_rcs[:, :, freq_idx]
 
             # ⚠️ 后处理分贝转换（仅在线性训练模型时可用）
-            use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+            # 注意：ae_postprocess_abs_db 是一个tk.BooleanVar，通常在VisualizationTab或AE扩展中
+            # 这里我们尝试从 ae_extension 获取，或者默认为False
+            use_postprocess_abs_db = False
+            if hasattr(self.gui, 'ae_postprocess_abs_db'):
+                use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+            
             rcs_unit_label = 'RCS'  # 默认线性值
 
             if use_postprocess_abs_db:
@@ -1562,7 +1720,12 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 # 限制范围在0.5-3.0之间
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
@@ -1580,21 +1743,29 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 添加colorbar并设置字号（根据是否后处理调整标签）
-            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label=rcs_unit_label)
+            cbar = target_fig.colorbar(im, ax=ax, label=rcs_unit_label)
             cbar.set_label(rcs_unit_label, fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
         except Exception as e:
             # 如果模型预测失败，回退到原始数据显示
             print(f"AutoEncoder预测失败，回退到原始数据显示: {str(e)}")
-            self._plot_original_rcs_fallback(freq)
+            self._plot_original_rcs_fallback(freq, rcs_data, target_fig, target_canvas, log_msg)
 
-    def _plot_original_rcs_fallback(self, freq):
+    def _plot_original_rcs_fallback(self, freq, rcs_data=None, fig=None, canvas=None, log_callback=None):
         """当AutoEncoder模型未加载时，显示原始RCS数据作为替代"""
         import rcs_visual as rv
+
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
 
         try:
             # 使用第一个可用的模型数据
@@ -1603,8 +1774,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 从文件读取原始RCS数据
             data = rv.get_rcs_matrix(model_id, freq, self.gui.data_config['rcs_data_dir'])
 
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
 
             # 定义角度范围 (基于实际数据)
             phi_range = (-45.0, 45.0)  # φ范围: -45° 到 +45°
@@ -1613,14 +1784,18 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 获取字号缩放因子
             try:
-                fontsize_scale = self.gui.fontsize_scale_var.get()
-                # 限制范围在0.5-3.0之间
+                if hasattr(self.gui, 'visualization_tab'):
+                    fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+                elif hasattr(self.gui, 'fontsize_scale_var'):
+                    fontsize_scale = self.gui.fontsize_scale_var.get()
+                else:
+                    fontsize_scale = 1.0
                 fontsize_scale = max(0.5, min(3.0, fontsize_scale))
             except:
                 fontsize_scale = 1.0
 
             # 绘制原始数据热图
-            im = ax.imshow(data, cmap='jet', aspect='equal', extent=extent)
+            im = ax.imshow(data['rcs_db'], cmap='jet', aspect='equal', extent=extent)
             ax.set_title(f'原始RCS数据 - 模型 {model_id} - {freq}Hz\n(AutoEncoder模型未加载，显示原始数据)',
                         fontsize=int(24*fontsize_scale), fontweight='bold')
             ax.set_xlabel('φ (方位角, 度)', fontsize=int(20*fontsize_scale), fontweight='bold')
@@ -1630,34 +1805,52 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 添加colorbar并设置字号
-            cbar = self.gui.vis_fig.colorbar(im, ax=ax, label='RCS (dB)')
+            cbar = target_fig.colorbar(im, ax=ax, label='RCS (dB)')
             cbar.set_label('RCS (dB)', fontsize=int(20*fontsize_scale), fontweight='bold')
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
 
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
         except Exception as e:
             # 如果连原始数据也读取失败
-            self.gui.vis_fig.clear()
-            ax = self.gui.vis_fig.add_subplot(1, 1, 1)
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
             ax.text(0.5, 0.5, f'无法显示数据:\nAutoEncoder模型未加载\n且原始数据读取失败\n\n错误: {str(e)}',
                    transform=ax.transAxes, ha='center', va='center')
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
-    def _plot_ae_comparison(self):
+    def _plot_ae_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数"""
         import numpy as np
 
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         # 获取字号缩放因子
         try:
-            fontsize_scale = self.gui.fontsize_scale_var.get()
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
             fontsize_scale = max(0.5, min(3.0, fontsize_scale))
         except:
             fontsize_scale = 1.0
 
         # 检查模型配置
-        config_info = self.gui.ae_system.get('config_info', {})
+        config_info = sys.get('config_info', {})
         model_num_freq = config_info.get('num_frequencies', 'unknown')
         model_freq_labels = config_info.get('frequency_labels', 'unknown')
         print(f"\n【模型配置检查】")
@@ -1665,21 +1858,45 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         print(f"模型频率标签: {model_freq_labels}")
 
         # 验证频率配置匹配
-        data_num_freq = self.gui.ae_system['rcs_data'].shape[-1]
-        if model_num_freq != data_num_freq:
-            error_msg = (
-                f"频率配置不匹配！无法生成对比图。\n\n"
-                f"模型频率: {model_num_freq}频 {model_freq_labels}\n"
-                f"数据频率: {data_num_freq}频\n\n"
-                f"请重新加载匹配的数据或模型！"
-            )
-            print(f"❌ {error_msg}")
-            messagebox.showerror("频率配置不匹配", error_msg)
-            return
+        # 这里假设 rcs_data 已经通过 sys['rcs_data'] 或其他方式可用
+        # 注意：VisualizationTab 中的 _plot_ae_comparison 并没有传递 rcs_data 作为参数到这里，
+        # 而是从 self.gui.ae_system['rcs_data'] 获取。但为了稳健，我们应该检查。
+        current_rcs_data = rcs_data if rcs_data is not None else sys.get('rcs_data', None)
+        if current_rcs_data is None:
+             current_rcs_data = getattr(self.gui, 'rcs_data', None)
+
+        if current_rcs_data is not None:
+            data_num_freq = current_rcs_data.shape[-1]
+            if model_num_freq != 'unknown' and model_num_freq != data_num_freq:
+                error_msg = (
+                    f"频率配置不匹配！无法生成对比图。\n\n"
+                    f"模型频率: {model_num_freq}频 {model_freq_labels}\n"
+                    f"数据频率: {data_num_freq}频\n\n"
+                    f"请重新加载匹配的数据或模型！"
+                )
+                print(f"❌ {error_msg}")
+                messagebox.showerror("频率配置不匹配", error_msg)
+                return
+        else:
+            log_msg("警告: 无法验证频率匹配 (RCS数据不可用)")
 
         # 获取用户输入的模型ID和频率
-        model_id_str = self.gui.vis_model_var.get()
-        freq_str = self.gui.vis_freq_var.get()
+        # 这里我们需要从 GUI 获取输入，因为 VisualizationTab 也是从 GUI 变量获取的
+        # 但是 VisualizationTab 的变量是 self.vis_model_var
+        # 如果是 VisualizationManager 直接调用，它可能依赖 self.gui.vis_model_var
+        # 在重构后，VisualizationTab 拥有这些变量。
+        # 我们需要一种方式来获取这些值。
+        # 方案：尝试从 VisualizationTab 获取，如果失败则回退到 self.gui
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                model_id_str = self.gui.visualization_tab.vis_model_var.get()
+                freq_str = self.gui.visualization_tab.vis_freq_var.get()
+            else:
+                model_id_str = self.gui.vis_model_var.get()
+                freq_str = self.gui.vis_freq_var.get()
+        except:
+            model_id_str = "001"
+            freq_str = "1.5G"
 
         try:
             # 从文件读取原始RCS数据 (与2D热图使用相同的数据源)
@@ -1691,12 +1908,23 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 使用统一重建函数重建RCS
             print(f"\n【使用统一重建函数 - 模型{model_id_str}】")
-            result = self.gui._reconstruct_rcs(
-                input_data=None,
-                input_type='model_ids',
-                model_ids=[model_id_str],
-                return_latents=False
-            )
+            # 这里调用的是 self.gui._reconstruct_rcs，它已经被保留在 gui.py 中并委托给 ReconstructionManager
+            # 或者我们可以直接调用 ReconstructionManager
+            if hasattr(self.gui, 'reconstruction_manager'):
+                result = self.gui.reconstruction_manager._reconstruct_rcs(
+                    input_data=None,
+                    input_type='model_ids',
+                    model_ids=[model_id_str],
+                    return_latents=False
+                )
+            else:
+                # 回退到 gui 的方法 (虽然可能已被弃用，但在 gui.py 中我们保留了它作为代理)
+                result = self.gui._reconstruct_rcs(
+                    input_data=None,
+                    input_type='model_ids',
+                    model_ids=[model_id_str],
+                    return_latents=False
+                )
 
             predicted_rcs = result['reconstructed_rcs'][0]  # [91, 91, num_freq]
             training_mode = result['training_mode']
@@ -1714,8 +1942,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             print(f"提取频率{freq_str} (索引{freq_idx}): {pred_2d.shape}")
 
             # ⚠️ 后处理分贝转换（仅在线性训练模型时可用）
-            data_adapter = self.gui.ae_system.get('data_adapter', None)
-            use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+            data_adapter = sys.get('data_adapter', None)
+            # 尝试获取 ae_postprocess_abs_db
+            use_postprocess_abs_db = False
+            if hasattr(self.gui, 'ae_postprocess_abs_db'):
+                use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+            elif hasattr(self.gui, 'ae_extension') and hasattr(self.gui.ae_extension, 'postprocess_abs_db_var'):
+                 use_postprocess_abs_db = self.gui.ae_extension.postprocess_abs_db_var.get()
 
             if use_postprocess_abs_db:
                 # 安全检查：确认模型训练时未使用dB变换
@@ -1752,7 +1985,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 phi_range=phi_range,
                 theta_range=theta_range,
                 fontsize_scale=fontsize_scale,
-                fig=self.gui.vis_fig  # 复用GUI的figure
+                fig=target_fig  # 复用GUI的figure
             )
 
             # 添加训练模式信息到总标题
@@ -1761,50 +1994,86 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 'three_stage': 'Three-Stage (参数预测)'
             }.get(training_mode, training_mode)
 
-            self.gui.vis_fig.suptitle(
+            target_fig.suptitle(
                 f'AutoEncoder对比分析 - 模型{model_id_str} @ {freq_str}\n({mode_display})',
                 fontsize=int(24*fontsize_scale),
                 fontweight='bold'
             )
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
         except Exception as e:
             messagebox.showerror("错误", f"无法生成对比图: {str(e)}")
             import traceback
             traceback.print_exc()
 
-    def _plot_wavelet_coefficients_comparison(self):
+    def _plot_wavelet_coefficients_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH） - 使用统一绘图函数"""
         import numpy as np
 
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
         # 获取字号缩放因子
         try:
-            fontsize_scale = self.gui.fontsize_scale_var.get()
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
             fontsize_scale = max(0.5, min(3.0, fontsize_scale))
         except:
             fontsize_scale = 1.0
 
         # 检查是否是Wavelet或Differentiable Wavelet模式
-        mode = self.gui.ae_system.get('mode', 'wavelet')
+        mode = sys.get('mode', 'wavelet')
         if mode not in ('wavelet', 'differentiable_wavelet'):
             messagebox.showwarning("警告", "此功能仅适用于Wavelet和Differentiable Wavelet模式！")
             return
 
         # 获取用户输入的模型ID和频率
-        model_id_str = self.gui.vis_model_var.get()
-        freq_str = self.gui.vis_freq_var.get()
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                model_id_str = self.gui.visualization_tab.vis_model_var.get()
+                freq_str = self.gui.visualization_tab.vis_freq_var.get()
+            else:
+                model_id_str = self.gui.vis_model_var.get()
+                freq_str = self.gui.vis_freq_var.get()
+        except:
+            model_id_str = "001"
+            freq_str = "1.5G"
 
         try:
             # 使用统一重建函数重建RCS，同时获取小波系数
-            print(f"\n【小波系数可视化 - 模型{model_id_str}】")
-            result = self.gui._reconstruct_rcs(
-                input_data=None,
-                input_type='model_ids',
-                model_ids=[model_id_str],
-                return_latents=False,
-                return_wavelet_coeffs=True  # 关键：获取小波系数
-            )
+            log_msg(f"\n【小波系数可视化 - 模型{model_id_str}】")
+            # 调用 gui 的 _reconstruct_rcs (代理) 或直接调用 ReconstructionManager
+            if hasattr(self.gui, 'reconstruction_manager'):
+                result = self.gui.reconstruction_manager._reconstruct_rcs(
+                    input_data=None,
+                    input_type='model_ids',
+                    model_ids=[model_id_str],
+                    return_latents=False,
+                    return_wavelet_coeffs=True  # 关键：获取小波系数
+                )
+            else:
+                result = self.gui._reconstruct_rcs(
+                    input_data=None,
+                    input_type='model_ids',
+                    model_ids=[model_id_str],
+                    return_latents=False,
+                    return_wavelet_coeffs=True
+                )
 
             # 检查是否成功获取小波系数
             if 'original_wavelet_coeffs' not in result or 'reconstructed_wavelet_coeffs' not in result:
@@ -1815,8 +2084,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             reconstructed_coeffs = result['reconstructed_wavelet_coeffs'][0]  # [49, 49, 8]
             training_mode = result['training_mode']
 
-            print(f"原始小波系数形状: {original_coeffs.shape}")
-            print(f"重建小波系数形状: {reconstructed_coeffs.shape}")
+            log_msg(f"原始小波系数形状: {original_coeffs.shape}")
+            log_msg(f"重建小波系数形状: {reconstructed_coeffs.shape}")
 
             # 获取频率索引
             freq_map = {"1.5G": 0, "3G": 1, "6G": 2}
@@ -1836,7 +2105,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 freq_label=freq_label,
                 model_id=model_id_str,
                 fontsize_scale=fontsize_scale,
-                fig=self.gui.vis_fig
+                fig=target_fig
             )
 
             # 添加训练模式信息到总标题
@@ -1846,11 +2115,11 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             }.get(training_mode, training_mode)
 
             # 更新标题以包含训练模式
-            current_title = self.gui.vis_fig._suptitle.get_text()
-            self.gui.vis_fig.suptitle(f'{current_title}\n({mode_display})',
+            current_title = target_fig._suptitle.get_text()
+            target_fig.suptitle(f'{current_title}\n({mode_display})',
                                      fontsize=int(24*fontsize_scale), fontweight='bold')
 
-            self.gui.vis_canvas.draw()
+            target_canvas.draw()
 
         except Exception as e:
             messagebox.showerror("错误", f"无法生成小波系数对比图: {str(e)}")
