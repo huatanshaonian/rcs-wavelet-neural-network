@@ -242,67 +242,72 @@ class EvaluationManager:
             self._display_autoencoder_results(results, tree=target_tree)
         else:
             self._display_traditional_results(results, tree=target_tree)
-    def _display_autoencoder_results(self, results):
+    def _display_autoencoder_results(self, results, tree=None):
         """显示AutoEncoder评估结果"""
+        target_tree = tree if tree is not None else getattr(self.gui, 'eval_tree', None)
+        if target_tree is None:
+            self.gui.log_message("错误: 无法获取评估结果树形组件")
+            return
+
         # 添加基本信息
-        basic_node = self.gui.eval_tree.insert("", "end", text="基本信息")
-        self.gui.eval_tree.insert(basic_node, "end", values=("模型类型", "AutoEncoder", "", ""))
-        self.gui.eval_tree.insert(basic_node, "end", values=("测试样本数", str(results['test_samples']), "", ""))
+        basic_node = target_tree.insert("", "end", text="基本信息")
+        target_tree.insert(basic_node, "end", values=("模型类型", "AutoEncoder", "", ""))
+        target_tree.insert(basic_node, "end", values=("测试样本数", str(results['test_samples']), "", ""))
 
         # 添加基础误差指标
-        basic_error_node = self.gui.eval_tree.insert("", "end", text="📊 基础误差指标")
+        basic_error_node = target_tree.insert("", "end", text="📊 基础误差指标")
         overall = results['overall']
-        self.gui.eval_tree.insert(basic_error_node, "end", values=("MSE", "", "", f"{overall['mse']:.6f}"))
-        self.gui.eval_tree.insert(basic_error_node, "end", values=("RMSE", "", "", f"{overall['rmse']:.6f}"))
-        self.gui.eval_tree.insert(basic_error_node, "end", values=("MAE", "", "", f"{overall['mae']:.6f}"))
-        self.gui.eval_tree.insert(basic_error_node, "end", values=("平均损失", "", "", f"{overall['avg_loss']:.6f}"))
+        target_tree.insert(basic_error_node, "end", values=("MSE", "", "", f"{overall['mse']:.6f}"))
+        target_tree.insert(basic_error_node, "end", values=("RMSE", "", "", f"{overall['rmse']:.6f}"))
+        target_tree.insert(basic_error_node, "end", values=("MAE", "", "", f"{overall['mae']:.6f}"))
+        target_tree.insert(basic_error_node, "end", values=("平均损失", "", "", f"{overall['avg_loss']:.6f}"))
 
         # 添加结构相似性指标（新增）
         if 'advanced_metrics' in results:
             adv = results['advanced_metrics']
 
-            ssim_node = self.gui.eval_tree.insert("", "end", text="🔍 结构相似性指标")
-            self.gui.eval_tree.insert(ssim_node, "end", values=("SSIM (平均)", "", "", f"{adv.get('ssim_mean', 0):.4f}"))
-            self.gui.eval_tree.insert(ssim_node, "end", values=("SSIM (标准差)", "", "", f"{adv.get('ssim_std', 0):.4f}"))
-            self.gui.eval_tree.insert(ssim_node, "end", values=("SSIM (最小)", "", "", f"{adv.get('ssim_min', 0):.4f}"))
+            ssim_node = target_tree.insert("", "end", text="🔍 结构相似性指标")
+            target_tree.insert(ssim_node, "end", values=("SSIM (平均)", "", "", f"{adv.get('ssim_mean', 0):.4f}"))
+            target_tree.insert(ssim_node, "end", values=("SSIM (标准差)", "", "", f"{adv.get('ssim_std', 0):.4f}"))
+            target_tree.insert(ssim_node, "end", values=("SSIM (最小)", "", "", f"{adv.get('ssim_min', 0):.4f}"))
 
             # 添加统计指标（新增）
-            stat_node = self.gui.eval_tree.insert("", "end", text="📈 统计指标")
-            self.gui.eval_tree.insert(stat_node, "end", values=("相关系数", "", "", f"{adv.get('correlation', 0):.4f}"))
-            self.gui.eval_tree.insert(stat_node, "end", values=("R²决定系数", "", "", f"{adv.get('r2_score', 0):.4f}"))
-            self.gui.eval_tree.insert(stat_node, "end", values=("KL散度", "", "", f"{adv.get('kl_divergence', 0):.4f}"))
+            stat_node = target_tree.insert("", "end", text="📈 统计指标")
+            target_tree.insert(stat_node, "end", values=("相关系数", "", "", f"{adv.get('correlation', 0):.4f}"))
+            target_tree.insert(stat_node, "end", values=("R²决定系数", "", "", f"{adv.get('r2_score', 0):.4f}"))
+            target_tree.insert(stat_node, "end", values=("KL散度", "", "", f"{adv.get('kl_divergence', 0):.4f}"))
 
             # 添加物理约束指标（新增）
-            phys_node = self.gui.eval_tree.insert("", "end", text="⚖️ 物理约束指标")
-            self.gui.eval_tree.insert(phys_node, "end", values=("对称性误差", "", "", f"{adv.get('symmetry_error', 0):.6f}"))
-            self.gui.eval_tree.insert(phys_node, "end", values=("连续性误差", "", "", f"{adv.get('continuity_error', 0):.6f}"))
-            self.gui.eval_tree.insert(phys_node, "end", values=("负值比例", "", "", f"{adv.get('negative_ratio', 0):.4f}"))
+            phys_node = target_tree.insert("", "end", text="⚖️ 物理约束指标")
+            target_tree.insert(phys_node, "end", values=("对称性误差", "", "", f"{adv.get('symmetry_error', 0):.6f}"))
+            target_tree.insert(phys_node, "end", values=("连续性误差", "", "", f"{adv.get('continuity_error', 0):.6f}"))
+            target_tree.insert(phys_node, "end", values=("负值比例", "", "", f"{adv.get('negative_ratio', 0):.4f}"))
 
             # 添加频域指标（新增）
-            freq_domain_node = self.gui.eval_tree.insert("", "end", text="🌊 频域指标")
-            self.gui.eval_tree.insert(freq_domain_node, "end", values=("幅度谱误差", "", "", f"{adv.get('freq_magnitude_error', 0):.6f}"))
-            self.gui.eval_tree.insert(freq_domain_node, "end", values=("相位谱误差", "", "", f"{adv.get('freq_phase_error', 0):.6f}"))
-            self.gui.eval_tree.insert(freq_domain_node, "end", values=("功率谱误差", "", "", f"{adv.get('freq_power_error', 0):.6f}"))
-            self.gui.eval_tree.insert(freq_domain_node, "end", values=("频率间一致性", "", "", f"{adv.get('freq_consistency_error', 0):.6f}"))
+            freq_domain_node = target_tree.insert("", "end", text="🌊 频域指标")
+            target_tree.insert(freq_domain_node, "end", values=("幅度谱误差", "", "", f"{adv.get('freq_magnitude_error', 0):.6f}"))
+            target_tree.insert(freq_domain_node, "end", values=("相位谱误差", "", "", f"{adv.get('freq_phase_error', 0):.6f}"))
+            target_tree.insert(freq_domain_node, "end", values=("功率谱误差", "", "", f"{adv.get('freq_power_error', 0):.6f}"))
+            target_tree.insert(freq_domain_node, "end", values=("频率间一致性", "", "", f"{adv.get('freq_consistency_error', 0):.6f}"))
 
             # 添加数值范围指标（新增）
-            range_node = self.gui.eval_tree.insert("", "end", text="📏 数值范围")
-            self.gui.eval_tree.insert(range_node, "end", values=("预测值范围", f"{adv.get('pred_min', 0):.4f}", f"{adv.get('pred_max', 0):.4f}", ""))
-            self.gui.eval_tree.insert(range_node, "end", values=("真实值范围", f"{adv.get('true_min', 0):.4f}", f"{adv.get('true_max', 0):.4f}", ""))
-            self.gui.eval_tree.insert(range_node, "end", values=("范围误差", "", "", f"{adv.get('range_error', 0):.4f}"))
+            range_node = target_tree.insert("", "end", text="📏 数值范围")
+            target_tree.insert(range_node, "end", values=("预测值范围", f"{adv.get('pred_min', 0):.4f}", f"{adv.get('pred_max', 0):.4f}", ""))
+            target_tree.insert(range_node, "end", values=("真实值范围", f"{adv.get('true_min', 0):.4f}", f"{adv.get('true_max', 0):.4f}", ""))
+            target_tree.insert(range_node, "end", values=("范围误差", "", "", f"{adv.get('range_error', 0):.4f}"))
 
         # 添加频率分解指标
         freq_metrics = results['frequencies']
         if len(freq_metrics['mse']) > 1:
-            freq_node = self.gui.eval_tree.insert("", "end", text="📡 频率分解指标")
+            freq_node = target_tree.insert("", "end", text="📡 频率分解指标")
             freq_labels = ['1.5GHz', '3GHz'] if len(freq_metrics['mse']) == 2 else [f'Freq{i+1}' for i in range(len(freq_metrics['mse']))]
 
             for metric in ['mse', 'rmse', 'mae']:
                 values = [f"{val:.6f}" for val in freq_metrics[metric]]
                 if len(values) == 2:
-                    self.gui.eval_tree.insert(freq_node, "end", values=(metric.upper(), values[0], values[1], ""))
+                    target_tree.insert(freq_node, "end", values=(metric.upper(), values[0], values[1], ""))
                 else:
-                    self.gui.eval_tree.insert(freq_node, "end", values=(metric.upper(), str(values), "", ""))
+                    target_tree.insert(freq_node, "end", values=(metric.upper(), str(values), "", ""))
     def save_detailed_evaluation_report(self):
         """保存详细评估报告（AutoEncoder专用）"""
         if not hasattr(self.gui, 'evaluation_results') or not self.gui.evaluation_results:
