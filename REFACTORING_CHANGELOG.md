@@ -41,3 +41,31 @@ from gui_managers.tabs.data_management_tab import DataManagementTab
 self.data_tab = DataManagementTab(self.notebook, self)
 self.notebook.add(self.data_tab, text="数据管理")
 ```
+
+#### 2. 模型训练标签页 (Model Training Tab)
+*   **原位置**: `gui.py` 中的 `create_training_tab` 方法及相关辅助方法。
+*   **新位置**: `gui_managers/tabs/training_tab.py` 中的 `TrainingTab` 类。
+*   **移动的方法**:
+    *   `create_training_tab` (重构为 `__init__`)
+    *   `start_training`
+    *   `_train_model`
+    *   `_training_finished`
+    *   `_set_random_seeds`
+    *   `_initialize_cuda_safely`
+    *   `stop_training`
+    *   `_monitor_training_stop`
+    *   `_on_training_stopped`
+    *   `_get_scheduler_info`
+    *   `_on_scheduler_changed`
+    *   `_update_network_options`
+    *   `_on_network_selection_changed`
+    *   `test_logging`
+    *   `save_model`
+    *   `set_default_wavelets`
+    *   `set_db4_wavelets`
+    *   `set_bior_wavelets`
+    *   `set_progressive_wavelets`
+    *   `set_edge_wavelets`
+    *   `get_current_wavelet_config`
+    *   `load_model`
+*   **依赖关系**: `TrainingTab` 接收主应用程序实例 (`app`) 作为参数，并通过 `app.training_config`, `app.training_manager` 等访问共享状态和管理器。

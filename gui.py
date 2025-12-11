@@ -68,6 +68,7 @@ import torch
 from gui_managers.managers import StatisticsManager, VisualizationManager, TrainingManager, EvaluationManager, ReconstructionManager
 # GUI标签页模块
 from gui_managers.tabs.data_management_tab import DataManagementTab
+from gui_managers.tabs.training_tab import TrainingTab
 
 # 导入项目模块
 try:
@@ -629,7 +630,14 @@ class RCSWaveletGUI:
 
     def create_training_tab(self):
         """创建模型训练标签页"""
+        
+        # 使用新重构的标签页类
+        # 代码已迁移至 gui_managers/tabs/training_tab.py
+        self.training_tab = TrainingTab(self.training_frame, self)
+        self.training_tab.pack(fill=tk.BOTH, expand=True)
+        return
 
+        # 以下代码已废弃，稍后清理
         # 主框架
         main_frame = ttk.Frame(self.training_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -1713,291 +1721,101 @@ class RCSWaveletGUI:
             self.log_message(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
-    # ======= 训练功能 =======
+    # ======= 训练功能 (已迁移至 TrainingTab) =======
 
     def start_training(self):
-        """开始训练"""
-        if not self.data_loaded:
-            messagebox.showwarning("警告", "请先加载数据")
-            return
+        """开始训练 (已迁移)"""
+        pass
 
-        # 更新训练配置
-        try:
-            self.training_config['batch_size'] = int(self.batch_size_var.get())
-            self.training_config['learning_rate'] = float(self.lr_var.get())
-            self.training_config['min_lr'] = float(self.min_lr_var.get())
-            self.training_config['epochs'] = int(self.epochs_var.get())
-            self.training_config['weight_decay'] = float(self.weight_decay_var.get())
-            self.training_config['early_stopping_patience'] = int(self.patience_var.get())
-            self.training_config['restart_period'] = int(self.restart_period_var.get())
-            self.training_config['lr_scheduler'] = self.lr_scheduler_var.get()
-
-            # 添加小波配置
-            self.training_config['wavelet_config'] = self.get_current_wavelet_config()
-            self.log_message(f"使用小波配置: {self.training_config['wavelet_config']}")
-
-            # 更新数据配置以包含预处理选项
-            self.update_data_config()
-
-        except ValueError as e:
-            messagebox.showerror("错误", f"配置参数格式错误: {str(e)}")
-            return
-
-        # 重置停止标志
-        self.stop_training_flag = False
-
-        # CUDA预检查和初始化
-        self._initialize_cuda_safely()
-
-        # 设置全局随机种子以保证训练的可重现性
-        self._set_random_seeds(42)
-
-        # 禁用训练按钮，启用停止按钮
-        self.train_button.config(state=tk.DISABLED)
-        self.stop_button.config(state=tk.NORMAL)
-
-        # 清空日志
-        self.training_log.delete(1.0, tk.END)
-
-        # 在新线程中开始训练
-        self.training_thread = threading.Thread(target=self._train_model, daemon=True)
-        self.training_thread.start()
 
     def _train_model(self):
-        """训练模型（在后台线程中运行）"""
-        return self.training_manager._train_model()
+        """训练模型（在后台线程中运行）(已迁移)"""
+        pass
 
     def _training_finished(self):
-        """训练完成后的UI更新"""
-        return self.training_manager._training_finished()
+        """训练完成后的UI更新 (已迁移)"""
+        pass
 
     def _set_random_seeds(self, seed=42):
-        """设置全局随机种子以保证训练的可重现性"""
-        return self.training_manager._set_random_seeds(seed=seed)
+        """设置全局随机种子以保证训练的可重现性 (已迁移)"""
+        pass
 
     def _initialize_cuda_safely(self):
-        """安全初始化CUDA环境"""
-        return self.training_manager._initialize_cuda_safely()
+        """安全初始化CUDA环境 (已迁移)"""
+        pass
 
     def stop_training(self):
-        """停止训练"""
-        self.stop_training_flag = True
-        self.log_message("训练停止请求已发送，等待当前epoch完成...")
-
-        # 禁用停止按钮防止重复点击
-        self.stop_button.config(state=tk.DISABLED)
-
-        # 如果训练线程存在，等待其完成
-        if self.training_thread and self.training_thread.is_alive():
-            # 启动一个监控线程来等待训练线程结束
-            monitor_thread = threading.Thread(target=self._monitor_training_stop, daemon=True)
-            monitor_thread.start()
+        """停止训练 (已迁移)"""
+        pass
 
     def _monitor_training_stop(self):
-        """监控训练停止过程"""
-        if self.training_thread:
-            self.training_thread.join()  # 等待训练线程结束
-
-        # 在主线程中更新UI
-        self.root.after(0, self._on_training_stopped)
+        """监控训练停止过程 (已迁移)"""
+        pass
 
     def _on_training_stopped(self):
-        """训练停止后的UI更新"""
-        self.log_message("训练已停止")
-        self.train_button.config(state=tk.NORMAL)
-        self.stop_button.config(state=tk.NORMAL)  # 重新启用停止按钮
-        self.status_var.set("训练已停止")
-        self.stop_training_flag = False  # 重置停止标志
+        """训练停止后的UI更新 (已迁移)"""
+        pass
 
     def _get_scheduler_info(self, scheduler_type):
-        """获取调度器信息"""
-        return self.scheduler_descriptions.get(scheduler_type, '')
+        """获取调度器信息 (已迁移)"""
+        pass
 
     def _on_scheduler_changed(self, event=None):
-        """调度器选择改变回调"""
-        scheduler_type = self.lr_scheduler_var.get()
-        self.scheduler_info_var.set(self._get_scheduler_info(scheduler_type))
+        """调度器选择改变回调 (已迁移)"""
+        pass
 
     def _update_network_options(self):
-        """更新网络架构选项列表"""
-        if MODERN_INTERFACE_AVAILABLE:
-            try:
-                # 获取所有可用网络
-                available_networks = get_available_networks()
-                network_names = list(available_networks.keys())
-                self.arch_combo['values'] = network_names
-
-                # 如果当前选择的网络不在列表中，选择第一个
-                current = self.model_type.get()
-                if current not in network_names and network_names:
-                    self.model_type.set(network_names[0])
-
-            except Exception as e:
-                # 如果现代接口失败，回退到传统选项
-                print(f"现代网络接口更新失败: {e}")
-                self.arch_combo['values'] = ['original', 'enhanced']
-                if self.model_type.get() not in ['original', 'enhanced']:
-                    self.model_type.set('enhanced')
-        else:
-            # 使用传统网络选项
-            self.arch_combo['values'] = ['original', 'enhanced']
-            if self.model_type.get() not in ['original', 'enhanced']:
-                self.model_type.set('enhanced')
+        """更新网络架构选项列表 (已迁移)"""
+        pass
 
     def _on_network_selection_changed(self, event=None):
-        """网络架构选择改变回调"""
-        selected_network = self.model_type.get()
-
-        if MODERN_INTERFACE_AVAILABLE:
-            try:
-                # 获取网络详细信息
-                info = get_network_info(selected_network)
-                info_text = f"{info.get('description', '无描述')} | 参数: {info.get('parameters', {}).get('total', 0):,}"
-                self.network_info_label.config(text=info_text)
-            except Exception as e:
-                print(f"获取网络信息失败: {e}")
-                self.network_info_label.config(text="信息获取失败")
-        else:
-            # 传统网络信息
-            if selected_network == 'original':
-                self.network_info_label.config(text="传统小波RCS网络 | 参数: ~1.7M")
-            elif selected_network == 'enhanced':
-                self.network_info_label.config(text="增强版小波RCS网络 | 参数: ~60M")
-            else:
-                self.network_info_label.config(text="")
+        """网络架构选择改变回调 (已迁移)"""
+        pass
 
     def test_logging(self):
-        """测试日志系统"""
-        print("=== 日志系统测试开始 ===")
-        print("这是print输出测试")
-        print("模拟数据处理中...")
-
-        import time
-        time.sleep(0.5)
-
-        print("处理完成")
-        print("=== 日志系统测试结束 ===")
+        """测试日志系统 (已迁移)"""
+        pass
 
     def save_model(self):
-        """保存模型"""
-        if not self.model_trained or self.current_model is None:
-            messagebox.showwarning("警告", "没有可保存的模型")
-            return
+        """保存模型 (已迁移)"""
+        pass
 
-        filename = filedialog.asksaveasfilename(
-            title="保存模型",
-            defaultextension=".pth",
-            filetypes=[("PyTorch models", "*.pth"), ("All files", "*.*")]
-        )
-
-        if filename:
-            try:
-                # 创建完整的checkpoint，包含preprocessing_stats
-                # 注意：use_log_preprocessing是tkinter变量，需要.get()获取值
-                use_log_output = self.use_log_preprocessing.get() if hasattr(self, 'use_log_preprocessing') else False
-                checkpoint = {
-                    'model_state_dict': self.current_model.state_dict(),
-                    'preprocessing_stats': getattr(self, 'preprocessing_stats', None),
-                    'use_log_output': use_log_output,
-                    'epoch': getattr(self, 'current_epoch', 0),
-                    'val_loss': getattr(self, 'best_val_loss', 0.0)
-                }
-                torch.save(checkpoint, filename)
-
-                if hasattr(self, 'preprocessing_stats') and self.preprocessing_stats:
-                    self.log_message(f"模型已保存到: {filename} (包含preprocessing_stats)")
-                    messagebox.showinfo("成功", "模型保存成功 (包含预处理统计信息)")
-                else:
-                    self.log_message(f"模型已保存到: {filename} (警告: 无preprocessing_stats)")
-                    messagebox.showinfo("成功", "模型保存成功 (但缺少预处理统计信息)")
-            except Exception as e:
-                messagebox.showerror("错误", f"模型保存失败: {str(e)}")
-
-    # 小波预设配置方法
+    # 小波预设配置方法 (已迁移)
     def set_default_wavelets(self):
-        """设置默认混合小波配置"""
-        wavelets = ['db4', 'db4', 'bior2.2', 'bior2.2']
-        for i, var in enumerate(self.wavelet_vars):
-            var.set(wavelets[i])
-        self.log_message("已设置默认混合小波配置: ['db4', 'db4', 'bior2.2', 'bior2.2']")
+        """设置默认混合小波配置 (已迁移)"""
+        pass
 
     def set_db4_wavelets(self):
-        """设置全DB4小波配置"""
-        wavelets = ['db4', 'db4', 'db4', 'db4']
-        for i, var in enumerate(self.wavelet_vars):
-            var.set(wavelets[i])
-        self.log_message("已设置全DB4小波配置: ['db4', 'db4', 'db4', 'db4']")
+        """设置全DB4小波配置 (已迁移)"""
+        pass
 
     def set_bior_wavelets(self):
-        """设置全双正交小波配置"""
-        wavelets = ['bior2.2', 'bior2.2', 'bior2.4', 'bior2.6']
-        for i, var in enumerate(self.wavelet_vars):
-            var.set(wavelets[i])
-        self.log_message("已设置全双正交小波配置: ['bior2.2', 'bior2.2', 'bior2.4', 'bior2.6']")
+        """设置全双正交小波配置 (已迁移)"""
+        pass
 
     def set_progressive_wavelets(self):
-        """设置递增复杂度小波配置"""
-        wavelets = ['db2', 'db4', 'db8', 'db10']
-        for i, var in enumerate(self.wavelet_vars):
-            var.set(wavelets[i])
-        self.log_message("已设置递增复杂度小波配置: ['db2', 'db4', 'db8', 'db10']")
+        """设置递增复杂度小波配置 (已迁移)"""
+        pass
 
     def set_edge_wavelets(self):
-        """设置边缘检测优化小波配置"""
-        wavelets = ['haar', 'db2', 'db4', 'bior2.2']
-        for i, var in enumerate(self.wavelet_vars):
-            var.set(wavelets[i])
-        self.log_message("已设置边缘检测优化小波配置: ['haar', 'db2', 'db4', 'bior2.2']")
+        """设置边缘检测优化小波配置 (已迁移)"""
+        pass
 
     def get_current_wavelet_config(self):
-        """获取当前小波配置"""
-        return [var.get() for var in self.wavelet_vars]
+        """获取当前小波配置 (已迁移)"""
+        pass
 
     def on_preprocessing_change(self):
-        """预处理选项变化时的回调函数"""
-        enabled = self.use_log_preprocessing.get()
-
-        # 控制预处理参数的启用状态
-        state = tk.NORMAL if enabled else tk.DISABLED
-        self.log_epsilon_entry.configure(state=state)
-        self.normalize_checkbox.configure(state=state)
-
-        # 更新数据配置
-        self.update_data_config()
-
-        if enabled:
-            self.log_message("已启用对数预处理 - 推荐用于大动态范围RCS数据")
-        else:
-            self.log_message("已禁用对数预处理 - 使用原始线性RCS数据")
+        """预处理选项变化时的回调函数 (已迁移)"""
+        pass
 
     def update_data_config(self):
-        """更新数据配置以包含预处理选项"""
-        use_log = self.use_log_preprocessing.get()
-        epsilon = float(self.log_epsilon_var.get()) if self.log_epsilon_var.get() else 1e-10
-        normalize = self.normalize_after_log.get()
-
-        self.data_config = create_data_config(use_log_preprocessing=use_log)
-        self.data_config['preprocessing'].update({
-            'log_epsilon': epsilon,
-            'normalize_after_log': normalize
-        })
-
-        self.log_message(f"数据配置已更新: 对数预处理={use_log}, ε={epsilon}, 标准化={normalize}")
+        """更新数据配置以包含预处理选项 (已迁移)"""
+        pass
 
     def load_model(self):
-        """加载模型"""
-        filename = filedialog.askopenfilename(
-            title="加载模型",
-            filetypes=[("PyTorch models", "*.pth"), ("All files", "*.*")]
-        )
-
-        if filename:
-            try:
-                checkpoint = torch.load(filename, map_location='cpu')
-
-                # 兼容旧格式和新格式checkpoint
-                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-                    # 新格式：包含preprocessing_stats
+        """加载模型 (已迁移)"""
+        pass
                     self.model_params['wavelet_config'] = self.get_current_wavelet_config()
                     self.model_params['use_log_output'] = checkpoint.get('use_log_output', self.use_log_preprocessing.get())
                     self.current_model = create_model(**self.model_params)
