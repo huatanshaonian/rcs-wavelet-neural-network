@@ -69,3 +69,34 @@ self.notebook.add(self.data_tab, text="数据管理")
     *   `get_current_wavelet_config`
     *   `load_model`
 *   **依赖关系**: `TrainingTab` 接收主应用程序实例 (`app`) 作为参数，并通过 `app.training_config`, `app.training_manager` 等访问共享状态和管理器。
+
+#### 3. 可视化标签页 (Visualization Tab)
+*   **原位置**: `gui.py` 中的 `create_visualization_tab` 方法及相关辅助方法。
+*   **新位置**: `gui_managers/tabs/visualization_tab.py` 中的 `VisualizationTab` 类。
+*   **移动的方法**:
+    *   `create_visualization_tab` (重构为 `__init__`)
+    *   `generate_visualization`
+    *   `_plot_2d_heatmap`
+    *   `_plot_3d_surface`
+    *   `_plot_spherical`
+    *   `_plot_comparison`
+    *   `_plot_difference_analysis`
+    *   `_plot_correlation_analysis`
+    *   `_plot_training_history`
+    *   `_save_fold_plot`
+    *   `_display_fold_in_gui`
+    *   `_display_simple_training_history`
+    *   `_plot_global_statistics_comparison`
+    *   `_plot_autoencoder_visualization`
+    *   `_plot_ae_latent_space`
+    *   `_plot_ae_reconstruction_quality`
+    *   `_plot_ae_parameter_mapping`
+    *   `_plot_ae_training_progress_vis`
+    *   `_plot_autoencoder_prediction_visualization`
+    *   `_plot_ae_2d_heatmap`
+    *   `_plot_original_rcs_fallback`
+    *   `_plot_ae_comparison`
+    *   `_plot_attention_weights`
+    *   `_plot_wavelet_coefficients_comparison`
+    *   `save_current_visualization`
+*   **依赖关系**: `VisualizationTab` 接收主应用程序实例 (`app`) 作为参数，并通过 `app.visualization_manager`, `app.statistics_manager` 等访问共享状态和管理器。它还直接管理 Matplotlib `Figure` 和 `Canvas`。

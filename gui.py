@@ -69,6 +69,7 @@ from gui_managers.managers import StatisticsManager, VisualizationManager, Train
 # GUI标签页模块
 from gui_managers.tabs.data_management_tab import DataManagementTab
 from gui_managers.tabs.training_tab import TrainingTab
+from gui_managers.tabs.visualization_tab import VisualizationTab
 
 # 导入项目模块
 try:
@@ -1091,7 +1092,14 @@ class RCSWaveletGUI:
 
     def create_visualization_tab(self):
         """创建可视化标签页"""
+        
+        # 使用新重构的标签页类
+        # 代码已迁移至 gui_managers/tabs/visualization_tab.py
+        self.visualization_tab = VisualizationTab(self.visualization_frame, self)
+        self.visualization_tab.pack(fill=tk.BOTH, expand=True)
+        return
 
+        # 以下代码已废弃，稍后清理
         # 主框架
         main_frame = ttk.Frame(self.visualization_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -1816,30 +1824,6 @@ class RCSWaveletGUI:
     def load_model(self):
         """加载模型 (已迁移)"""
         pass
-                    self.model_params['wavelet_config'] = self.get_current_wavelet_config()
-                    self.model_params['use_log_output'] = checkpoint.get('use_log_output', self.use_log_preprocessing.get())
-                    self.current_model = create_model(**self.model_params)
-                    self.current_model.load_state_dict(checkpoint['model_state_dict'])
-                    self.preprocessing_stats = checkpoint.get('preprocessing_stats')
-                    self.log_message(f"模型已从 {filename} 加载 (新格式)")
-                    if self.preprocessing_stats:
-                        self.log_message(f"  预处理统计: mean={self.preprocessing_stats['mean']:.2f} dB, std={self.preprocessing_stats['std']:.2f} dB")
-                else:
-                    # 旧格式：只有state_dict
-                    self.model_params['wavelet_config'] = self.get_current_wavelet_config()
-                    self.model_params['use_log_output'] = self.use_log_preprocessing.get()
-                    self.current_model = create_model(**self.model_params)
-                    self.current_model.load_state_dict(checkpoint)
-                    self.preprocessing_stats = None
-                    self.log_message(f"模型已从 {filename} 加载 (旧格式)")
-                    self.log_message("  警告: 旧格式checkpoint无preprocessing_stats，预测可能不准确")
-
-                self.model_trained = True
-                self.log_message(f"注意: 使用当前界面的小波配置 {self.model_params['wavelet_config']}")
-                self.log_message("如果与保存时的小波配置不同，可能导致加载错误")
-                messagebox.showinfo("成功", "模型加载成功")
-            except Exception as e:
-                messagebox.showerror("错误", f"模型加载失败: {str(e)}")
 
     # ======= 评估功能 =======
 
@@ -2157,126 +2141,59 @@ class RCSWaveletGUI:
         self.pred_fig.tight_layout()
         self.pred_canvas.draw()
 
-    # ======= 可视化功能 =======
+    # ======= 可视化功能 (已迁移至 VisualizationTab) =======
 
     def generate_visualization(self):
-        """生成可视化图表（支持AutoEncoder和传统网络）"""
-        try:
-            chart_type = self.vis_type_var.get()
-
-            # 检查模型可用性
-            has_traditional_model = self.model_trained and self.current_model is not None
-            has_ae_model = hasattr(self, 'ae_system') and self.ae_system is not None
-
-            # 分类处理：需要model_id的图表 vs 全局统计图表 vs AutoEncoder特定图表
-            if chart_type in ["训练历史", "统计对比"]:
-                # 全局统计图表 - 不需要model_id
-                if chart_type == "训练历史":
-                    self._plot_training_history()
-                elif chart_type == "统计对比":
-                    self._plot_global_statistics_comparison()
-            elif chart_type in ["AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重"]:
-                # AutoEncoder特定图表
-                if not has_ae_model:
-                    messagebox.showwarning("警告", "AutoEncoder图表需要先训练或加载AutoEncoder模型")
-                    return
-                if chart_type == "AE注意力权重":
-                    self._plot_attention_weights()
-                else:
-                    self._plot_autoencoder_visualization(chart_type)
-            elif chart_type in ["2D热图", "3D表面图", "球坐标图"]:
-                # 这些图表始终显示原始RCS数据，不使用模型预测
-                model_id = self.vis_model_var.get()
-                if not model_id:
-                    messagebox.showwarning("警告", "请输入模型ID")
-                    return
-
-                freq = self.vis_freq_var.get()
-
-                if chart_type == "2D热图":
-                    self._plot_2d_heatmap(model_id, freq)
-                elif chart_type == "3D表面图":
-                    self._plot_3d_surface(model_id, freq)
-                elif chart_type == "球坐标图":
-                    self._plot_spherical(model_id, freq)
-            else:
-                # 对比图、差值分析、相关性分析 - 需要模型预测
-                if not has_traditional_model and not has_ae_model:
-                    messagebox.showwarning("警告", "请先训练或加载模型")
-                    return
-
-                model_id = self.vis_model_var.get()
-                if not model_id:
-                    messagebox.showwarning("警告", "请输入模型ID")
-                    return
-
-                freq = self.vis_freq_var.get()
-
-                if chart_type == "对比图":
-                    if has_ae_model:
-                        self._plot_ae_comparison()
-                    else:
-                        self._plot_comparison(model_id)
-                elif chart_type == "小波系数对比":
-                    if has_ae_model:
-                        self._plot_wavelet_coefficients_comparison()
-                    else:
-                        messagebox.showwarning("警告", "小波系数对比功能需要AutoEncoder模型")
-                elif chart_type == "差值分析":
-                    self._plot_difference_analysis(model_id)
-                elif chart_type == "相关性分析":
-                    self._plot_correlation_analysis(model_id)
-
-        except Exception as e:
-            messagebox.showerror("错误", f"图表生成失败: {str(e)}")
+        """生成可视化图表（支持AutoEncoder和传统网络）(已迁移)"""
+        pass
 
     def _plot_2d_heatmap(self, model_id, freq):
-        """绘制2D热图"""
-        return self.visualization_manager._plot_2d_heatmap(model_id, freq)
+        """绘制2D热图 (已迁移)"""
+        pass
 
     def _plot_3d_surface(self, model_id, freq):
-        """绘制3D表面图"""
-        return self.visualization_manager._plot_3d_surface(model_id, freq)
+        """绘制3D表面图 (已迁移)"""
+        pass
 
     def _plot_spherical(self, model_id, freq):
-        """绘制球坐标图"""
-        return self.visualization_manager._plot_spherical(model_id, freq)
+        """绘制球坐标图 (已迁移)"""
+        pass
 
     def _plot_comparison(self, model_id):
-        """绘制原始RCS vs 神经网络预测RCS对比图"""
-        return self.visualization_manager._plot_comparison(model_id)
+        """绘制原始RCS vs 神经网络预测RCS对比图 (已迁移)"""
+        pass
 
     def _plot_difference_analysis(self, model_id):
-        """绘制差值分析图（原始RCS - 预测RCS）"""
-        return self.visualization_manager._plot_difference_analysis(model_id)
+        """绘制差值分析图（原始RCS - 预测RCS） (已迁移)"""
+        pass
 
     def _plot_correlation_analysis(self, model_id):
-        """绘制相关性分析图"""
-        return self.visualization_manager._plot_correlation_analysis(model_id)
+        """绘制相关性分析图 (已迁移)"""
+        pass
 
     def _plot_training_history(self):
-        """绘制训练历史图（对交叉验证，分别保存每折到results文件夹，GUI显示最佳折）"""
-        return self.visualization_manager._plot_training_history()
+        """绘制训练历史图（对交叉验证，分别保存每折到results文件夹，GUI显示最佳折） (已迁移)"""
+        pass
 
     def _save_fold_plot(self, fold_data, fold_idx, results_dir):
-        """保存单个折的训练历史图表"""
-        return self.visualization_manager._save_fold_plot(fold_data, fold_idx, results_dir)
+        """保存单个折的训练历史图表 (已迁移)"""
+        pass
 
     def _display_fold_in_gui(self, fold_data, fold_idx):
-        """在GUI中显示指定折的训练历史"""
-        return self.visualization_manager._display_fold_in_gui(fold_data, fold_idx)
+        """在GUI中显示指定折的训练历史 (已迁移)"""
+        pass
 
     def _display_simple_training_history(self):
-        """显示简单训练模式的历史（非交叉验证）"""
-        return self.visualization_manager._display_simple_training_history()
+        """显示简单训练模式的历史（非交叉验证） (已迁移)"""
+        pass
 
     def _plot_global_statistics_comparison(self):
-        """改进的全局统计对比分析 - 委托给StatisticsManager处理"""
-        self.statistics_manager.plot_global_statistics_comparison()
+        """改进的全局统计对比分析 - 委托给StatisticsManager处理 (已迁移)"""
+        pass
 
     def _save_scatter_plots(self, all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir):
-        """保存散点图到文件 - 委托给StatisticsManager处理"""
-        self.statistics_manager._save_scatter_plots(all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir)
+        """保存散点图到文件 - 委托给StatisticsManager处理 (已迁移)"""
+        pass
 
     # ======= 辅助功能 =======
 
@@ -3634,167 +3551,52 @@ class RCSWaveletGUI:
         return self.training_manager._ae_log_training_progress(epoch, total_epochs, train_loss, val_loss, lr, stage_name)
 
     def _plot_autoencoder_visualization(self, chart_type):
-        """绘制AutoEncoder特定可视化图表"""
-        return self.visualization_manager._plot_autoencoder_visualization(chart_type)
+        """绘制AutoEncoder特定可视化图表 (已迁移)"""
+        pass
 
     def _plot_ae_latent_space(self):
-        """绘制AutoEncoder隐空间分析"""
-        return self.visualization_manager._plot_ae_latent_space()
+        """绘制AutoEncoder隐空间分析 (已迁移)"""
+        pass
 
     def _plot_ae_reconstruction_quality(self):
-        """绘制AutoEncoder重建质量分析 - 使用统一重建函数"""
-        return self.visualization_manager._plot_ae_reconstruction_quality()
+        """绘制AutoEncoder重建质量分析 - 使用统一重建函数 (已迁移)"""
+        pass
 
     def _plot_ae_parameter_mapping(self):
-        """绘制AutoEncoder参数映射分析"""
-        return self.visualization_manager._plot_ae_parameter_mapping()
+        """绘制AutoEncoder参数映射分析 (已迁移)"""
+        pass
 
     def _plot_ae_training_progress_vis(self):
-        """绘制AutoEncoder训练进度可视化"""
-        return self.visualization_manager._plot_ae_training_progress_vis()
+        """绘制AutoEncoder训练进度可视化 (已迁移)"""
+        pass
 
     def _plot_autoencoder_prediction_visualization(self, chart_type, freq):
-        """使用AutoEncoder进行预测可视化"""
-        return self.visualization_manager._plot_autoencoder_prediction_visualization(chart_type, freq)
+        """使用AutoEncoder进行预测可视化 (已迁移)"""
+        pass
 
     def _plot_ae_2d_heatmap(self, freq):
-        """绘制AutoEncoder预测的2D热图 - 支持模型未加载时显示原始数据"""
-        return self.visualization_manager._plot_ae_2d_heatmap(freq)
+        """绘制AutoEncoder预测的2D热图 - 支持模型未加载时显示原始数据 (已迁移)"""
+        pass
 
     def _plot_original_rcs_fallback(self, freq):
-        """当AutoEncoder模型未加载时，显示原始RCS数据作为替代"""
-        return self.visualization_manager._plot_original_rcs_fallback(freq)
+        """当AutoEncoder模型未加载时，显示原始RCS数据作为替代 (已迁移)"""
+        pass
 
     def _plot_ae_comparison(self):
-        """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数"""
-        return self.visualization_manager._plot_ae_comparison()
+        """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数 (已迁移)"""
+        pass
 
     def _plot_attention_weights(self):
-        """绘制通道注意力权重历史折线图"""
-        try:
-            import numpy as np
-            import matplotlib.pyplot as plt
-
-            # 检查是否有训练历史
-            if not hasattr(self, 'ae_training_history') or self.ae_training_history is None:
-                messagebox.showwarning("警告", "没有训练历史数据\n\n请先训练模型")
-                return
-
-            # 获取注意力权重历史
-            stage_histories = self.ae_training_history.get('stage_histories', {})
-            stage1_history = stage_histories.get('stage1', {})
-            attention_history = stage1_history.get('attention_history', None)
-
-            if attention_history is None or not attention_history.get('epochs'):
-                messagebox.showwarning("警告", "没有注意力权重历史记录\n\n可能原因：\n1. 未启用通道注意力\n2. 训练epoch数不足（需要≥100）")
-                return
-
-            epochs = attention_history['epochs']
-            weights_list = attention_history['weights']
-            channel_names = attention_history['channel_names']
-
-            if not epochs or not weights_list or channel_names is None:
-                messagebox.showwarning("警告", "注意力权重数据不完整")
-                return
-
-            self.log_message(f"📈 绘制注意力权重历史折线图 ({len(epochs)} 个记录点)...")
-
-            # 清除之前的图表
-            self.vis_fig.clear()
-
-            # 转换为numpy数组便于处理
-            weights_array = np.array(weights_list)  # [n_records, n_channels]
-            mode = self.ae_system.get('mode', 'wavelet')
-
-            # 创建子图
-            if mode == 'wavelet':
-                # Wavelet模式：LL和高频分开绘制
-                ax1 = self.vis_fig.add_subplot(2, 1, 1)
-                ax2 = self.vis_fig.add_subplot(2, 1, 2)
-
-                # === 子图1: LL通道 ===
-                ll_indices = [i for i, name in enumerate(channel_names) if name.startswith('LL')]
-                for idx in ll_indices:
-                    ax1.plot(epochs, weights_array[:, idx], marker='o', linewidth=2,
-                            label=channel_names[idx], alpha=0.8)
-
-                ax1.set_xlabel('Epoch', fontsize=11, fontweight='bold')
-                ax1.set_ylabel('注意力权重', fontsize=11, fontweight='bold')
-                ax1.set_title('LL通道权重演化', fontsize=13, fontweight='bold')
-                ax1.legend(loc='best', fontsize=9)
-                ax1.grid(True, alpha=0.3, linestyle='--')
-                ax1.set_ylim(0, 1.0)
-
-                # === 子图2: 高频通道 ===
-                hf_indices = [i for i, name in enumerate(channel_names) if not name.startswith('LL')]
-                for idx in hf_indices:
-                    ax2.plot(epochs, weights_array[:, idx], marker='s', linewidth=2,
-                            label=channel_names[idx], alpha=0.8, markersize=4)
-
-                ax2.set_xlabel('Epoch', fontsize=11, fontweight='bold')
-                ax2.set_ylabel('注意力权重', fontsize=11, fontweight='bold')
-                ax2.set_title('高频通道权重演化 (LH/HL/HH)', fontsize=13, fontweight='bold')
-                ax2.legend(loc='best', fontsize=9, ncol=2)
-                ax2.grid(True, alpha=0.3, linestyle='--')
-                ax2.set_ylim(0, 1.0)
-
-            else:
-                # Direct模式：所有通道在一张图
-                ax = self.vis_fig.add_subplot(1, 1, 1)
-
-                for i, name in enumerate(channel_names):
-                    ax.plot(epochs, weights_array[:, i], marker='o', linewidth=2.5,
-                           label=name, alpha=0.8)
-
-                ax.set_xlabel('Epoch', fontsize=12, fontweight='bold')
-                ax.set_ylabel('注意力权重', fontsize=12, fontweight='bold')
-                ax.set_title('通道注意力权重演化', fontsize=14, fontweight='bold')
-                ax.legend(loc='best', fontsize=10)
-                ax.grid(True, alpha=0.3, linestyle='--')
-                ax.set_ylim(0, 1.0)
-
-            self.vis_fig.tight_layout()
-            self.vis_canvas.draw()
-
-            # 打印统计信息
-            self.log_message("\n" + "="*60)
-            self.log_message("📊 注意力权重演化统计")
-            self.log_message("="*60)
-            self.log_message(f"记录点数: {len(epochs)}")
-            self.log_message(f"Epoch范围: {epochs[0]} - {epochs[-1]}")
-
-            # 显示初始和最终权重对比
-            self.log_message(f"\n初始权重 (Epoch {epochs[0]}):")
-            for name, w in zip(channel_names, weights_list[0]):
-                self.log_message(f"  {name:12s}: {w:.4f}")
-
-            self.log_message(f"\n最终权重 (Epoch {epochs[-1]}):")
-            for name, w in zip(channel_names, weights_list[-1]):
-                self.log_message(f"  {name:12s}: {w:.4f}")
-
-            # 计算权重变化
-            self.log_message(f"\n权重变化量:")
-            for i, name in enumerate(channel_names):
-                change = weights_list[-1][i] - weights_list[0][i]
-                self.log_message(f"  {name:12s}: {change:+.4f}")
-
-            self.log_message("="*60 + "\n")
-            self.log_message("✅ 注意力权重历史可视化完成！")
-
-        except Exception as e:
-            error_msg = f"可视化失败: {str(e)}"
-            self.log_message(f"❌ {error_msg}")
-            import traceback
-            traceback.print_exc()
-            messagebox.showerror("错误", error_msg)
+        """绘制通道注意力权重历史折线图 (已迁移)"""
+        pass
 
     def _plot_wavelet_coefficients_comparison(self):
-        """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH）"""
-        return self.visualization_manager._plot_wavelet_coefficients_comparison()
+        """绘制小波系数对比图：原始vs重建的4个通道（LL, LH, HL, HH） (已迁移)"""
+        pass
 
     def save_current_visualization(self):
-        """保存当前显示的可视化图表到results文件夹"""
-        return self.visualization_manager.save_current_visualization()
+        """保存当前显示的可视化图表到results文件夹 (已迁移)"""
+        pass
 
 def main():
     """主函数"""
