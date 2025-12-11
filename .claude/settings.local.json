@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git checkout:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: 更新README添加v0.4.0版本更新日志\n\n更新内容：\n- 添加v0.4.0 (2025-01-18)版本更新日志\n- 记录自v0.3.0以来的所有重大更新\n\n重大功能：\n1. 继续训练功能 - 支持数据集扩充后继续训练\n2. GUI配置自动恢复 - 加载模型时自动恢复所有配置\n3. Dual-Branch V2架构 - 修复V1缺陷，实现对称双分支\n\n新功能：\n- 设计参数标准化\n- 隐空间统计信息\n- 梯度监控集成\n- RCS分布对比\n- ReconstructionMetrics评估指标\n\n重要修复：\n- 训练未保存最佳模型\n- decoder逆变换缺失\n- 数据处理顺序错误\n- 旧模型兼容性问题\n\n用户体验改进：\n- 训练模式简化\n- GUI错误处理\n- 状态栏增强\n- 关闭确认对话框\n\n文档更新：\n- 新增多个技术文档\n- 更新CLAUDE.md和PARAMETERS_REFERENCE.md\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat(training): 添加多阶段学习率调度器\n\n目的：\n- 支持在训练过程中分阶段调整学习率和早停patience\n- 实现更精细的训练控制，提高模型性能\n- 前期高学习率快速收敛，后期低学习率精细微调\n\n新增功能：\n1. MultiStageLRScheduler类\n   - 支持多阶段学习率调度（每阶段独立的lr和patience）\n   - 自动阶段切换和学习率更新\n   - 获取当前阶段信息和patience\n\n2. AdaptiveMultiStageLRScheduler类\n   - 在MultiStageLRScheduler基础上增加自适应功能\n   - 验证损失不再下降时提前切换阶段\n   - 动态调整patience（阶段初期小patience，后期大patience）\n\n3. create_multi_stage_scheduler便捷函数\n   - 自动分配epochs和学习率\n   - 支持自定义阶段数和衰减因子\n\n集成修改：\n1. training_manager.py\n   - _create_ae_optimizer_and_scheduler: 支持multi_stage和adaptive_multi_stage\n   - _ae_step_scheduler: 适配多阶段调度器的step逻辑\n   - Stage 1/2/3训练: 支持动态获取当前阶段patience\n\n2. GUI界面\n   - gui_autoencoder_extension.py: 添加multi_stage选项到调度策略下拉框\n   - gui_autoencoder_extension.py: 添加阶段数和LR衰减因子配置项\n   - gui.py: 添加ae_num_lr_stages和ae_lr_decay_factor变量\n\n使用示例：\n- multi_stage: 固定阶段切换（按epoch数）\n- adaptive_multi_stage: 自适应阶段切换（验证损失无改善时提前切换）\n- 默认配置: 3阶段, lr衰减因子0.1\n\n技术细节：\n- 每阶段可配置独立的学习率、epoch数、patience\n- 阶段切换时自动回退到最佳模型（已有机制）\n- 支持verbose模式打印阶段切换信息\n- 完全兼容现有的constant/cosine/adaptive调度器\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

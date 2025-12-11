@@ -62,7 +62,7 @@
 - ✅ V2: ll_latent_dim和hf_latent_dim真正生效（V1硬编码为128）
 - ✅ V2: ll_ratio参数实际控制latent空间分配（V1无作用）
 - ✅ V2: _combine_channels()保证通道顺序正确（V1缺失）
-- 详见: `DUAL_BRANCH_V1_VS_V2_COMPARISON.md`
+- 详见: `docs/DUAL_BRANCH_V1_VS_V2_COMPARISON.md`
 
 **使用示例**:
 ```python
@@ -611,7 +611,7 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
      - ✅ 移除无用fusion层，直接concat
    - **新增文件**:
      - `autoencoder/models/dual_branch_differentiable_autoencoder_v2.py`
-     - `DUAL_BRANCH_V1_VS_V2_COMPARISON.md`: 详细对比文档
+     - `docs/DUAL_BRANCH_V1_VS_V2_COMPARISON.md`: 详细对比文档
    - **影响文件**:
      - `autoencoder/models/__init__.py`: 导出V2模型
      - `autoencoder/utils/frequency_config.py`: 支持创建V2
@@ -629,10 +629,10 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
    - **推荐**: 新项目使用V2，V1仅保留向后兼容
    - **Commits**: ce57f9c
    - **相关文档**:
-     - `DUAL_BRANCH_MLP_ANALYSIS.md`: V1问题分析
-     - `CONCAT_IMPLEMENTATION_ISSUE.md`: 通道顺序问题
-     - `DUAL_BRANCH_CORRECT_IMPLEMENTATION_PLAN.md`: V2实现方案
-     - `WAVELET_CHANNEL_ORDER_EXPLAINED.md`: 通道顺序说明
+     - `docs/DUAL_BRANCH_MLP_ANALYSIS.md`: V1问题分析
+     - `docs/CONCAT_IMPLEMENTATION_ISSUE.md`: 通道顺序问题
+     - `docs/DUAL_BRANCH_CORRECT_IMPLEMENTATION_PLAN.md`: V2实现方案
+     - `docs/WAVELET_CHANNEL_ORDER_EXPLAINED.md`: 通道顺序说明
 
 ### 2025-01-06
 

@@ -778,7 +778,7 @@ class BatchExperimentExtension:
         """
         # ===== 使用统一的重建和评估接口 =====
         from autoencoder.utils.reconstruction import reconstruct_from_params, get_device_from_model
-        from autoencoder.utils.evaluation import compute_reconstruction_metrics
+        from autoencoder.utils.ae_evaluation import compute_reconstruction_metrics
 
         # 提取评估样本
         eval_rcs = rcs_data[indices]

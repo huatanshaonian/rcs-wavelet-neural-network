@@ -637,7 +637,7 @@ batch_experiments/activation_comparison_20250107_143000/
 - ✅ **关闭确认**: 添加关闭程序时的确认对话框，防止误操作
 
 **📚 文档更新**
-- ✅ 新增`DUAL_BRANCH_V1_VS_V2_COMPARISON.md` - V1和V2架构详细对比
+- ✅ 新增`docs/DUAL_BRANCH_V1_VS_V2_COMPARISON.md` - V1和V2架构详细对比
 - ✅ 更新`CLAUDE.md` - 添加decoder逆变换规范和继续训练说明
 - ✅ 更新`PARAMETERS_REFERENCE.md` - 所有参数命名规范
 - ✅ 新增`DESIGN_ANALYSIS.md` - 架构设计问题分析
