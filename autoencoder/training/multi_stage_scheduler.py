@@ -31,15 +31,15 @@ class PatienceDrivenMultiStageLRScheduler:
         optimizer: PyTorch优化器
         lr_stages: 学习率序列，例如[1e-3, 1e-4, 1e-5]
         initial_patience: 初始patience（第一阶段）
-        patience_multiplier: 每次切换阶段时patience的倍增因子（默认2.0，即翻倍）
+        patience_multiplier: [保留向后兼容，已废弃] patience现在固定为线性增长
         verbose: 是否打印阶段切换信息
 
     工作流程:
-        1. 开始：lr=1e-3, patience=30
+        1. 开始：lr=1e-3, patience=30 (initial_patience * 1)
         2. 训练直到patience耗尽（验证损失30轮无改善）
-        3. 切换：lr=1e-4, patience=60, 回退到最佳模型
+        3. 切换：lr=1e-4, patience=60 (initial_patience * 2), 回退到最佳模型
         4. 继续训练直到patience耗尽
-        5. 切换：lr=1e-5, patience=120, 回退到最佳模型
+        5. 切换：lr=1e-5, patience=90 (initial_patience * 3), 回退到最佳模型
         6. 最后阶段patience耗尽 → 真正早停
 
     示例:
@@ -106,7 +106,7 @@ class PatienceDrivenMultiStageLRScheduler:
             print(f"{'='*60}")
             print(f"学习率序列: {self.lr_stages}")
             print(f"初始patience: {self.initial_patience}")
-            print(f"Patience倍增因子: {self.patience_multiplier}")
+            print(f"Patience增长方式: 线性 (每阶段 = initial_patience × stage_number)")
             print(f"总阶段数: {len(self.lr_stages)}")
             print(f"")
             for i, lr in enumerate(self.lr_stages):
@@ -115,8 +115,16 @@ class PatienceDrivenMultiStageLRScheduler:
             print(f"{'='*60}\n")
 
     def _calculate_patience(self, stage_idx: int) -> int:
-        """计算指定阶段的patience"""
-        return int(self.initial_patience * (self.patience_multiplier ** stage_idx))
+        """
+        计算指定阶段的patience（线性增长）
+
+        patience = initial_patience * (stage_idx + 1)
+        例如：initial_patience=30
+        - Stage 1 (idx=0): 30 * 1 = 30
+        - Stage 2 (idx=1): 30 * 2 = 60
+        - Stage 3 (idx=2): 30 * 3 = 90
+        """
+        return int(self.initial_patience * (stage_idx + 1))
 
     def get_current_patience(self) -> int:
         """获取当前阶段的patience"""
@@ -168,7 +176,8 @@ class PatienceDrivenMultiStageLRScheduler:
             print(f"🔄 切换到 Stage {self.current_stage + 1}/{len(self.lr_stages)}")
             print(f"{'='*60}")
             print(f"学习率: {old_lr:.2e} → {new_lr:.2e} (降低{old_lr/new_lr:.1f}x)")
-            print(f"Patience: {old_patience} → {new_patience} (增加{self.patience_multiplier}x)")
+            patience_increase = new_patience - old_patience
+            print(f"Patience: {old_patience} → {new_patience} (+{patience_increase})")
             print(f"💡 提示：请回退到最佳模型并重置patience计数器")
             print(f"{'='*60}\n")
 
@@ -216,14 +225,14 @@ def create_patience_driven_scheduler(
         num_stages: 阶段数量（默认3）
         lr_decay_factor: 学习率衰减因子（默认0.1，即每阶段降低10倍）
         initial_patience: 初始patience（默认30）
-        patience_multiplier: patience倍增因子（默认2.0，即翻倍）
+        patience_multiplier: [保留向后兼容，已废弃] patience固定线性增长
         verbose: 是否打印详细信息
 
     Returns:
         PatienceDrivenMultiStageLRScheduler实例
 
     示例:
-        >>> # 创建3阶段调度器：1e-3 → 1e-4 → 1e-5, patience: 30 → 60 → 120
+        >>> # 创建3阶段调度器：1e-3 → 1e-4 → 1e-5, patience: 30 → 60 → 90
         >>> scheduler = create_patience_driven_scheduler(
         ...     optimizer,
         ...     initial_lr=1e-3,
