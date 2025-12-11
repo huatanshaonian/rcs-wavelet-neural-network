@@ -101,11 +101,11 @@ class EvaluationTab(ttk.Frame):
 
     def _evaluate_traditional_model(self):
         """评估传统网络模型"""
-        return self.app.evaluation_manager._evaluate_traditional_model()
+        return self.app.evaluation_manager._evaluate_traditional_model(tree=self.eval_tree)
 
     def _evaluate_autoencoder_model(self):
         """评估AutoEncoder模型 - 使用统一重建函数"""
-        return self.app.evaluation_manager._evaluate_autoencoder_model()
+        return self.app.evaluation_manager._evaluate_autoencoder_model(tree=self.eval_tree)
 
     def save_detailed_evaluation_report(self):
         """保存详细评估报告（AutoEncoder专用）"""

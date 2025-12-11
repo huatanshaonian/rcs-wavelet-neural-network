@@ -20,7 +20,7 @@ class EvaluationManager:
         """
         self.gui = parent_gui
 
-    def _evaluate_traditional_model(self):
+    def _evaluate_traditional_model(self, tree=None):
         """评估传统网络模型"""
         # 准备预处理统计信息（使用训练时保存的stats）
         use_log = self.gui.use_log_preprocessing.get()
@@ -79,9 +79,9 @@ class EvaluationManager:
         self.gui.evaluation_results = evaluator.evaluate_dataset(test_dataset)
 
         # 更新评估结果显示
-        self.gui._update_evaluation_display()
+        self._update_evaluation_display(tree=tree)
 
-    def _evaluate_autoencoder_model(self):
+    def _evaluate_autoencoder_model(self, tree=None):
         """评估AutoEncoder模型 - 使用统一重建函数"""
         import torch
         import numpy as np
@@ -219,24 +219,29 @@ class EvaluationManager:
             self.gui.log_message(f"  R²: {all_metrics.get('r2_score', 0):.4f}")
 
             # 更新评估结果显示
-            self.gui._update_evaluation_display()
+            self._update_evaluation_display(tree=tree)
 
         except Exception as e:
             self.gui.log_message(f"❌ AutoEncoder评估失败: {e}")
             raise e
-    def _update_evaluation_display(self):
+    def _update_evaluation_display(self, tree=None):
         """更新评估结果显示（支持AutoEncoder和传统网络）"""
+        target_tree = tree if tree is not None else getattr(self.gui, 'eval_tree', None)
+        if target_tree is None:
+            self.gui.log_message("错误: 无法获取评估结果树形组件")
+            return
+
         # 清空现有内容
-        for item in self.gui.eval_tree.get_children():
-            self.gui.eval_tree.delete(item)
+        for item in target_tree.get_children():
+            target_tree.delete(item)
 
         results = self.gui.evaluation_results
 
         # 根据模型类型显示不同的结果
         if results.get('model_type') == 'autoencoder':
-            self.gui._display_autoencoder_results(results)
+            self._display_autoencoder_results(results, tree=target_tree)
         else:
-            self.gui._display_traditional_results(results)
+            self._display_traditional_results(results, tree=target_tree)
     def _display_autoencoder_results(self, results):
         """显示AutoEncoder评估结果"""
         # 添加基本信息
@@ -337,27 +342,32 @@ class EvaluationManager:
                 messagebox.showerror("错误", f"保存报告失败: {str(e)}")
                 self.gui.log_message(f"❌ 报告保存失败: {e}")
 
-    def _display_traditional_results(self, results):
+    def _display_traditional_results(self, results, tree=None):
         """显示传统网络评估结果"""
+        target_tree = tree if tree is not None else getattr(self.gui, 'eval_tree', None)
+        if target_tree is None:
+            self.gui.log_message("错误: 无法获取评估结果树形组件")
+            return
+
         # 添加回归指标
-        reg_node = self.gui.eval_tree.insert("", "end", text="回归指标")
+        reg_node = target_tree.insert("", "end", text="回归指标")
         metrics = results['regression_metrics']
-        self.gui.eval_tree.insert(reg_node, "end", values=("RMSE", "", "", f"{metrics['rmse']:.4f}"))
-        self.gui.eval_tree.insert(reg_node, "end", values=("R²", "", "", f"{metrics['r2']:.4f}"))
-        self.gui.eval_tree.insert(reg_node, "end", values=("相关系数", "", "", f"{metrics['correlation']:.4f}"))
+        target_tree.insert(reg_node, "end", values=("RMSE", "", "", f"{metrics['rmse']:.4f}"))
+        target_tree.insert(reg_node, "end", values=("R²", "", "", f"{metrics['r2']:.4f}"))
+        target_tree.insert(reg_node, "end", values=("相关系数", "", "", f"{metrics['correlation']:.4f}"))
 
         # 添加频率指标
-        freq_node = self.gui.eval_tree.insert("", "end", text="频率指标")
+        freq_node = target_tree.insert("", "end", text="频率指标")
         freq_metrics = results['frequency_metrics']
         for metric in ['rmse', 'correlation', 'r2']:
-            self.gui.eval_tree.insert(freq_node, "end",
+            target_tree.insert(freq_node, "end",
                                 values=(metric.upper(),
                                        f"{freq_metrics['1.5GHz'][metric]:.4f}",
                                        f"{freq_metrics['3GHz'][metric]:.4f}", ""))
 
         # 添加物理一致性
-        phys_node = self.gui.eval_tree.insert("", "end", text="物理一致性")
+        phys_node = target_tree.insert("", "end", text="物理一致性")
         phys_metrics = results['physics_consistency']
-        self.gui.eval_tree.insert(phys_node, "end",
+        target_tree.insert(phys_node, "end",
                             values=("对称性得分", "", "", f"{phys_metrics['symmetry_score']:.4f}"))
 
