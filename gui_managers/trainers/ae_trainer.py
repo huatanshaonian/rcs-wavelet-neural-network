@@ -196,6 +196,8 @@ class AETrainer:
             parameter_mapper = self.gui.ae_system.get('parameter_mapper')
             wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)  # 直接模式时为None
             mode = self.gui.ae_system.get('mode', 'wavelet')
+            # 获取Loss归一化系数（如果存在）
+            loss_normalization_factor = self.gui.ae_system.get('loss_normalization_factor', 1.0)
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -323,7 +325,7 @@ class AETrainer:
                     optimizer.step()
 
                     batch_size = batch_coeffs.size(0)
-                    train_loss += loss.item() * batch_size
+                    train_loss += loss.item() * loss_normalization_factor * batch_size
                     train_samples += batch_size
 
                 avg_train_loss = train_loss / train_samples
@@ -340,7 +342,7 @@ class AETrainer:
                         loss = criterion(reconstructed, batch_coeffs)
 
                         batch_size = batch_coeffs.size(0)
-                        val_loss += loss.item() * batch_size
+                        val_loss += loss.item() * loss_normalization_factor * batch_size
                         val_samples += batch_size
 
                 avg_val_loss = val_loss / val_samples
@@ -453,6 +455,8 @@ class AETrainer:
             autoencoder = self.gui.ae_system['autoencoder']
             parameter_mapper = self.gui.ae_system['parameter_mapper']
             wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)
+            # 获取Loss归一化系数（如果存在）
+            loss_normalization_factor = self.gui.ae_system.get('loss_normalization_factor', 1.0)
 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             autoencoder.to(device)
@@ -526,7 +530,7 @@ class AETrainer:
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    train_loss += loss.item() * batch_params.size(0)
+                    train_loss += loss.item() * loss_normalization_factor * batch_params.size(0)
                     train_samples += batch_params.size(0)
                 avg_train_loss = train_loss / train_samples
 
@@ -539,7 +543,7 @@ class AETrainer:
                         batch_latents = batch_latents.to(device)
                         predicted_latents = parameter_mapper(batch_params)
                         loss = criterion(predicted_latents, batch_latents)
-                        val_loss += loss.item() * batch_params.size(0)
+                        val_loss += loss.item() * loss_normalization_factor * batch_params.size(0)
                         val_samples += batch_params.size(0)
                 avg_val_loss = val_loss / val_samples
 
@@ -598,6 +602,8 @@ class AETrainer:
             parameter_mapper = self.gui.ae_system['parameter_mapper']
             wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)
             mode = self.gui.ae_system.get('mode', 'wavelet')
+            # 获取Loss归一化系数（如果存在）
+            loss_normalization_factor = self.gui.ae_system.get('loss_normalization_factor', 1.0)
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             autoencoder.to(device)
             parameter_mapper.to(device)
@@ -654,11 +660,11 @@ class AETrainer:
                     pred_latents = parameter_mapper(batch_params)
                     recon = autoencoder.decode(pred_latents)
                     loss = criterion(recon, batch_target)
-                    
+
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    train_loss += loss.item() * batch_params.size(0)
+                    train_loss += loss.item() * loss_normalization_factor * batch_params.size(0)
                     train_samples += batch_params.size(0)
                 avg_train_loss = train_loss / train_samples
 
@@ -673,7 +679,7 @@ class AETrainer:
                         pred_latents = parameter_mapper(batch_params)
                         recon = autoencoder.decode(pred_latents)
                         loss = criterion(recon, batch_target)
-                        val_loss += loss.item() * batch_params.size(0)
+                        val_loss += loss.item() * loss_normalization_factor * batch_params.size(0)
                         val_samples += batch_params.size(0)
                 avg_val_loss = val_loss / val_samples
                 

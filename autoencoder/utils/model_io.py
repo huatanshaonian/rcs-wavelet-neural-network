@@ -92,6 +92,11 @@ def create_model_state_dict(
     if training_history:
         model_state['training_history'] = training_history
 
+    # 保存Loss归一化系数（如果存在）
+    loss_normalization_factor = ae_system.get('loss_normalization_factor', None)
+    if loss_normalization_factor is not None:
+        model_state['loss_normalization_factor'] = float(loss_normalization_factor)
+
     return model_state
 
 
@@ -193,7 +198,8 @@ def save_model_config_json(
         },
         'training_info': {
             'training_mode': model_state.get('training_mode', 'N/A'),
-            'training_history': model_state.get('training_history', {})
+            'training_history': model_state.get('training_history', {}),
+            'loss_normalization_factor': model_state.get('loss_normalization_factor', 'N/A')
         },
         'save_info': {
             'save_time': datetime.now().isoformat(),

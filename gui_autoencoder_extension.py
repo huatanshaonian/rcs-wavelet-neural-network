@@ -392,8 +392,8 @@ class AutoEncoderExtension:
 
         # 创建单个系统（当前选择的模式）
         ttk.Button(ops_frame, text="创建当前模式系统", command=self.create_current_system).pack(fill=tk.X, pady=(0, 3))
-        # 创建双系统用于对比分析
-        ttk.Button(ops_frame, text="创建双系统 (对比)", command=self.create_dual_systems).pack(fill=tk.X, pady=(0, 3))
+        # 初始化Loss归一化
+        ttk.Button(ops_frame, text="初始化Loss归一化", command=self.initialize_loss_normalization).pack(fill=tk.X, pady=(0, 3))
         # 运行性能对比分析
         ttk.Button(ops_frame, text="运行性能对比", command=self.run_performance_comparison).pack(fill=tk.X, pady=(0, 3))
 
@@ -750,73 +750,108 @@ class AutoEncoderExtension:
             self.main_gui.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
-    def create_dual_systems(self):
-        """创建双系统用于对比分析"""
+    def initialize_loss_normalization(self):
+        """初始化Loss归一化系数（使第一个epoch的loss归一化为1.0）"""
         try:
             if not self.main_gui.data_loaded:
                 messagebox.showwarning("警告", "请先加载数据！")
                 return
 
-            self.main_gui.ae_log("🔄 开始创建双系统...")
+            if self.main_gui.ae_system is None:
+                messagebox.showwarning("警告", "请先创建AutoEncoder系统！")
+                return
 
-            # 导入所需模块
-            import sys
-            sys.path.append('autoencoder')
-            from autoencoder.utils.frequency_config import create_autoencoder_system
+            self.main_gui.ae_log("🔧 开始初始化Loss归一化...")
 
-            # 获取配置参数 (确保类型正确)
-            freq_config = self.main_gui.ae_freq_config.get()
-            latent_dim = int(self.main_gui.ae_latent_dim.get())
-            dropout_rate = float(self.main_gui.ae_dropout_rate.get())
-            wavelet_type = self.main_gui.ae_wavelet_type.get()
-            architecture_type = self.main_gui.ae_architecture_type.get().lower()
-            normalization_method = self.main_gui.ae_normalization_method.get()  # 从GUI读取标准化方法
+            import torch
+            from torch.utils.data import DataLoader, TensorDataset
 
-            # 创建小波增强系统（不使用dB变换）
-            self.main_gui.ae_log("🌊 创建小波增强系统...")
-            self.wavelet_system = create_autoencoder_system(
-                config_name=freq_config,
-                latent_dim=latent_dim,
-                dropout_rate=dropout_rate,
-                wavelet=wavelet_type,
-                normalize=(normalization_method != 'none'),
-                mode='wavelet',
-                architecture=architecture_type,
-                db_transform=False,  # 小波模式通常不使用dB变换
-                normalization_method=normalization_method
-            )
+            # 获取系统组件
+            ae_system = self.main_gui.ae_system
+            autoencoder = ae_system['autoencoder']
+            data_adapter = ae_system.get('data_adapter', None)
+            mode = ae_system.get('mode', 'wavelet')
 
-            # 创建直接系统（使用dB变换以对比）
-            self.main_gui.ae_log("🔄 创建直接系统...")
-            self.direct_system = create_autoencoder_system(
-                config_name=freq_config,
-                latent_dim=latent_dim,
-                dropout_rate=dropout_rate,
-                wavelet=wavelet_type,
-                normalize=(normalization_method != 'none'),
-                mode='direct',
-                architecture=architecture_type,
-                db_transform=True,  # Direct模式建议使用dB变换
-                normalization_method=normalization_method
-            )
+            # 获取训练配置
+            training_config = self.main_gui.training_config
+            batch_size = training_config.get('batch_size', 32)
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-            # 添加数据到两个系统
-            for system in [self.wavelet_system, self.direct_system]:
-                system['rcs_data'] = self.main_gui.rcs_data
-                system['param_data'] = self.main_gui.param_data
+            # 准备数据（使用与训练相同的预处理）
+            rcs_data = self.main_gui.rcs_data
 
-            self.main_gui.ae_log("✅ 双系统创建成功!")
+            if mode == 'wavelet':
+                # 小波模式：原始RCS → 小波变换 → 标准化
+                wavelet_transform = ae_system['wavelet_transform']
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
+                if data_adapter:
+                    input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                else:
+                    input_data = wavelet_coeffs
+            else:
+                # Direct模式：原始RCS → 标准化
+                if data_adapter:
+                    input_data = data_adapter.adapt_rcs_data(rcs_data)
+                else:
+                    input_data = rcs_data
 
-            # 输出两个系统的模型结构信息
-            self._log_model_structure(self.wavelet_system['autoencoder'], "Wavelet")
-            self._log_model_structure(self.direct_system['autoencoder'], "Direct")
+            # 创建DataLoader
+            input_tensor = torch.FloatTensor(input_data)
+            dataset = TensorDataset(input_tensor, input_tensor)
+            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
-            self._update_status_display()
+            # 创建损失函数（使用Stage 1的配置）
+            criterion = self.main_gui._create_stage_loss_function(training_config, stage='stage1')
 
-            messagebox.showinfo("成功", "双系统创建成功！现在可以进行性能对比分析。")
+            # 将模型移到设备
+            autoencoder.to(device)
+            autoencoder.eval()
+
+            # 计算第一个epoch的平均loss
+            total_loss = 0.0
+            total_samples = 0
+
+            self.main_gui.ae_log("🔄 计算初始loss...")
+
+            with torch.no_grad():
+                for batch_data, batch_target in dataloader:
+                    batch_data = batch_data.to(device)
+                    batch_target = batch_target.to(device)
+
+                    # 前向传播
+                    recon, latent = autoencoder(batch_data)
+
+                    # 计算loss
+                    loss = criterion(recon, batch_target)
+
+                    # sample-weighted累加
+                    batch_size_actual = batch_data.size(0)
+                    total_loss += loss.item() * batch_size_actual
+                    total_samples += batch_size_actual
+
+            # 计算平均loss
+            initial_loss = total_loss / total_samples
+
+            # 计算归一化系数（使loss归一化为1.0）
+            loss_normalization_factor = 1.0 / initial_loss
+
+            # 保存到ae_system
+            ae_system['loss_normalization_factor'] = loss_normalization_factor
+
+            self.main_gui.ae_log(f"✅ Loss归一化初始化完成！")
+            self.main_gui.ae_log(f"  初始Loss: {initial_loss:.6f}")
+            self.main_gui.ae_log(f"  归一化系数: {loss_normalization_factor:.6f}")
+            self.main_gui.ae_log(f"  归一化后Loss: {initial_loss * loss_normalization_factor:.6f}")
+
+            messagebox.showinfo("成功",
+                f"Loss归一化初始化成功！\n\n"
+                f"初始Loss: {initial_loss:.6f}\n"
+                f"归一化系数: {loss_normalization_factor:.6f}\n"
+                f"归一化后Loss: 1.0")
 
         except Exception as e:
-            error_msg = f"创建双系统失败: {e}"
+            import traceback
+            error_msg = f"初始化Loss归一化失败: {e}\n{traceback.format_exc()}"
             self.main_gui.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 

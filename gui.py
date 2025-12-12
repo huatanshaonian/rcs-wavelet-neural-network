@@ -1219,6 +1219,16 @@ class RCSWaveletGUI:
                 else:
                     self.ae_log(f"⚠️ 模型文件不包含param_scaler统计信息（可能是旧版模型，参数未标准化）")
 
+                # 恢复Loss归一化系数（如果存在）
+                if 'loss_normalization_factor' in checkpoint:
+                    loss_normalization_factor = checkpoint['loss_normalization_factor']
+                    self.ae_system['loss_normalization_factor'] = loss_normalization_factor
+                    self.ae_log(f"✅ 已恢复Loss归一化系数: {loss_normalization_factor:.6f}")
+                else:
+                    # 旧版模型没有Loss归一化系数，默认为1.0
+                    self.ae_system['loss_normalization_factor'] = 1.0
+                    self.ae_log(f"⚠️ 模型文件不包含Loss归一化系数（旧版模型），默认设为1.0")
+
                 # ✅ 恢复所有GUI配置选项（让用户能看到模型的完整配置）
                 self.ae_log(f"📋 恢复GUI配置选项...")
 
