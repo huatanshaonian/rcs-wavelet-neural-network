@@ -271,7 +271,7 @@ class AutoEncoderExtension:
         # 第一行：优化器类型和权重衰减
         ttk.Label(optimizer_frame, text="优化器:").grid(row=0, column=0, sticky="w")
         optimizer_combo = ttk.Combobox(optimizer_frame, textvariable=self.main_gui.ae_optimizer_type,
-                                      values=["adam", "adamw", "sgd"], state="readonly", width=8)
+                                      values=["adam", "adamw", "sgd", "lbfgs"], state="readonly", width=10)
         optimizer_combo.grid(row=0, column=1, sticky="w")
         ttk.Label(optimizer_frame, text="权重衰减:").grid(row=0, column=2, sticky="w", padx=(10, 0))
         ttk.Entry(optimizer_frame, textvariable=self.main_gui.ae_weight_decay, width=8).grid(row=0, column=3, sticky="w")

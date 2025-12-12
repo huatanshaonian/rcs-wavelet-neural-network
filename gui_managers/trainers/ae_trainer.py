@@ -727,16 +727,58 @@ class AETrainer:
         return self.train_stage3(rcs_data, param_data, {**training_config, 'epochs': {'stage3': total_epochs}})
 
     def _create_optimizer_and_scheduler(self, params, training_config):
-        optimizer = optim.Adam(params, lr=training_config['learning_rate'], weight_decay=training_config.get('weight_decay', 1e-4))
+        """创建优化器和学习率调度器（支持Adam/AdamW/SGD/L-BFGS）"""
+        optimizer_type = training_config.get('optimizer_type', 'adam').lower()
+        lr = training_config['learning_rate']
+        weight_decay = training_config.get('weight_decay', 1e-4)
+
+        # 创建优化器
+        if optimizer_type == 'adam':
+            optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
+            self.gui.ae_log(f"✅ 使用Adam优化器 (lr={lr:.2e}, wd={weight_decay:.2e})")
+        elif optimizer_type == 'adamw':
+            optimizer = optim.AdamW(params, lr=lr, weight_decay=weight_decay)
+            self.gui.ae_log(f"✅ 使用AdamW优化器 (lr={lr:.2e}, wd={weight_decay:.2e})")
+        elif optimizer_type == 'sgd':
+            momentum = training_config.get('momentum', 0.9)
+            optimizer = optim.SGD(params, lr=lr, momentum=momentum, weight_decay=weight_decay)
+            self.gui.ae_log(f"✅ 使用SGD优化器 (lr={lr:.2e}, momentum={momentum}, wd={weight_decay:.2e})")
+        elif optimizer_type == 'lbfgs':
+            # L-BFGS参数
+            max_iter = training_config.get('lbfgs_max_iter', 20)
+            history_size = training_config.get('lbfgs_history_size', 100)
+            optimizer = optim.LBFGS(params, lr=lr, max_iter=max_iter, history_size=history_size)
+            self.gui.ae_log(f"✅ 使用L-BFGS优化器 (lr={lr:.2e}, max_iter={max_iter}, history_size={history_size})")
+            self.gui.ae_log(f"⚠️ L-BFGS需要闭包，已自动适配训练循环")
+        else:
+            # 默认使用Adam
+            optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
+            self.gui.ae_log(f"⚠️ 未知优化器类型'{optimizer_type}'，默认使用Adam")
+
+        # 创建学习率调度器
         scheduler_type = training_config.get('lr_scheduler', 'constant')
-        
+
         if scheduler_type == 'cosine_restart':
             scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=training_config.get('restart_period', 50))
         elif scheduler_type == 'adaptive':
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
+        elif scheduler_type == 'multi_stage':
+            # 多阶段学习率调度器（patience驱动）
+            from autoencoder.training.multi_stage_scheduler import create_patience_driven_scheduler
+            num_stages = training_config.get('num_lr_stages', 3)
+            lr_decay = training_config.get('lr_decay_factor', 0.1)
+            initial_patience = training_config['patience'].get('stage1', 30)
+            scheduler = create_patience_driven_scheduler(
+                optimizer,
+                initial_lr=lr,
+                num_stages=num_stages,
+                lr_decay_factor=lr_decay,
+                initial_patience=initial_patience,
+                verbose=True
+            )
         else:
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda e: 1.0)
-            
+
         return optimizer, scheduler
 
     def _create_stage_loss_function(self, training_config, stage='stage1'):

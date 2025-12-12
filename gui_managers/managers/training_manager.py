@@ -284,7 +284,9 @@ class TrainingManager:
             config = {
                 'batch_size': int(self.gui.ae_batch_size.get()),
                 'learning_rate': float(self.gui.ae_learning_rate.get()),
+                'optimizer_type': self.gui.ae_optimizer_type.get(),
                 'weight_decay': float(self.gui.ae_weight_decay.get()),
+                'momentum': float(self.gui.ae_momentum.get()),
                 'lr_scheduler': self.gui.ae_lr_scheduler.get(),
                 'min_lr': float(self.gui.ae_min_lr.get()),
                 'restart_period': int(self.gui.ae_restart_period.get()),
