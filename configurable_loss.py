@@ -125,7 +125,9 @@ class ConfigurableLoss(nn.Module):
 
     def _ssim_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
-        SSIM (Structural Similarity) 损失
+        多尺度SSIM损失（小窗口 + 大窗口）
+        小窗口(3x3): 捕获细节纹理，sigma=0.5
+        大窗口(9x9): 捕获整体结构，sigma=1.2
         """
         def gaussian_window(size, sigma):
             coords = torch.arange(size, dtype=torch.float)
@@ -137,18 +139,17 @@ class ConfigurableLoss(nn.Module):
         def ssim_map(x, y, window_size=11, sigma=1.5):
             # x, y: [B, C, H, W]
             channels = x.size(1)
-            
+
             # 生成1D高斯窗口
             window_1d = gaussian_window(window_size, sigma).to(x.device)  # [1, 1, 1, size]
-            
+
             # 生成2D高斯窗口: [1, 1, size, 1] @ [1, 1, 1, size] -> [1, 1, size, size]
-            # 或者是 outer product
             window_1d_t = window_1d.transpose(3, 2) # [1, 1, size, 1]
             window_2d = torch.matmul(window_1d_t, window_1d) # [1, 1, size, size]
-            
+
             # 扩展到所有通道: [C, 1, size, size] (depthwise convolution)
             window = window_2d.expand(channels, 1, window_size, window_size).contiguous()
-            
+
             mu1 = F.conv2d(x, window, padding=window_size//2, groups=channels)
             mu2 = F.conv2d(y, window, padding=window_size//2, groups=channels)
 
@@ -169,18 +170,25 @@ class ConfigurableLoss(nn.Module):
 
         # 调整输入格式 [B, H, W, C] -> [B, C, H, W]
         if pred.dim() == 4:
-            # 确保输入在 [0, 1] 或 [-1, 1] 范围（如果未归一化可能会影响C1/C2常数的效果）
-            # 这里假设输入已经适当归一化，或者依靠C1/C2的相对值
             pred_n = pred.permute(0, 3, 1, 2)
             target_n = target.permute(0, 3, 1, 2)
         else:
             return torch.tensor(0.0, device=pred.device)
 
-        # 计算 SSIM
-        ssim_val = ssim_map(pred_n, target_n)
-        
-        # SSIM Loss = 1 - mean(SSIM)
-        return 1.0 - ssim_val.mean()
+        # 获取小窗口和大窗口权重
+        ssim_small_weight = self.config.get('ssim_small_weight', 0.3)
+        ssim_large_weight = self.config.get('ssim_large_weight', 0.7)
+
+        # 计算小窗口SSIM (3x3, sigma=0.5) - 捕获细节
+        ssim_small = ssim_map(pred_n, target_n, window_size=3, sigma=0.5)
+        loss_small = (1.0 - ssim_small.mean()) * ssim_small_weight
+
+        # 计算大窗口SSIM (9x9, sigma=1.2) - 捕获整体结构
+        ssim_large = ssim_map(pred_n, target_n, window_size=9, sigma=1.2)
+        loss_large = (1.0 - ssim_large.mean()) * ssim_large_weight
+
+        # 总SSIM损失 = 小窗口 + 大窗口
+        return loss_small + loss_large
 
     def _frequency_consistency_loss(self, pred: torch.Tensor, target: torch.Tensor, freq_type: str) -> torch.Tensor:
         """
@@ -407,10 +415,10 @@ PRESET_CONFIGS = {
     },
 
     'perceptual': {
-        'use_mse': False, 
+        'use_mse': False,
         'use_huber': True, 'huber_weight': 0.1,
         'use_l1': True, 'l1_weight': 0.1,
-        'use_ssim': True, 'ssim_weight': 0.8,
+        'use_ssim': True, 'ssim_small_weight': 0.3, 'ssim_large_weight': 0.5,
         'use_symmetry': True, 'symmetry_weight': 0.02,
         'use_multiscale': False
     },

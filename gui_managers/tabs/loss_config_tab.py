@@ -37,9 +37,10 @@ class LossConfigTab(ttk.Frame):
         self.use_l1_loss = tk.BooleanVar(value=False)
         self.l1_weight = tk.StringVar(value="0.5")
 
-        # SSIM Loss (感知/结构损失)
+        # SSIM Loss (感知/结构损失) - 多尺度
         self.use_ssim_loss = tk.BooleanVar(value=False)
-        self.ssim_weight = tk.StringVar(value="0.8")
+        self.ssim_small_weight = tk.StringVar(value="0.3")  # 小窗口(3x3)权重
+        self.ssim_large_weight = tk.StringVar(value="0.7")  # 大窗口(9x9)权重
 
         # 物理约束损失配置
         self.use_symmetry_loss = tk.BooleanVar(value=True)
@@ -107,12 +108,14 @@ class LossConfigTab(ttk.Frame):
         ttk.Label(l1_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
         ttk.Entry(l1_frame, textvariable=self.l1_weight, width=8).pack(side=tk.LEFT)
 
-        # SSIM Loss
+        # SSIM Loss (多尺度)
         ssim_frame = ttk.Frame(basic_group)
         ssim_frame.pack(fill=tk.X, padx=5, pady=2)
-        ttk.Checkbutton(ssim_frame, text="SSIM Loss", variable=self.use_ssim_loss).pack(side=tk.LEFT)
-        ttk.Label(ssim_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
-        ttk.Entry(ssim_frame, textvariable=self.ssim_weight, width=8).pack(side=tk.LEFT)
+        ttk.Checkbutton(ssim_frame, text="SSIM Loss (多尺度)", variable=self.use_ssim_loss).pack(side=tk.LEFT)
+        ttk.Label(ssim_frame, text="小窗口(3×3):").pack(side=tk.LEFT, padx=(10, 5))
+        ttk.Entry(ssim_frame, textvariable=self.ssim_small_weight, width=6).pack(side=tk.LEFT)
+        ttk.Label(ssim_frame, text="大窗口(9×9):").pack(side=tk.LEFT, padx=(10, 5))
+        ttk.Entry(ssim_frame, textvariable=self.ssim_large_weight, width=6).pack(side=tk.LEFT)
 
         # 物理约束损失组
         physics_group = ttk.LabelFrame(left_panel, text="物理约束损失")
@@ -199,7 +202,7 @@ class LossConfigTab(ttk.Frame):
             if self.use_l1_loss.get():
                 config_text += f"  ✅ L1 Loss (权重: {self.l1_weight.get()})\n"
             if self.use_ssim_loss.get():
-                config_text += f"  ✅ SSIM Loss (权重: {self.ssim_weight.get()})\n"
+                config_text += f"  ✅ SSIM Loss (小窗口: {self.ssim_small_weight.get()}, 大窗口: {self.ssim_large_weight.get()})\n"
 
             # 物理约束损失
             config_text += "\n🔬 物理约束损失:\n"
@@ -221,7 +224,7 @@ class LossConfigTab(ttk.Frame):
             if self.use_l1_loss.get():
                 total_weight += float(self.l1_weight.get())
             if self.use_ssim_loss.get():
-                total_weight += float(self.ssim_weight.get())
+                total_weight += float(self.ssim_small_weight.get()) + float(self.ssim_large_weight.get())
             if self.use_symmetry_loss.get():
                 total_weight += float(self.symmetry_weight.get())
             if self.use_freq_consistency.get():
@@ -268,7 +271,8 @@ class LossConfigTab(ttk.Frame):
                 'l1_weight': float(self.l1_weight.get()) if self.use_l1_loss.get() else 0,
 
                 'use_ssim': self.use_ssim_loss.get(),
-                'ssim_weight': float(self.ssim_weight.get()) if self.use_ssim_loss.get() else 0,
+                'ssim_small_weight': float(self.ssim_small_weight.get()) if self.use_ssim_loss.get() else 0,
+                'ssim_large_weight': float(self.ssim_large_weight.get()) if self.use_ssim_loss.get() else 0,
 
                 'use_symmetry': self.use_symmetry_loss.get(),
                 'symmetry_weight': float(self.symmetry_weight.get()) if self.use_symmetry_loss.get() else 0,
@@ -309,7 +313,8 @@ class LossConfigTab(ttk.Frame):
         self.l1_weight.set("0.5")
 
         self.use_ssim_loss.set(False)
-        self.ssim_weight.set("0.8")
+        self.ssim_small_weight.set("0.3")
+        self.ssim_large_weight.set("0.7")
 
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.01")
@@ -455,7 +460,8 @@ class LossConfigTab(ttk.Frame):
         self.l1_weight.set("0.1")
 
         self.use_ssim_loss.set(True)
-        self.ssim_weight.set("0.8")
+        self.ssim_small_weight.set("0.3")
+        self.ssim_large_weight.set("0.5")
 
         self.use_symmetry_loss.set(True)
         self.symmetry_weight.set("0.02")
