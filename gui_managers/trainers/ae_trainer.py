@@ -28,6 +28,85 @@ class AETrainer:
         """
         self.gui = gui
 
+    def _is_lbfgs_optimizer(self, optimizer):
+        """检查是否是L-BFGS优化器"""
+        return isinstance(optimizer, optim.LBFGS)
+
+    def _train_batch_with_lbfgs(self, optimizer, model, batch_data, batch_target, criterion, device):
+        """
+        使用L-BFGS训练单个batch（需要闭包）
+
+        Args:
+            optimizer: L-BFGS优化器
+            model: 模型（autoencoder或parameter_mapper）
+            batch_data: 输入数据
+            batch_target: 目标数据（可能与batch_data相同，用于重建）
+            criterion: 损失函数
+            device: 设备
+
+        Returns:
+            loss.item(): 损失值
+        """
+        batch_data = batch_data.to(device)
+        if batch_target is not batch_data:
+            batch_target = batch_target.to(device)
+
+        # L-BFGS需要闭包函数
+        def closure():
+            optimizer.zero_grad()
+
+            # 根据模型类型选择前向传播方式
+            if hasattr(model, 'encode'):  # AutoEncoder
+                output, _ = model(batch_data)
+            else:  # ParameterMapper
+                output = model(batch_data)
+
+            loss = criterion(output, batch_target)
+            loss.backward()
+            return loss
+
+        # L-BFGS.step()返回loss
+        loss = optimizer.step(closure)
+
+        # 如果返回的是tensor，转换为float
+        if isinstance(loss, torch.Tensor):
+            return loss.item()
+        return loss
+
+    def _train_batch_standard(self, optimizer, model, batch_data, batch_target, criterion, device):
+        """
+        使用标准优化器（Adam/SGD等）训练单个batch
+
+        Args:
+            optimizer: 标准优化器
+            model: 模型
+            batch_data: 输入数据
+            batch_target: 目标数据
+            criterion: 损失函数
+            device: 设备
+
+        Returns:
+            loss.item(): 损失值
+        """
+        batch_data = batch_data.to(device)
+        if batch_target is not batch_data:
+            batch_target = batch_target.to(device)
+
+        # 前向传播
+        if hasattr(model, 'encode'):  # AutoEncoder
+            output, _ = model(batch_data)
+        else:  # ParameterMapper
+            output = model(batch_data)
+
+        loss = criterion(output, batch_target)
+
+        # 反向传播
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        return loss.item()
+
     def run_three_stage_training(self, rcs_data, param_data, training_config):
         """执行三阶段训练 (使用统一配置管理器)"""
         try:
@@ -298,6 +377,11 @@ class AETrainer:
                 'epochs': [], 'grad_norm': [], 'grad_mean': [], 'grad_std': [], 'grad_max': [], 'grad_min': []
             }
 
+            # 检测是否使用L-BFGS
+            is_lbfgs = self._is_lbfgs_optimizer(optimizer)
+            if is_lbfgs:
+                self.gui.ae_log("  🔍 检测到L-BFGS优化器，使用闭包训练循环")
+
             for epoch in range(epochs):
                 # 训练
                 autoencoder.train()
@@ -305,27 +389,34 @@ class AETrainer:
                 train_samples = 0
 
                 for batch_idx, (batch_coeffs,) in enumerate(train_loader):
-                    batch_coeffs = batch_coeffs.to(device)
-                    reconstructed, latent = autoencoder(batch_coeffs)
-                    loss = criterion(reconstructed, batch_coeffs)
+                    # 使用适配的训练方法
+                    if is_lbfgs:
+                        loss_value = self._train_batch_with_lbfgs(
+                            optimizer, autoencoder, batch_coeffs, batch_coeffs, criterion, device
+                        )
+                    else:
+                        batch_coeffs = batch_coeffs.to(device)
+                        reconstructed, latent = autoencoder(batch_coeffs)
+                        loss = criterion(reconstructed, batch_coeffs)
 
-                    optimizer.zero_grad()
-                    loss.backward()
+                        optimizer.zero_grad()
+                        loss.backward()
 
-                    # 梯度监控
-                    if batch_idx == 0 and (epoch + 1) % 10 == 0:
-                        stats, status = gradient_monitor.check_gradients(autoencoder, step=epoch, verbose=False)
-                        gradient_history['epochs'].append(epoch)
-                        gradient_history['grad_norm'].append(stats['grad_norm'])
-                        gradient_history['grad_mean'].append(stats['grad_mean'])
-                        gradient_history['grad_std'].append(stats['grad_std'])
-                        gradient_history['grad_max'].append(stats['grad_max'])
-                        gradient_history['grad_min'].append(stats['grad_min'])
+                        # 梯度监控（仅标准优化器）
+                        if batch_idx == 0 and (epoch + 1) % 10 == 0:
+                            stats, status = gradient_monitor.check_gradients(autoencoder, step=epoch, verbose=False)
+                            gradient_history['epochs'].append(epoch)
+                            gradient_history['grad_norm'].append(stats['grad_norm'])
+                            gradient_history['grad_mean'].append(stats['grad_mean'])
+                            gradient_history['grad_std'].append(stats['grad_std'])
+                            gradient_history['grad_max'].append(stats['grad_max'])
+                            gradient_history['grad_min'].append(stats['grad_min'])
 
-                    optimizer.step()
+                        optimizer.step()
+                        loss_value = loss.item()
 
-                    batch_size = batch_coeffs.size(0)
-                    train_loss += loss.item() * loss_normalization_factor * batch_size
+                    batch_size = batch_coeffs.size(0) if not is_lbfgs else len(batch_coeffs)
+                    train_loss += loss_value * loss_normalization_factor * batch_size
                     train_samples += batch_size
 
                 avg_train_loss = train_loss / train_samples
@@ -518,20 +609,34 @@ class AETrainer:
             train_losses, val_losses = [], []
             gradient_history = {'epochs': [], 'grad_norm': []} # Simplified for brevity
 
+            # 检测是否使用L-BFGS
+            is_lbfgs = self._is_lbfgs_optimizer(optimizer)
+            if is_lbfgs:
+                self.gui.ae_log("  🔍 检测到L-BFGS优化器，使用闭包训练循环")
+
             for epoch in range(epochs):
                 parameter_mapper.train()
                 train_loss = 0.0
                 train_samples = 0
                 for batch_params, batch_latents in train_loader:
-                    batch_params = batch_params.to(device)
-                    batch_latents = batch_latents.to(device)
-                    predicted_latents = parameter_mapper(batch_params)
-                    loss = criterion(predicted_latents, batch_latents)
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    train_loss += loss.item() * loss_normalization_factor * batch_params.size(0)
-                    train_samples += batch_params.size(0)
+                    # 使用适配的训练方法
+                    if is_lbfgs:
+                        loss_value = self._train_batch_with_lbfgs(
+                            optimizer, parameter_mapper, batch_params, batch_latents, criterion, device
+                        )
+                    else:
+                        batch_params = batch_params.to(device)
+                        batch_latents = batch_latents.to(device)
+                        predicted_latents = parameter_mapper(batch_params)
+                        loss = criterion(predicted_latents, batch_latents)
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        loss_value = loss.item()
+
+                    batch_size = batch_params.size(0) if not is_lbfgs else len(batch_params)
+                    train_loss += loss_value * loss_normalization_factor * batch_size
+                    train_samples += batch_size
                 avg_train_loss = train_loss / train_samples
 
                 parameter_mapper.eval()
@@ -648,24 +753,49 @@ class AETrainer:
             patience_counter = 0
             train_losses, val_losses = [], []
 
+            # 检测是否使用L-BFGS
+            is_lbfgs = self._is_lbfgs_optimizer(optimizer)
+            if is_lbfgs:
+                self.gui.ae_log("  🔍 检测到L-BFGS优化器，使用闭包训练循环（端到端模式）")
+
             for epoch in range(epochs):
                 autoencoder.train()
                 parameter_mapper.train()
                 train_loss = 0.0
                 train_samples = 0
                 for batch_params, batch_target in train_loader:
-                    batch_params = batch_params.to(device)
-                    batch_target = batch_target.to(device)
-                    
-                    pred_latents = parameter_mapper(batch_params)
-                    recon = autoencoder.decode(pred_latents)
-                    loss = criterion(recon, batch_target)
+                    # 使用适配的训练方法（Stage 3特殊：联合训练）
+                    if is_lbfgs:
+                        batch_params = batch_params.to(device)
+                        batch_target = batch_target.to(device)
 
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    train_loss += loss.item() * loss_normalization_factor * batch_params.size(0)
-                    train_samples += batch_params.size(0)
+                        # L-BFGS闭包（端到端）
+                        def closure():
+                            optimizer.zero_grad()
+                            pred_latents = parameter_mapper(batch_params)
+                            recon = autoencoder.decode(pred_latents)
+                            loss = criterion(recon, batch_target)
+                            loss.backward()
+                            return loss
+
+                        loss = optimizer.step(closure)
+                        loss_value = loss.item() if isinstance(loss, torch.Tensor) else loss
+                    else:
+                        batch_params = batch_params.to(device)
+                        batch_target = batch_target.to(device)
+
+                        pred_latents = parameter_mapper(batch_params)
+                        recon = autoencoder.decode(pred_latents)
+                        loss = criterion(recon, batch_target)
+
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        loss_value = loss.item()
+
+                    batch_size = batch_params.size(0) if not is_lbfgs else len(batch_params)
+                    train_loss += loss_value * loss_normalization_factor * batch_size
+                    train_samples += batch_size
                 avg_train_loss = train_loss / train_samples
 
                 autoencoder.eval()
