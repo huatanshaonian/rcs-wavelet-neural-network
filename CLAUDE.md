@@ -596,7 +596,43 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 
 ### 2025-01-18 (下午)
 
-1. **🆕 Dual-Branch V2正确实现** (重大架构修复)
+1. **🆕 L-BFGS优化器完整支持** (新功能)
+   - **需求**: 用户请求添加L-BFGS二阶优化方法
+   - **问题发现**: 优化器配置GUI参数完全未生效（自2025-10-19引入bug）
+   - **修复内容**:
+     - ✅ **Bug修复**: `training_manager.py:287-289`添加optimizer_type/momentum到配置字典
+     - ✅ **优化器支持**: `ae_trainer.py:730-782`重构优化器创建，支持Adam/AdamW/SGD/L-BFGS
+     - ✅ **训练循环适配**: 所有三个训练阶段支持L-BFGS闭包机制
+     - ✅ **GUI更新**: `gui_autoencoder_extension.py:274`添加lbfgs选项
+   - **L-BFGS实现细节**:
+     - Stage 1/2: `_train_batch_with_lbfgs()`自动检测优化器并使用闭包
+     - Stage 3: 端到端训练内联闭包（联合优化autoencoder+parameter_mapper）
+     - Line Search: PyTorch内置strong Wolfe条件，每step 5-20次前向传播
+   - **使用方法**:
+     ```python
+     # GUI配置
+     optimizer_type = "lbfgs"
+     learning_rate = 1.0  # L-BFGS不需要小学习率
+     batch_size = 256  # 建议大批量减少噪声
+     # lbfgs_max_iter = 20  # 每step最大迭代（默认）
+     # lbfgs_history_size = 100  # 历史梯度数量（默认）
+     ```
+   - **性能特征**:
+     - 速度: 每epoch慢3-8倍（line search开销）
+     - 收敛: 需要epoch数减少2-3倍
+     - 精度: 通常找到更优解（二阶方法）
+     - 适用: Stage 3微调、小数据集（<5000样本）
+   - **注意事项**:
+     - ⚠️ L-BFGS不支持梯度监控（多次前向传播干扰）
+     - ⚠️ 建议batch_size≥256，否则噪声影响line search
+     - ⚠️ GPU利用率可能较低（频繁CPU-GPU通信）
+   - **影响文件**:
+     - `gui_managers/managers/training_manager.py`: 读取优化器配置
+     - `gui_managers/trainers/ae_trainer.py`: L-BFGS训练循环
+     - `gui_autoencoder_extension.py`: GUI优化器下拉框
+   - **Commits**: cc5572b (bug修复), 206352c (L-BFGS实现)
+
+2. **🆕 Dual-Branch V2正确实现** (重大架构修复)
    - **问题**: V1版本DualBranchDifferentiableAutoEncoder存在严重架构缺陷
    - **核心缺陷**:
      - Encoder有双分支，但Decoder是单分支（不对称）
