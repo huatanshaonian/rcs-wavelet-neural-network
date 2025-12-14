@@ -131,8 +131,18 @@ class ReconstructionManager:
                 if training_mode != 'three_stage':
                     raise ValueError("从参数重建需要Three-Stage训练模式")
 
+                # ✅ 使用param_scaler标准化参数（与训练时保持一致）
+                param_scaler = self.gui.ae_system.get('param_scaler', None)
+                if param_scaler is not None:
+                    # 标准化参数（训练时使用了StandardScaler）
+                    params_normalized = param_scaler.transform(input_data)
+                    param_tensor = torch.FloatTensor(params_normalized).to(device)
+                else:
+                    # 如果没有scaler（旧模型），使用原始参数并警告
+                    print("⚠️ 未找到param_scaler，使用原始参数（可能导致预测不准确）")
+                    param_tensor = torch.FloatTensor(input_data).to(device)
+
                 # 参数 → ParameterMapper → Latent
-                param_tensor = torch.FloatTensor(input_data).to(device)
                 latents = parameter_mapper(param_tensor)
 
                 # Latent → Decoder → 标准化输出

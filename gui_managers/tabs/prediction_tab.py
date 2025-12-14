@@ -161,8 +161,6 @@ class PredictionTab(ttk.Frame):
 
             elif model_type == "AutoEncoder":
                 # 使用AutoEncoder预测
-                # ⚠️ 注意：AutoEncoder的ParameterMapper在训练时接收的是**未标准化的原始参数**
-                # 因此预测时也必须使用未标准化的参数，与训练时保持一致
                 autoencoder = self.app.ae_system['autoencoder']
                 parameter_mapper = self.app.ae_system['parameter_mapper']
                 wavelet_transform = self.app.ae_system.get('wavelet_transform', None)
@@ -175,14 +173,24 @@ class PredictionTab(ttk.Frame):
                 parameter_mapper.to(device).eval()
 
                 with torch.no_grad():
-                    # Step 1: 参数 → 隐空间（使用未标准化的原始参数）
-                    params_tensor = torch.tensor(params, dtype=torch.float32).to(device)
+                    # Step 1: 标准化参数（与训练时保持一致）
+                    param_scaler = self.app.ae_system.get('param_scaler', None)
+                    if param_scaler is not None:
+                        # 使用训练时的StandardScaler标准化参数
+                        params_normalized = param_scaler.transform(params)
+                        params_tensor = torch.tensor(params_normalized, dtype=torch.float32).to(device)
+                    else:
+                        # 如果没有scaler（旧模型），使用原始参数并警告
+                        self.app.log_message("⚠️ 未找到param_scaler，使用原始参数（可能导致预测不准确）")
+                        params_tensor = torch.tensor(params, dtype=torch.float32).to(device)
+
+                    # Step 2: 参数 → 隐空间
                     predicted_latents = parameter_mapper(params_tensor)
 
-                    # Step 2: 隐空间 → 重建输出
+                    # Step 3: 隐空间 → 重建输出
                     predicted_output = autoencoder.decode(predicted_latents)
 
-                    # Step 3: 逆变换到原始RCS空间
+                    # Step 4: 逆变换到原始RCS空间
                     if mode == 'wavelet':
                         # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
                         if data_adapter:
