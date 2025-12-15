@@ -57,6 +57,9 @@ class LossConfigTab(ttk.Frame):
         self.use_multiscale_loss = tk.BooleanVar(value=False)
         self.multiscale_weight = tk.StringVar(value="0.1")
 
+        self.use_laplacian_loss = tk.BooleanVar(value=False)
+        self.laplacian_weight = tk.StringVar(value="0.05")
+
     def create_widgets(self):
         """创建界面组件"""
         # 主框架
@@ -163,6 +166,13 @@ class LossConfigTab(ttk.Frame):
         ttk.Label(multiscale_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
         ttk.Entry(multiscale_frame, textvariable=self.multiscale_weight, width=8).pack(side=tk.LEFT)
 
+        # 拉普拉斯损失（边缘保持）
+        laplacian_frame = ttk.Frame(physics_group)
+        laplacian_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Checkbutton(laplacian_frame, text="拉普拉斯损失（边缘保持）", variable=self.use_laplacian_loss).pack(side=tk.LEFT)
+        ttk.Label(laplacian_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Entry(laplacian_frame, textvariable=self.laplacian_weight, width=8).pack(side=tk.LEFT)
+
         # 右侧面板：配置预览和控制
         right_panel = ttk.Frame(main_frame)
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(10, 0))
@@ -214,6 +224,8 @@ class LossConfigTab(ttk.Frame):
                 config_text += f"  ✅ 空间连续性 (权重: {self.continuity_weight.get()}, 类型: {self.continuity_type.get()})\n"
             if self.use_multiscale_loss.get():
                 config_text += f"  ✅ 多尺度损失 (权重: {self.multiscale_weight.get()})\n"
+            if self.use_laplacian_loss.get():
+                config_text += f"  ✅ 拉普拉斯损失 (权重: {self.laplacian_weight.get()})\n"
 
             # 计算总权重
             total_weight = 0
@@ -233,6 +245,8 @@ class LossConfigTab(ttk.Frame):
                 total_weight += float(self.continuity_weight.get())
             if self.use_multiscale_loss.get():
                 total_weight += float(self.multiscale_weight.get())
+            if self.use_laplacian_loss.get():
+                total_weight += float(self.laplacian_weight.get())
 
             config_text += f"\n📈 总权重: {total_weight:.3f}\n"
 
@@ -287,6 +301,9 @@ class LossConfigTab(ttk.Frame):
 
                 'use_multiscale': self.use_multiscale_loss.get(),
                 'multiscale_weight': float(self.multiscale_weight.get()) if self.use_multiscale_loss.get() else 0,
+
+                'use_laplacian': self.use_laplacian_loss.get(),
+                'laplacian_weight': float(self.laplacian_weight.get()) if self.use_laplacian_loss.get() else 0,
             }
 
             # 保存到训练配置中
@@ -329,6 +346,9 @@ class LossConfigTab(ttk.Frame):
 
         self.use_multiscale_loss.set(False)
         self.multiscale_weight.set("0.1")
+
+        self.use_laplacian_loss.set(False)
+        self.laplacian_weight.set("0.05")
 
         self.update_loss_config_preview()
         messagebox.showinfo("完成", "损失函数配置已重置为默认值")

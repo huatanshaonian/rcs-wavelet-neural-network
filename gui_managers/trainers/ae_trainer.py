@@ -399,6 +399,10 @@ class AETrainer:
                         reconstructed, latent = autoencoder(batch_coeffs)
                         loss = criterion(reconstructed, batch_coeffs)
 
+                        # ⭐ 在backward前应用归一化（真正影响梯度和训练）
+                        if loss_normalization_factor != 1.0:
+                            loss = loss * loss_normalization_factor
+
                         optimizer.zero_grad()
                         loss.backward()
 
@@ -416,7 +420,7 @@ class AETrainer:
                         loss_value = loss.item()
 
                     batch_size = batch_coeffs.size(0) if not is_lbfgs else len(batch_coeffs)
-                    train_loss += loss_value * loss_normalization_factor * batch_size
+                    train_loss += loss_value * batch_size  # loss已经是归一化后的
                     train_samples += batch_size
 
                 avg_train_loss = train_loss / train_samples
@@ -432,8 +436,12 @@ class AETrainer:
                         reconstructed, latent = autoencoder(batch_coeffs)
                         loss = criterion(reconstructed, batch_coeffs)
 
+                        # ⭐ 应用归一化（验证时只需要计算，不需要backward）
+                        if loss_normalization_factor != 1.0:
+                            loss = loss * loss_normalization_factor
+
                         batch_size = batch_coeffs.size(0)
-                        val_loss += loss.item() * loss_normalization_factor * batch_size
+                        val_loss += loss.item() * batch_size
                         val_samples += batch_size
 
                 avg_val_loss = val_loss / val_samples
@@ -797,6 +805,9 @@ class AETrainer:
                             pred_latents = parameter_mapper(batch_params)
                             recon = autoencoder.decode(pred_latents)
                             loss = criterion(recon, batch_target)
+                            # ⭐ 在backward前应用归一化
+                            if loss_normalization_factor != 1.0:
+                                loss = loss * loss_normalization_factor
                             loss.backward()
                             return loss
 
@@ -810,13 +821,17 @@ class AETrainer:
                         recon = autoencoder.decode(pred_latents)
                         loss = criterion(recon, batch_target)
 
+                        # ⭐ 在backward前应用归一化（Stage 3使用Stage 1的系数）
+                        if loss_normalization_factor != 1.0:
+                            loss = loss * loss_normalization_factor
+
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
                         loss_value = loss.item()
 
                     batch_size = batch_params.size(0) if not is_lbfgs else len(batch_params)
-                    train_loss += loss_value * loss_normalization_factor * batch_size
+                    train_loss += loss_value * batch_size  # loss已经是归一化后的
                     train_samples += batch_size
                 avg_train_loss = train_loss / train_samples
 
@@ -831,7 +846,10 @@ class AETrainer:
                         pred_latents = parameter_mapper(batch_params)
                         recon = autoencoder.decode(pred_latents)
                         loss = criterion(recon, batch_target)
-                        val_loss += loss.item() * loss_normalization_factor * batch_params.size(0)
+                        # ⭐ 应用归一化
+                        if loss_normalization_factor != 1.0:
+                            loss = loss * loss_normalization_factor
+                        val_loss += loss.item() * batch_params.size(0)
                         val_samples += batch_params.size(0)
                 avg_val_loss = val_loss / val_samples
                 

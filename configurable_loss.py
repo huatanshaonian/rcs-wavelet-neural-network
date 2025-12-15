@@ -73,6 +73,9 @@ class ConfigurableLoss(nn.Module):
             if self.config.get('use_ssim', False):
                 losses['ssim'] = self._ssim_loss(pred, target)
 
+            if self.config.get('use_laplacian', False):
+                losses['laplacian'] = self._laplacian_loss(pred, target)
+
         # 计算加权总损失
         total_loss = 0
         for loss_name, loss_value in losses.items():
@@ -122,6 +125,42 @@ class ConfigurableLoss(nn.Module):
         # 或者仅仅希望预测是对称的（如果目标是对称的）
         # 这里使用一致性约束：预测的对称偏差应该匹配目标的对称偏差
         return F.mse_loss(pred_sym_diff, target_sym_diff)
+
+    def _laplacian_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        拉普拉斯损失（边缘保持）
+        使用拉普拉斯算子强调边缘和细节
+        """
+        # 仅当H, W足够大时才计算
+        if pred.dim() != 4 or pred.size(1) < 3 or pred.size(2) < 3:
+            return torch.tensor(0.0, device=pred.device)
+
+        # 定义拉普拉斯卷积核（4邻域）
+        # [[0,  1, 0],
+        #  [1, -4, 1],
+        #  [0,  1, 0]]
+        laplacian_kernel = torch.tensor(
+            [[0., 1., 0.],
+             [1., -4., 1.],
+             [0., 1., 0.]],
+            dtype=pred.dtype,
+            device=pred.device
+        ).reshape(1, 1, 3, 3)  # [1, 1, 3, 3]
+
+        # 调整输入格式 [B, H, W, C] -> [B, C, H, W]
+        pred_n = pred.permute(0, 3, 1, 2)
+        target_n = target.permute(0, 3, 1, 2)
+
+        channels = pred_n.size(1)
+        # 扩展到所有通道（depthwise convolution）
+        laplacian_kernel = laplacian_kernel.expand(channels, 1, 3, 3)
+
+        # 计算拉普拉斯响应（边缘）
+        pred_laplacian = F.conv2d(pred_n, laplacian_kernel, padding=1, groups=channels)
+        target_laplacian = F.conv2d(target_n, laplacian_kernel, padding=1, groups=channels)
+
+        # L1损失（边缘差异）
+        return F.l1_loss(pred_laplacian, target_laplacian)
 
     def _ssim_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """

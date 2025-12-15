@@ -46,6 +46,7 @@ class TrainingManager:
     def _train_model(self):
         """训练模型（简单/交叉验证）"""
         self.stop_training_flag = False
+        self.gui.stop_training_flag = False  # 确保重置GUI层面的停止标志
         # LegacyTrainer directly accesses gui state, so just calling it is enough
         self.legacy_trainer.train_model()
 
@@ -135,6 +136,7 @@ class TrainingManager:
         """在后台线程运行AutoEncoder训练 (委托给 AETrainer)"""
         try:
             self.stop_training_flag = False
+            self.gui.stop_training_flag = False  # 确保重置GUI层面的停止标志
             
             # 使用 AETrainer 的方法
             # 注意：run_three_stage_training 内部会处理 stage1_only
