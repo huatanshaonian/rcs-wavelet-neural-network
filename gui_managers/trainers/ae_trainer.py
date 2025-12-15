@@ -682,9 +682,31 @@ class AETrainer:
                 if getattr(self.gui, 'stop_training_flag', False) or getattr(self.gui.training_manager, 'stop_training_flag', False):
                     break
 
-                if patience_counter >= patience:
-                    self.gui.ae_log(f"  🛑 早停触发")
-                    break
+                # 早停 (支持patience驱动的多阶段调度器)
+                current_patience = patience
+                if scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
+                    from autoencoder.training.multi_stage_scheduler import PatienceDrivenMultiStageLRScheduler
+                    if isinstance(scheduler, PatienceDrivenMultiStageLRScheduler):
+                        current_patience = scheduler.get_current_patience()
+                        if patience_counter >= current_patience:
+                            switched = scheduler.switch_to_next_stage()
+                            if switched:
+                                self.gui.ae_log(f"  🔄 切换到下一学习率阶段，回退到最佳模型 (Epoch {best_epoch})")
+                                autoencoder.load_state_dict(best_model_state['autoencoder'])
+                                parameter_mapper.load_state_dict(best_model_state['parameter_mapper'])
+                                patience_counter = 0
+                                continue
+                            else:
+                                self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 已是最后学习率阶段，验证损失连续{current_patience}轮无改善")
+                                break
+                    else:
+                        if patience_counter >= current_patience:
+                            self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{current_patience}轮无改善")
+                            break
+                else:
+                    if patience_counter >= current_patience:
+                        self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 验证损失连续{current_patience}轮无改善")
+                        break
             
             if best_model_state:
                 autoencoder.load_state_dict(best_model_state['autoencoder'])
@@ -840,9 +862,32 @@ class AETrainer:
 
                 if getattr(self.gui, 'stop_training_flag', False) or getattr(self.gui.training_manager, 'stop_training_flag', False):
                     break
-                
-                if patience_counter >= patience:
-                    break
+
+                # 早停 (支持patience驱动的多阶段调度器)
+                current_patience = patience
+                if scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
+                    from autoencoder.training.multi_stage_scheduler import PatienceDrivenMultiStageLRScheduler
+                    if isinstance(scheduler, PatienceDrivenMultiStageLRScheduler):
+                        current_patience = scheduler.get_current_patience()
+                        if patience_counter >= current_patience:
+                            switched = scheduler.switch_to_next_stage()
+                            if switched:
+                                self.gui.ae_log(f"  🔄 切换到下一学习率阶段，回退到最佳模型")
+                                autoencoder.load_state_dict(best_model_state['autoencoder'])
+                                parameter_mapper.load_state_dict(best_model_state['parameter_mapper'])
+                                patience_counter = 0
+                                continue
+                            else:
+                                self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 已是最后学习率阶段")
+                                break
+                    else:
+                        if patience_counter >= current_patience:
+                            self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1})")
+                            break
+                else:
+                    if patience_counter >= current_patience:
+                        self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1})")
+                        break
 
             if best_model_state:
                 autoencoder.load_state_dict(best_model_state['autoencoder'])
@@ -923,6 +968,10 @@ class AETrainer:
     def _step_scheduler(self, scheduler, scheduler_type, val_loss):
         if scheduler_type == 'adaptive':
             scheduler.step(val_loss)
+        elif scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
+            # Patience驱动的多阶段调度器：不需要step，阶段切换在早停逻辑中处理
+            # 学习率由scheduler.switch_to_next_stage()直接更新
+            pass
         else:
             scheduler.step()
 
