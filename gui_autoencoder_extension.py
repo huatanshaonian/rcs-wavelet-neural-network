@@ -700,7 +700,7 @@ class AutoEncoderExtension:
             mode = self.main_gui.ae_mode.get()
             freq_config = self.main_gui.ae_freq_config.get()
             latent_dim = self.main_gui.ae_latent_dim.get()
-            architecture = self.main_gui.ae_architecture.get()
+            architecture = self.main_gui.ae_architecture_type.get()
             activation = self.main_gui.ae_activation.get()
             main_sys = "✓" if (hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system) else "✗"
             dual_sys = "✓" if (self.wavelet_system and self.direct_system) else "✗"
