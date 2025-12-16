@@ -784,10 +784,17 @@ class AutoEncoderExtension:
                 # 小波模式：原始RCS → 小波变换 → 标准化
                 wavelet_transform = ae_system['wavelet_transform']
                 wavelet_coeffs = wavelet_transform.forward_transform(rcs_data)
-                if data_adapter:
-                    input_data = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                
+                # 转换为numpy以便适配器处理
+                if isinstance(wavelet_coeffs, torch.Tensor):
+                    wavelet_coeffs_np = wavelet_coeffs.detach().cpu().numpy()
                 else:
-                    input_data = wavelet_coeffs
+                    wavelet_coeffs_np = wavelet_coeffs
+                    
+                if data_adapter:
+                    input_data = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                else:
+                    input_data = wavelet_coeffs_np
             else:
                 # Direct模式：原始RCS → 标准化
                 if data_adapter:

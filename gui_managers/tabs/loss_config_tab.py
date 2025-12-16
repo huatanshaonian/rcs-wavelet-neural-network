@@ -491,3 +491,4 @@ class LossConfigTab(ttk.Frame):
         self.use_multiscale_loss.set(False)
 
         self.update_loss_config_preview()
+

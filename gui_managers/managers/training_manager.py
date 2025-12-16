@@ -333,23 +333,22 @@ class TrainingManager:
             raise e
 
     def _open_loss_config_for_ae(self):
-        """为AutoEncoder打开损失函数配置页面"""
+        """为AutoEncoder打开损失函数配置页面 - 切换到主界面标签页"""
         try:
-            from gui_managers.tabs.loss_config_tab import LossConfigDialog
+            # 尝试找到并切换到损失配置标签页
+            notebook = self.gui.notebook
+            found = False
+            for tab_id in notebook.tabs():
+                tab_text = notebook.tab(tab_id, "text")
+                if "损失函数配置" in tab_text:
+                    notebook.select(tab_id)
+                    found = True
+                    self.gui.ae_log("👉 已切换到损失函数配置标签页")
+                    break
             
-            def on_config_saved(config, stage=None):
-                if stage:
-                    if not hasattr(self.gui, 'ae_stage_loss_configs'):
-                        self.gui.ae_stage_loss_configs = {}
-                    self.gui.ae_stage_loss_configs[stage] = config
-                    self.gui.ae_log(f"✅ 已保存 {stage} 的损失函数配置")
-                else:
-                    self.gui.ae_custom_loss_config = config
-                    self.gui.ae_log("✅ 已保存全局自定义损失函数配置")
-            
-            current_config = getattr(self.gui, 'ae_custom_loss_config', None)
-            LossConfigDialog(self.gui.root, current_config, on_config_saved, is_ae_mode=True)
-            
+            if not found:
+                messagebox.showinfo("提示", "请在主界面的'损失函数配置'标签页中进行设置。")
+                
         except Exception as e:
-            self.gui.ae_log(f"❌ 打开配置窗口失败: {e}")
-            messagebox.showerror("错误", f"打开配置窗口失败: {e}")
+            self.gui.ae_log(f"❌ 切换标签页失败: {e}")
+            messagebox.showinfo("提示", "请在主界面的'损失函数配置'标签页中进行设置。")

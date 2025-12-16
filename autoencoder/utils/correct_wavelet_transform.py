@@ -50,12 +50,12 @@ class CorrectWaveletTransform:
         print(f"小波变换: {test_size} → {self.wavelet_size}")
         print(f"初始化正确小波变换器: {wavelet}, 模式: {mode}, 小波尺寸: {self.wavelet_size}")
 
-    def forward_transform(self, rcs_data: torch.Tensor) -> torch.Tensor:
+    def forward_transform(self, rcs_data: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """
         RCS数据 → 小波系数 (保持原始小波尺寸)
 
         Args:
-            rcs_data: [B, 91, 91, num_freq] RCS数据
+            rcs_data: [B, 91, 91, num_freq] RCS数据 (Tensor or Numpy)
 
         Returns:
             wavelet_coeffs: [B, wavelet_h, wavelet_w, num_freq*4] 小波系数
@@ -72,7 +72,10 @@ class CorrectWaveletTransform:
 
             for freq_idx in range(self.num_frequencies):
                 # 提取单频数据 [91, 91]
-                freq_data = rcs_data[batch_idx, :, :, freq_idx].detach().cpu().numpy()
+                if isinstance(rcs_data, torch.Tensor):
+                    freq_data = rcs_data[batch_idx, :, :, freq_idx].detach().cpu().numpy()
+                else:
+                    freq_data = rcs_data[batch_idx, :, :, freq_idx]
 
                 # 2D离散小波变换
                 coeffs = pywt.dwt2(freq_data, self.wavelet, mode=self.mode)
