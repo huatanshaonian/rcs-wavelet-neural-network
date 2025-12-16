@@ -365,10 +365,10 @@ class AutoEncoderExtension:
         training_control_frame = ttk.Frame(training_control_group)
         training_control_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 训练模式选择（三阶段/端到端/仅Stage 1）
+        # 训练模式选择（三阶段/端到端/仅Stage 1/仅Stage 2）
         ttk.Label(training_control_frame, text="训练模式:").grid(row=0, column=0, sticky="w")
         mode_combo = ttk.Combobox(training_control_frame, textvariable=self.main_gui.ae_training_mode,
-                                values=["三阶段训练", "端到端训练", "仅Stage 1"], state="readonly", width=12)
+                                values=["三阶段训练", "端到端训练", "仅Stage 1", "仅Stage 2"], state="readonly", width=12)
         mode_combo.grid(row=0, column=1, columnspan=3, sticky="ew")
 
         # 按钮组（紧凑排列）

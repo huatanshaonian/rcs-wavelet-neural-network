@@ -73,25 +73,46 @@ class TrainingManager:
                 messagebox.showwarning("警告", "请先加载数据!")
                 return
 
-            # 重新初始化模型权重
+            # 获取训练模式（提前获取用于判断是否重新初始化）
+            training_mode = self.gui.ae_training_mode.get()
+
+            # 重新初始化模型权重（但"仅Stage 2"模式除外）
             if self.gui.ae_model_loaded:
-                self.gui.ae_log("🔄 检测到已加载模型，重新初始化权重...")
-                self.gui.ae_log("  💡 提示：使用'继续训练'按钮可从加载的权重继续训练")
+                if training_mode == "仅Stage 2":
+                    # 仅Stage 2模式：保留AutoEncoder权重，仅重新初始化ParameterMapper
+                    self.gui.ae_log("🔄 仅Stage 2模式：保留AutoEncoder权重")
 
-                import torch.nn as nn
-                def init_weights(m):
-                    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
-                        nn.init.xavier_uniform_(m.weight)
-                        if m.bias is not None:
-                            nn.init.zeros_(m.bias)
+                    import torch.nn as nn
+                    def init_weights(m):
+                        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
+                            nn.init.xavier_uniform_(m.weight)
+                            if m.bias is not None:
+                                nn.init.zeros_(m.bias)
 
-                self.gui.ae_system['autoencoder'].apply(init_weights)
-                if 'parameter_mapper' in self.gui.ae_system:
-                    self.gui.ae_system['parameter_mapper'].apply(init_weights)
-                self.gui.ae_log("✅ 模型权重已重新初始化（随机）")
+                    if 'parameter_mapper' in self.gui.ae_system:
+                        self.gui.ae_system['parameter_mapper'].apply(init_weights)
+                        self.gui.ae_log("✅ 参数映射器权重已重新初始化（随机）")
 
-                self.gui.ae_training_history = {}
-                self.gui.ae_log("  训练历史已清空，将从头开始训练")
+                    # 不清空训练历史，保留Stage 1的历史记录
+                else:
+                    # 其他模式：完全重新初始化
+                    self.gui.ae_log("🔄 检测到已加载模型，重新初始化权重...")
+                    self.gui.ae_log("  💡 提示：使用'继续训练'按钮可从加载的权重继续训练")
+
+                    import torch.nn as nn
+                    def init_weights(m):
+                        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
+                            nn.init.xavier_uniform_(m.weight)
+                            if m.bias is not None:
+                                nn.init.zeros_(m.bias)
+
+                    self.gui.ae_system['autoencoder'].apply(init_weights)
+                    if 'parameter_mapper' in self.gui.ae_system:
+                        self.gui.ae_system['parameter_mapper'].apply(init_weights)
+                    self.gui.ae_log("✅ 模型权重已重新初始化（随机）")
+
+                    self.gui.ae_training_history = {}
+                    self.gui.ae_log("  训练历史已清空，将从头开始训练")
 
             self.gui.ae_log("🚀 开始AutoEncoder训练...")
 
@@ -104,8 +125,21 @@ class TrainingManager:
             self.gui.ae_log(f"  调度策略: {training_config['lr_scheduler']}")
             self.gui.ae_log(f"  损失函数: {'自定义配置' if training_config['use_custom_loss'] else '标准MSE'}")
 
-            training_mode = self.gui.ae_training_mode.get()
-            
+            # 检查"仅Stage 2"模式是否加载了Stage 1模型（training_mode已在line 77获取）
+            if training_mode == "仅Stage 2":
+                if not self.gui.ae_model_loaded:
+                    messagebox.showwarning("警告", "仅Stage 2模式需要先加载已训练好的Stage 1模型！\n\n请先：\n1. 加载Stage 1模型\n2. 选择'继续训练'")
+                    return
+
+                # 检查加载的模型是否包含训练好的AutoEncoder
+                loaded_training_mode = self.gui.ae_training_history.get('training_mode', 'unknown')
+                if loaded_training_mode not in ['stage1_only', 'three_stage']:
+                    messagebox.showwarning("警告", f"当前加载的模型训练模式为'{loaded_training_mode}'，\n不适合进行Stage 2训练。\n\n建议加载stage1_only或three_stage模式的模型。")
+                    return
+
+                self.gui.ae_log("✅ 检测到已加载Stage 1模型，将仅训练参数映射器")
+                self.gui.ae_log("  AutoEncoder权重将保持冻结")
+
             # Log training mode details (simplified)
             self.gui.ae_log(f"  模式: {training_mode}")
 
@@ -149,12 +183,14 @@ class TrainingManager:
             elif training_mode == "仅Stage 2":
                 # 仅训练参数映射器（需要先加载Stage 1模型）
                 training_config['training_mode'] = 'stage2_only'
-                self.ae_trainer.train_stage2(rcs_data, param_data, training_config)
+                stage2_history = self.ae_trainer.train_stage2(rcs_data, param_data, training_config)
                 # 保存训练历史
                 if not hasattr(self.gui, 'ae_training_history'):
                     self.gui.ae_training_history = {'stage_histories': {}}
-                # train_stage2 会返回历史记录（如果实现了的话）
+                self.gui.ae_training_history['stage_histories']['stage2'] = stage2_history
+                self.gui.ae_training_history['training_mode'] = 'stage2_only'
                 self.gui.ae_system['training_mode'] = 'stage2_only'
+                self.gui.ae_log("✅ 参数映射器训练完成！")
             else:
                 self.ae_trainer.run_end_to_end_training(rcs_data, param_data, training_config)
 
@@ -224,13 +260,20 @@ class TrainingManager:
                         best_loss = stage1.get('best_val_loss', 'N/A')
                         if isinstance(best_loss, float):
                             self.gui.ae_log(f"  Stage 1: {best_loss:.6f}")
+                elif training_mode == '仅Stage 2' or training_mode == 'stage2_only':
+                    # Stage 2 Only：打印stage2（如果存在）
+                    if 'stage2' in stage_histories:
+                        stage2 = stage_histories['stage2']
+                        best_loss = stage2.get('best_val_loss', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.gui.ae_log(f"  Stage 2: {best_loss:.6f}")
 
                 self.gui.ae_log("💡 注意: 继续训练将从best_val_loss=inf开始（每次训练独立评估最佳模型）")
                 self.gui.ae_log("  这样可以确保只有真正改进的模型才会被保存")
 
             training_config = self._create_ae_training_config()
-            training_mode = self.gui.ae_training_mode.get()
-            
+            training_mode = self.gui.ae_training_mode.get()  # 重新获取当前训练模式
+
             rcs_data = self.gui.ae_system['rcs_data']
             param_data = self.gui.ae_system['param_data']
 
