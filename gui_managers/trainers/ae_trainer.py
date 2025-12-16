@@ -433,6 +433,14 @@ class AETrainer:
 
             self.gui.ae_log(f"📊 阶段1数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
 
+            # 输出训练集和验证集样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
+
             # 调整批次大小
             batch_size = training_config['batch_size']
             if batch_size > train_size:
@@ -649,7 +657,9 @@ class AETrainer:
                 'best_val_loss': best_val_loss,
                 'best_epoch': best_epoch,
                 'attention_history': attention_history,
-                'gradient_history': gradient_history
+                'gradient_history': gradient_history,
+                'train_indices': train_indices.tolist() if hasattr(train_indices, 'tolist') else list(train_indices),
+                'val_indices': val_indices.tolist() if hasattr(val_indices, 'tolist') else list(val_indices)
             }
 
         except Exception as e:
@@ -704,10 +714,20 @@ class AETrainer:
             
             param_tensor = torch.FloatTensor(param_normalized)
             dataset = TensorDataset(param_tensor, target_latents)
-            
+
             train_size = int(len(dataset) * 0.8)
             val_size = len(dataset) - train_size
             train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+
+            self.gui.ae_log(f"📊 阶段2数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 输出训练集和验证集样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
 
             batch_size = min(training_config['batch_size'], train_size)
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -835,7 +855,14 @@ class AETrainer:
                 param.requires_grad = True
 
             self.gui.ae_log(f"✅ 阶段2完成，最佳损失: {best_val_loss:.6f}")
-            return {'train_losses': train_losses, 'val_losses': val_losses}
+            return {
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch,
+                'train_indices': train_indices.tolist() if hasattr(train_indices, 'tolist') else list(train_indices),
+                'val_indices': val_indices.tolist() if hasattr(val_indices, 'tolist') else list(val_indices)
+            }
         except Exception as e:
             self.gui.ae_log(f"❌ 阶段2失败: {e}")
             raise e
@@ -871,6 +898,16 @@ class AETrainer:
             train_size = int(len(dataset) * 0.8)
             val_size = len(dataset) - train_size
             train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+
+            self.gui.ae_log(f"📊 阶段3数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 输出训练集和验证集样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
 
             batch_size = min(training_config['batch_size'], train_size)
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -1023,7 +1060,14 @@ class AETrainer:
                 parameter_mapper.load_state_dict(best_model_state['parameter_mapper'])
 
             self.gui.ae_log(f"✅ 阶段 3完成，最佳损失: {best_val_loss:.6f}")
-            return {'train_losses': train_losses, 'val_losses': val_losses}
+            return {
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch,
+                'train_indices': train_indices.tolist() if hasattr(train_indices, 'tolist') else list(train_indices),
+                'val_indices': val_indices.tolist() if hasattr(val_indices, 'tolist') else list(val_indices)
+            }
         except Exception as e:
             self.gui.ae_log(f"❌ 阶段 3失败: {e}")
             raise e

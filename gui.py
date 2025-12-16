@@ -1366,9 +1366,21 @@ class RCSWaveletGUI:
                 if training_history:
                     self.ae_training_history = training_history
 
-                    # ✅ 打印训练历史中的最佳loss信息
+                    # ✅ 打印训练历史中的最佳loss信息和数据集划分
                     self.ae_log("📊 训练历史信息:")
                     stage_histories = training_history.get('stage_histories', {})
+
+                    # 首先显示数据集划分（从Stage 1获取，因为所有阶段使用相同的划分）
+                    if 'stage1' in stage_histories:
+                        stage1 = stage_histories['stage1']
+                        train_indices = stage1.get('train_indices', [])
+                        val_indices = stage1.get('val_indices', [])
+                        if train_indices and val_indices:
+                            self.ae_log(f"📋 数据集划分:")
+                            self.ae_log(f"  训练集: {len(train_indices)} 样本 - {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+                            self.ae_log(f"  验证集: {len(val_indices)} 样本 - {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+                            if len(train_indices) > 20 or len(val_indices) > 20:
+                                self.ae_log(f"  (仅显示前20个标号)")
                     if 'stage1' in stage_histories:
                         stage1 = stage_histories['stage1']
                         best_loss = stage1.get('best_val_loss', 'N/A')
