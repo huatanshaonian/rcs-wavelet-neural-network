@@ -309,8 +309,12 @@ class LossConfigTab(ttk.Frame):
             # 保存到训练配置中
             self.app.training_config['custom_loss_config'] = loss_config
 
-            messagebox.showinfo("成功", "损失函数配置已应用！\n训练时将使用自定义损失函数。")
-            self.app.log_message("损失函数配置已更新")
+            # 自动启用"使用自定义损失函数"开关（更新两个地方）
+            self.app.ae_use_custom_loss.set(True)  # 更新GUI变量
+            self.app.training_config['use_custom_loss'] = True  # 更新配置字典
+
+            messagebox.showinfo("成功", "损失函数配置已应用！\n已自动启用「使用自定义损失函数」。")
+            self.app.log_message("损失函数配置已更新，use_custom_loss已启用")
 
         except ValueError as e:
             messagebox.showerror("错误", f"权重值格式错误: {e}")
