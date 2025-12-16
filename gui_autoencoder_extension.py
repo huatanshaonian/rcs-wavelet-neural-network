@@ -777,6 +777,14 @@ class AutoEncoderExtension:
             batch_size = training_config.get('batch_size', 32)
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+            # 调试：检查loss配置状态
+            self.main_gui.ae_log(f"🔍 use_custom_loss: {training_config.get('use_custom_loss', False)}")
+            self.main_gui.ae_log(f"🔍 custom_loss_config存在: {'custom_loss_config' in training_config}")
+            if 'custom_loss_config' in training_config:
+                loss_cfg = training_config['custom_loss_config']
+                active_losses = [k for k, v in loss_cfg.items() if k.startswith('use_') and v]
+                self.main_gui.ae_log(f"🔍 激活的损失: {active_losses}")
+
             # 准备数据（使用与训练相同的预处理）
             rcs_data = self.main_gui.rcs_data
 

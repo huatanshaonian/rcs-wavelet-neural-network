@@ -981,7 +981,42 @@ class AETrainer:
         return optimizer, scheduler
 
     def _create_stage_loss_function(self, training_config, stage='stage1'):
-        return nn.MSELoss() # Simplified for brevity, real impl checks config
+        """
+        创建指定阶段的损失函数
+        支持：阶段特定配置 > 全局自定义配置 > 默认MSE
+
+        注意：Stage 2（参数映射）总是使用MSE，不受全局自定义配置影响
+        """
+        # 调试日志
+        print(f"\n[DEBUG] _create_stage_loss_function called for {stage}")
+        print(f"  use_custom_loss: {training_config.get('use_custom_loss', False)}")
+        print(f"  custom_loss_config exists: {'custom_loss_config' in training_config}")
+
+        # 1. 检查阶段特定配置（优先级最高）
+        stage_config_key = f'{stage}_loss_config'
+        if stage_config_key in training_config:
+            print(f"  → Using stage-specific config: {stage_config_key}")
+            loss_config = training_config[stage_config_key]
+            from configurable_loss import create_loss_function
+            return self._wrap_configurable_loss(create_loss_function(loss_config))
+
+        # 2. 检查全局自定义配置（Stage 2除外，因为它在latent空间操作）
+        if stage != 'stage2' and training_config.get('use_custom_loss', False) and 'custom_loss_config' in training_config:
+            print(f"  → Using global custom loss config")
+            loss_config = training_config['custom_loss_config']
+            from configurable_loss import create_loss_function
+            return self._wrap_configurable_loss(create_loss_function(loss_config))
+
+        # 3. 默认MSE（包括Stage 2）
+        print(f"  → Using default MSE")
+        return nn.MSELoss()
+
+    def _wrap_configurable_loss(self, configurable_loss):
+        """包装ConfigurableLoss，返回tensor而非字典"""
+        def loss_wrapper(pred, target):
+            loss_dict = configurable_loss(pred, target)
+            return loss_dict['total']
+        return loss_wrapper
 
     def _step_scheduler(self, scheduler, scheduler_type, val_loss):
         if scheduler_type == 'adaptive':
