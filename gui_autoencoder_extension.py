@@ -472,8 +472,8 @@ class AutoEncoderExtension:
         status_group = ttk.LabelFrame(log_frame, text="系统状态")
         status_group.pack(fill=tk.X, padx=5, pady=5)
 
-        # 状态文本（精简，只显示5行）
-        self.status_text = tk.Text(status_group, wrap=tk.WORD, height=5, font=self.main_gui.font_small)
+        # 状态文本（显示8行，容纳完整参数信息）
+        self.status_text = tk.Text(status_group, wrap=tk.NONE, height=8, font=self.main_gui.font_small)
         status_scrollbar = ttk.Scrollbar(status_group, orient=tk.VERTICAL, command=self.status_text.yview)
         self.status_text.configure(yscrollcommand=status_scrollbar.set)
 
@@ -591,7 +591,7 @@ class AutoEncoderExtension:
             self.main_gui.ae_log(f"  ⚠️ 获取模型结构信息失败: {e}")
 
     def _update_status_display(self):
-        """更新状态显示（包含完整网络参数）"""
+        """更新状态显示（包含完整网络参数和训练配置）"""
         self.status_text.delete(1.0, tk.END)
 
         # 更新模型选择列表
@@ -624,14 +624,65 @@ class AutoEncoderExtension:
                 else:
                     params_str = f"{total_params}"
 
-                # 第一行：模式和架构
-                status_info.append(f"网络: {mode.upper()}-{architecture.upper()} | 激活: {activation}")
+                # 数据预处理参数
+                data_adapter = self.main_gui.ae_system.get('data_adapter')
+                if data_adapter:
+                    normalize = getattr(data_adapter, 'normalize', False)
+                    use_db = getattr(data_adapter, 'use_db', False)
+                    norm_method = getattr(data_adapter, 'normalization_method', 'z_score')
+                    preprocess_str = []
+                    if normalize:
+                        preprocess_str.append(f"标准化({norm_method})")
+                    if use_db:
+                        preprocess_str.append("dB变换")
+                    preprocess = " + ".join(preprocess_str) if preprocess_str else "无预处理"
+                else:
+                    preprocess = "N/A"
 
-                # 第二行：核心参数
-                status_info.append(f"隐空间: {latent_dim}D | 频率: {num_freq}freq | 小波: {wavelet}")
+                # 训练模式
+                training_mode = self.main_gui.ae_system.get('training_mode', 'N/A')
+                mode_display = {'stage1_only': 'Stage1', 'three_stage': '3Stage'}.get(training_mode, training_mode)
 
-                # 第三行：训练参数和模型规模
-                status_info.append(f"Dropout: {dropout} | 参数量: {params_str}")
+                # 通道注意力（如果有）
+                channel_attn = config.get('channel_attention', False)
+                attn_str = "✓" if channel_attn else "✗"
+
+                # 双分支参数（如果是dual_branch架构）
+                ll_ratio = config.get('ll_ratio', None)
+                dual_branch_str = f" | LL比例:{ll_ratio:.1f}" if ll_ratio else ""
+
+                # 第1行：网络架构
+                status_info.append(f"【网络】{mode.upper()}-{architecture.upper()} | 激活:{activation} | 隐空间:{latent_dim}D | 参数量:{params_str}")
+
+                # 第2行：频率和小波配置
+                status_info.append(f"【配置】频率:{num_freq}freq | 小波:{wavelet} | Dropout:{dropout} | 注意力:{attn_str}{dual_branch_str}")
+
+                # 第3行：数据预处理
+                status_info.append(f"【预处理】{preprocess}")
+
+                # 第4行：训练配置
+                if hasattr(self.main_gui, 'ae_training_history') and self.main_gui.ae_training_history:
+                    history = self.main_gui.ae_training_history
+                    training_config = history.get('training_config', {})
+
+                    # 提取训练参数
+                    optimizer = training_config.get('optimizer_type', 'adam')
+                    lr = training_config.get('learning_rate', 0.001)
+                    batch_size = training_config.get('batch_size', 32)
+                    lr_scheduler = training_config.get('lr_scheduler', 'adaptive')
+
+                    # 显示训练配置
+                    status_info.append(f"【训练】模式:{mode_display} | 优化器:{optimizer} | LR:{lr} | Batch:{batch_size} | 调度:{lr_scheduler}")
+
+                    # 第5行：训练历史（如果有Stage 1）
+                    stage_histories = history.get('stage_histories', {})
+                    if 'stage1' in stage_histories:
+                        stage1 = stage_histories['stage1']
+                        best_loss = stage1.get('best_val_loss', 'N/A')
+                        best_epoch = stage1.get('best_epoch', 'N/A')
+                        status_info.append(f"【性能】Stage1最佳: Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                else:
+                    status_info.append(f"【训练】模式:{mode_display} | 未训练")
 
             except Exception as e:
                 # 如果获取详细信息失败，显示基本配置
@@ -645,19 +696,22 @@ class AutoEncoderExtension:
             mode = self.main_gui.ae_mode.get()
             freq_config = self.main_gui.ae_freq_config.get()
             latent_dim = self.main_gui.ae_latent_dim.get()
-            status_info.append(f"模式: {mode} | 频率: {freq_config} | 隐空间: {latent_dim}")
-            status_info.append("⚠️ 主系统未创建")
+            architecture = self.main_gui.ae_architecture.get()
+            activation = self.main_gui.ae_activation.get()
+            status_info.append(f"【配置】模式:{mode} | 架构:{architecture} | 激活:{activation} | 频率:{freq_config} | 隐空间:{latent_dim}D")
+            status_info.append("⚠️ 主系统未创建，请点击'创建AutoEncoder系统'")
 
-        # 系统状态
+        # 系统状态（单行）
         main_sys = "✓" if (hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system) else "✗"
         dual_sys = "✓" if (self.wavelet_system and self.direct_system) else "✗"
-        status_info.append(f"主系统: {main_sys} | 双系统: {dual_sys}")
+        data_loaded = "✓" if (hasattr(self.main_gui, 'rcs_data') and self.main_gui.rcs_data is not None) else "✗"
+        status_info.append(f"【状态】主系统:{main_sys} | 双系统:{dual_sys} | 数据加载:{data_loaded}")
 
         # 对比结果（如果有）
         if self.comparison_results:
             timestamp = self.comparison_results.get('timestamp', '未知')
             sample_count = self.comparison_results.get('sample_count', 0)
-            status_info.append(f"对比分析: {timestamp} ({sample_count}样本)")
+            status_info.append(f"【对比】时间:{timestamp} | 样本:{sample_count}个")
 
         for line in status_info:
             self.status_text.insert(tk.END, line + "\n")
