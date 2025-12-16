@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader, TensorDataset, random_split
 from tkinter import messagebox
 import tkinter as tk
 from copy import deepcopy
+import os
+from datetime import datetime
 
 from autoencoder.utils.gradient_monitor import GradientMonitor
 from configurable_loss import create_loss_function as create_configurable_loss
@@ -27,6 +29,110 @@ class AETrainer:
             gui: Parent GUI instance for accessing state and logging
         """
         self.gui = gui
+
+    def _save_stage1_checkpoint(self, best_val_loss, best_epoch):
+        """
+        自动保存Stage 1 checkpoint（三阶段训练时调用）
+
+        Args:
+            best_val_loss: Stage 1最佳验证损失
+            best_epoch: Stage 1最佳epoch
+        """
+        import json
+
+        try:
+            # 创建checkpoint目录
+            checkpoint_dir = "ae_checkpoints"
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
+
+            # 生成文件名
+            ae_system = self.gui.ae_system
+            mode = ae_system.get('mode', 'wavelet')
+            architecture = ae_system.get('architecture', 'cnn')
+            activation = ae_system.get('activation', 'relu')
+
+            # 获取预处理标签
+            data_adapter = ae_system.get('data_adapter')
+            preprocess_tag = "raw"
+            if data_adapter:
+                normalize = getattr(data_adapter, 'normalize', False)
+                use_db = getattr(data_adapter, 'use_db', False)
+                if normalize and use_db:
+                    preprocess_tag = "norm_db"
+                elif normalize:
+                    preprocess_tag = "norm"
+                elif use_db:
+                    preprocess_tag = "db"
+
+            # 时间戳
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # 文件名格式: mode_architecture_activation_preprocess_stage1_timestamp.pth
+            base_name = f"{mode}_{architecture}_{activation}_{preprocess_tag}_stage1_{timestamp}"
+            model_path = os.path.join(checkpoint_dir, f"{base_name}.pth")
+            config_path = os.path.join(checkpoint_dir, f"{base_name}_config.json")
+
+            # 保存模型权重（仅AutoEncoder，不含ParameterMapper）
+            autoencoder = ae_system['autoencoder']
+            save_dict = {
+                'autoencoder_state_dict': autoencoder.state_dict(),
+                'training_mode': 'stage1_only',  # 标记为Stage 1模型
+                'stage1_best_val_loss': best_val_loss,
+                'stage1_best_epoch': best_epoch
+            }
+
+            # 如果有data_adapter统计信息，一并保存
+            if data_adapter and hasattr(data_adapter, 'data_stats') and data_adapter.data_stats:
+                save_dict['data_adapter_stats'] = data_adapter.data_stats
+
+            torch.save(save_dict, model_path)
+
+            # 保存配置文件
+            config_data = {
+                'model_info': {
+                    'mode': mode,
+                    'architecture': architecture,
+                    'latent_dim': ae_system.get('latent_dim', 256),
+                    'dropout_rate': ae_system.get('dropout_rate', 0.2),
+                    'activation': activation,
+                    'training_mode': 'stage1_only'
+                },
+                'frequency_config': {
+                    'num_frequencies': ae_system.get('num_frequencies', 2),
+                    'frequency_labels': ae_system.get('frequency_labels', ['1.5GHz', '3.0GHz']),
+                    'frequency_values_ghz': ae_system.get('frequency_values_ghz', [1.5, 3.0])
+                },
+                'data_preprocessing': {
+                    'wavelet_type': ae_system.get('wavelet_type', 'db4'),
+                    'normalize': getattr(data_adapter, 'normalize', False) if data_adapter else False,
+                    'use_db': getattr(data_adapter, 'use_db', False) if data_adapter else False,
+                    'normalization_method': getattr(data_adapter, 'normalization_method', 'z_score') if data_adapter else 'z_score'
+                },
+                'training_info': {
+                    'stage1_best_val_loss': best_val_loss,
+                    'stage1_best_epoch': best_epoch,
+                    'note': 'This is a Stage 1 checkpoint automatically saved during three-stage training'
+                },
+                'save_info': {
+                    'save_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'model_filename': os.path.basename(model_path),
+                    'checkpoint_type': 'stage1_auto_checkpoint'
+                }
+            }
+
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+            self.gui.ae_log(f"💾 自动保存Stage 1 checkpoint:")
+            self.gui.ae_log(f"  模型: {os.path.basename(model_path)}")
+            self.gui.ae_log(f"  配置: {os.path.basename(config_path)}")
+            self.gui.ae_log(f"  最佳损失: {best_val_loss:.6f} (Epoch {best_epoch})")
+            self.gui.ae_log(f"  💡 提示: 可以加载此checkpoint单独查看Stage 1重建性能")
+
+        except Exception as e:
+            self.gui.ae_log(f"⚠️ 保存Stage 1 checkpoint失败: {e}")
+            # 不抛出异常，避免中断训练流程
 
     def _is_lbfgs_optimizer(self, optimizer):
         """检查是否是L-BFGS优化器"""
@@ -531,6 +637,11 @@ class AETrainer:
 
             self.gui.ae_log("\n📊 分析训练完成后的隐空间分布...")
             self.print_latent_space_statistics(rcs_data)
+
+            # ✅ 三阶段训练时自动保存Stage 1 checkpoint
+            training_mode = training_config.get('training_mode', 'three_stage')
+            if training_mode == 'three_stage':
+                self._save_stage1_checkpoint(best_val_loss, best_epoch)
 
             return {
                 'train_losses': train_losses,
