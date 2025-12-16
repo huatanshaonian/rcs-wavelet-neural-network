@@ -1375,12 +1375,38 @@ class RCSWaveletGUI:
                         stage1 = stage_histories['stage1']
                         train_indices = stage1.get('train_indices', [])
                         val_indices = stage1.get('val_indices', [])
+
+                        # 如果旧模型没保存indices，但有数据，可以重新计算（种子固定，结果相同）
+                        if (not train_indices or not val_indices) and hasattr(self, 'rcs_data') and self.rcs_data is not None:
+                            self.ae_log(f"💡 模型未保存数据集划分信息（旧版本模型）")
+                            self.ae_log(f"   正在根据固定种子(42)重新计算...")
+
+                            import torch
+                            from torch.utils.data import TensorDataset, random_split
+
+                            # 使用相同的逻辑重新计算
+                            total_samples = len(self.rcs_data)
+                            train_size = int(total_samples * 0.8)
+                            val_size = total_samples - train_size
+
+                            # 创建临时dataset用于获取indices
+                            temp_tensor = torch.zeros(total_samples, 1)  # 占位tensor
+                            temp_dataset = TensorDataset(temp_tensor)
+                            generator = torch.Generator().manual_seed(42)
+                            train_dataset, val_dataset = random_split(temp_dataset, [train_size, val_size], generator=generator)
+
+                            train_indices = list(train_dataset.indices)
+                            val_indices = list(val_dataset.indices)
+                            self.ae_log(f"✅ 重新计算完成（基于当前{total_samples}个样本）")
+
                         if train_indices and val_indices:
                             self.ae_log(f"📋 数据集划分:")
                             self.ae_log(f"  训练集: {len(train_indices)} 样本 - {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
                             self.ae_log(f"  验证集: {len(val_indices)} 样本 - {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
                             if len(train_indices) > 20 or len(val_indices) > 20:
                                 self.ae_log(f"  (仅显示前20个标号)")
+                        else:
+                            self.ae_log(f"⚠️ 无法显示数据集划分（模型未保存且未加载数据）")
                     if 'stage1' in stage_histories:
                         stage1 = stage_histories['stage1']
                         best_loss = stage1.get('best_val_loss', 'N/A')
