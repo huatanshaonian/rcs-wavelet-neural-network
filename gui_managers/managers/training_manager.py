@@ -146,6 +146,15 @@ class TrainingManager:
                 # Ensure config reflects this
                 training_config['training_mode'] = 'stage1_only'
                 self.ae_trainer.run_three_stage_training(rcs_data, param_data, training_config)
+            elif training_mode == "仅Stage 2":
+                # 仅训练参数映射器（需要先加载Stage 1模型）
+                training_config['training_mode'] = 'stage2_only'
+                self.ae_trainer.train_stage2(rcs_data, param_data, training_config)
+                # 保存训练历史
+                if not hasattr(self.gui, 'ae_training_history'):
+                    self.gui.ae_training_history = {'stage_histories': {}}
+                # train_stage2 会返回历史记录（如果实现了的话）
+                self.gui.ae_system['training_mode'] = 'stage2_only'
             else:
                 self.ae_trainer.run_end_to_end_training(rcs_data, param_data, training_config)
 
@@ -188,12 +197,37 @@ class TrainingManager:
                 return
 
             self.gui.ae_log("🔄 继续训练...")
-            
+
             # Restore weights logic (retained here as it interacts with GUI state)
             self.gui.ae_system['autoencoder'].load_state_dict(self.gui.ae_loaded_weights['autoencoder'])
             if 'parameter_mapper' in self.gui.ae_loaded_weights:
                 self.gui.ae_system['parameter_mapper'].load_state_dict(self.gui.ae_loaded_weights['parameter_mapper'])
-            
+
+            # ✅ 打印上次训练的最佳loss作为基准
+            if hasattr(self.gui, 'ae_training_history') and self.gui.ae_training_history:
+                self.gui.ae_log("📊 上次训练的最佳Loss（作为基准）:")
+                stage_histories = self.gui.ae_training_history.get('stage_histories', {})
+                training_mode = self.gui.ae_training_mode.get()
+
+                if training_mode == '3阶段训练' or training_mode == 'three_stage':
+                    # 三阶段训练：打印所有阶段的最佳loss
+                    for stage_name in ['stage1', 'stage2', 'stage3']:
+                        if stage_name in stage_histories:
+                            stage = stage_histories[stage_name]
+                            best_loss = stage.get('best_val_loss', 'N/A')
+                            if isinstance(best_loss, float):
+                                self.gui.ae_log(f"  {stage_name.upper()}: {best_loss:.6f}")
+                elif training_mode == '仅Stage 1' or training_mode == 'stage1_only':
+                    # Stage 1 Only：只打印stage1
+                    if 'stage1' in stage_histories:
+                        stage1 = stage_histories['stage1']
+                        best_loss = stage1.get('best_val_loss', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.gui.ae_log(f"  Stage 1: {best_loss:.6f}")
+
+                self.gui.ae_log("💡 注意: 继续训练将从best_val_loss=inf开始（每次训练独立评估最佳模型）")
+                self.gui.ae_log("  这样可以确保只有真正改进的模型才会被保存")
+
             training_config = self._create_ae_training_config()
             training_mode = self.gui.ae_training_mode.get()
             
@@ -315,7 +349,8 @@ class TrainingManager:
             config['training_mode'] = {
                 '三阶段训练': 'three_stage',
                 '端到端训练': 'end_to_end',
-                '仅Stage 1': 'stage1_only'
+                '仅Stage 1': 'stage1_only',
+                '仅Stage 2': 'stage2_only'
             }.get(self.gui.ae_training_mode.get(), 'three_stage')
 
             if hasattr(self.gui, 'ae_custom_loss_config'):

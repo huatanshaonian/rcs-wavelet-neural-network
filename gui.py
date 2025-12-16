@@ -1329,6 +1329,39 @@ class RCSWaveletGUI:
                 if training_history:
                     self.ae_training_history = training_history
 
+                    # ✅ 打印训练历史中的最佳loss信息
+                    self.ae_log("📊 训练历史信息:")
+                    stage_histories = training_history.get('stage_histories', {})
+                    if 'stage1' in stage_histories:
+                        stage1 = stage_histories['stage1']
+                        best_loss = stage1.get('best_val_loss', 'N/A')
+                        best_epoch = stage1.get('best_epoch', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.ae_log(f"  Stage 1: 最佳Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                        else:
+                            self.ae_log(f"  Stage 1: 最佳Loss={best_loss} @ Epoch {best_epoch}")
+
+                    if 'stage2' in stage_histories:
+                        stage2 = stage_histories['stage2']
+                        best_loss = stage2.get('best_val_loss', 'N/A')
+                        best_epoch = stage2.get('best_epoch', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.ae_log(f"  Stage 2: 最佳Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                        else:
+                            self.ae_log(f"  Stage 2: 最佳Loss={best_loss} @ Epoch {best_epoch}")
+
+                    if 'stage3' in stage_histories:
+                        stage3 = stage_histories['stage3']
+                        best_loss = stage3.get('best_val_loss', 'N/A')
+                        best_epoch = stage3.get('best_epoch', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.ae_log(f"  Stage 3: 最佳Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                        else:
+                            self.ae_log(f"  Stage 3: 最佳Loss={best_loss} @ Epoch {best_epoch}")
+
+                    if not stage_histories:
+                        self.ae_log("  暂无训练历史")
+
                     # ✅ 恢复训练配置到GUI（用于继续训练）
                     if 'training_config' in training_history:
                         saved_config = training_history['training_config']
