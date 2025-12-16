@@ -593,49 +593,86 @@ class RCSWaveletGUI:
     # ==================== AutoEncoder功能函数 ====================
 
     def update_ae_status(self):
-        """更新AutoEncoder系统状态显示"""
+        """更新AutoEncoder系统状态显示（紧凑格式）"""
         try:
             status_info = []
-            status_info.append("=== AutoEncoder系统状态 ===")
 
-            # 频率配置信息
-            freq_config = self.ae_freq_config.get()
-            freq_info = "1.5GHz+3GHz" if freq_config == "2freq" else "1.5GHz+3GHz+6GHz"
-            status_info.append(f"频率配置: {freq_config} ({freq_info})")
+            # 如果系统已创建，显示完整信息
+            if self.ae_system is not None:
+                config = self.ae_system.get('config_info', {})
+                model = self.ae_system['autoencoder']
 
-            # 模型配置信息
-            status_info.append(f"隐空间维度: {self.ae_latent_dim.get()}")
-            status_info.append(f"小波类型: {self.ae_wavelet_type.get()}")
-            status_info.append(f"Dropout率: {self.ae_dropout_rate.get()}")
+                # 提取关键参数
+                mode = config.get('mode', self.ae_mode.get())
+                architecture = config.get('architecture', self.ae_architecture.get())
+                activation = config.get('activation', self.ae_activation.get())
+                latent_dim = config.get('latent_dim', self.ae_latent_dim.get())
+                num_freq = config.get('num_frequencies', 2)
+                wavelet = config.get('wavelet', self.ae_wavelet_type.get())
+                dropout = config.get('dropout_rate', self.ae_dropout_rate.get())
 
-            # 系统状态
-            if self.ae_system is None:
-                status_info.append("系统状态: 未创建")
-            else:
-                status_info.append("系统状态: 已创建")
-                # 显示模型信息 (兼容不同模型格式)
-                model_info = self.ae_system['autoencoder'].get_model_info()
-
-                # 获取参数量 (兼容两种格式)
-                if 'parameters' in model_info and 'total' in model_info['parameters']:
-                    # WaveletAutoEncoder格式
-                    total_params = model_info['parameters']['total']
-                elif 'total_parameters' in model_info:
-                    # DirectAutoEncoder格式
-                    total_params = model_info['total_parameters']
+                # 获取参数量
+                param_count = model.get_parameter_count()
+                total_params = param_count.get('total', 0)
+                if total_params >= 1_000_000:
+                    params_str = f"{total_params/1_000_000:.2f}M"
+                elif total_params >= 1_000:
+                    params_str = f"{total_params/1_000:.1f}K"
                 else:
-                    total_params = 0
+                    params_str = f"{total_params}"
 
-                status_info.append(f"模型参数量: {total_params:,}")
+                # 数据预处理参数
+                data_adapter = self.ae_system.get('data_adapter')
+                if data_adapter:
+                    normalize = getattr(data_adapter, 'normalize', False)
+                    use_db = getattr(data_adapter, 'use_db', False)
+                    norm_method = getattr(data_adapter, 'normalization_method', 'z_score')
+                    preprocess_str = []
+                    if normalize:
+                        preprocess_str.append(f"标准化({norm_method})")
+                    if use_db:
+                        preprocess_str.append("dB")
+                    preprocess = "+".join(preprocess_str) if preprocess_str else "无"
+                else:
+                    preprocess = "无"
 
-                # 压缩比 (可能不存在于直接模式)
-                if 'compression_ratio' in model_info:
-                    status_info.append(f"压缩比: {model_info['compression_ratio']}")
+                # 训练模式
+                training_mode = self.ae_system.get('training_mode', 'N/A')
+                mode_display = {'stage1_only': 'Stage1', 'three_stage': '3Stage'}.get(training_mode, training_mode)
+                trained_status = "已训练" if self.ae_trained else "未训练"
 
-            if self.ae_trained:
-                status_info.append("训练状态: 已训练")
+                # 第1行：网络架构（紧凑格式）
+                freq_labels = config.get('frequency_labels', ['1.5GHz', '3.0GHz'])
+                freq_str = '+'.join(freq_labels)
+                status_info.append(f"【网络】{mode.upper()}-{architecture.upper()} | 激活:{activation} | 隐空间:{latent_dim}D | 参数:{params_str} | 频率:{num_freq}f({freq_str}) | 小波:{wavelet} | Dropout:{dropout}")
+
+                # 第2行：数据和训练状态（紧凑格式）
+                status_info.append(f"【状态】预处理:{preprocess} | 训练:{trained_status}({mode_display}) | 系统:✓")
+
+                # 如果有训练历史，显示最佳Loss
+                if hasattr(self, 'ae_training_history') and self.ae_training_history:
+                    stage_histories = self.ae_training_history.get('stage_histories', {})
+                    best_losses = []
+                    for stage_name in ['stage1', 'stage2', 'stage3']:
+                        if stage_name in stage_histories:
+                            best_loss = stage_histories[stage_name].get('best_val_loss', None)
+                            if isinstance(best_loss, float):
+                                best_losses.append(f"{stage_name.upper()}:{best_loss:.6f}")
+                    if best_losses:
+                        status_info.append(f"【性能】最佳Loss: {' | '.join(best_losses)}")
+
             else:
-                status_info.append("训练状态: 未训练")
+                # 系统未创建，显示配置信息（单行）
+                mode = self.ae_mode.get()
+                architecture = self.ae_architecture.get()
+                activation = self.ae_activation.get()
+                freq_config = self.ae_freq_config.get()
+                latent_dim = self.ae_latent_dim.get()
+                wavelet = self.ae_wavelet_type.get()
+                dropout = self.ae_dropout_rate.get()
+
+                status_info.append(f"【配置】模式:{mode} | 架构:{architecture} | 激活:{activation} | 频率:{freq_config} | 隐空间:{latent_dim}D | 小波:{wavelet} | Dropout:{dropout} | 系统:✗")
+                status_info.append("💡 点击'创建AutoEncoder系统'开始")
 
             # 更新显示
             self.ae_status_text.delete(1.0, tk.END)
