@@ -472,8 +472,8 @@ class AutoEncoderExtension:
         status_group = ttk.LabelFrame(log_frame, text="系统状态")
         status_group.pack(fill=tk.X, padx=5, pady=5)
 
-        # 状态文本（显示8行，容纳完整参数信息）
-        self.status_text = tk.Text(status_group, wrap=tk.NONE, height=8, font=self.main_gui.font_small)
+        # 状态文本（显示5行，紧凑显示完整参数信息）
+        self.status_text = tk.Text(status_group, wrap=tk.NONE, height=5, font=self.main_gui.font_small)
         status_scrollbar = ttk.Scrollbar(status_group, orient=tk.VERTICAL, command=self.status_text.yview)
         self.status_text.configure(yscrollcommand=status_scrollbar.set)
 
@@ -651,16 +651,16 @@ class AutoEncoderExtension:
                 ll_ratio = config.get('ll_ratio', None)
                 dual_branch_str = f" | LL比例:{ll_ratio:.1f}" if ll_ratio else ""
 
-                # 第1行：网络架构
-                status_info.append(f"【网络】{mode.upper()}-{architecture.upper()} | 激活:{activation} | 隐空间:{latent_dim}D | 参数量:{params_str}")
+                # 第1行：网络架构 + 频率配置（合并）
+                status_info.append(f"【网络】{mode.upper()}-{architecture.upper()} | 激活:{activation} | 隐空间:{latent_dim}D | 参数量:{params_str} | 频率:{num_freq}freq | 小波:{wavelet} | Dropout:{dropout} | 注意力:{attn_str}{dual_branch_str}")
 
-                # 第2行：频率和小波配置
-                status_info.append(f"【配置】频率:{num_freq}freq | 小波:{wavelet} | Dropout:{dropout} | 注意力:{attn_str}{dual_branch_str}")
+                # 第2行：数据预处理 + 系统状态（合并）
+                main_sys = "✓" if (hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system) else "✗"
+                dual_sys = "✓" if (self.wavelet_system and self.direct_system) else "✗"
+                data_loaded = "✓" if (hasattr(self.main_gui, 'rcs_data') and self.main_gui.rcs_data is not None) else "✗"
+                status_info.append(f"【数据】预处理:{preprocess} | 状态: 主系统{main_sys} 双系统{dual_sys} 数据{data_loaded}")
 
-                # 第3行：数据预处理
-                status_info.append(f"【预处理】{preprocess}")
-
-                # 第4行：训练配置
+                # 第3行：训练配置 + 性能（合并）
                 if hasattr(self.main_gui, 'ae_training_history') and self.main_gui.ae_training_history:
                     history = self.main_gui.ae_training_history
                     training_config = history.get('training_config', {})
@@ -671,16 +671,20 @@ class AutoEncoderExtension:
                     batch_size = training_config.get('batch_size', 32)
                     lr_scheduler = training_config.get('lr_scheduler', 'adaptive')
 
-                    # 显示训练配置
-                    status_info.append(f"【训练】模式:{mode_display} | 优化器:{optimizer} | LR:{lr} | Batch:{batch_size} | 调度:{lr_scheduler}")
-
-                    # 第5行：训练历史（如果有Stage 1）
+                    # 训练历史（如果有Stage 1）
                     stage_histories = history.get('stage_histories', {})
+                    perf_str = ""
                     if 'stage1' in stage_histories:
                         stage1 = stage_histories['stage1']
                         best_loss = stage1.get('best_val_loss', 'N/A')
                         best_epoch = stage1.get('best_epoch', 'N/A')
-                        status_info.append(f"【性能】Stage1最佳: Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                        if isinstance(best_loss, float):
+                            perf_str = f" | Stage1最佳:Loss={best_loss:.6f}@Epoch{best_epoch}"
+                        else:
+                            perf_str = f" | Stage1最佳:Loss={best_loss}@Epoch{best_epoch}"
+
+                    # 显示训练配置 + 性能
+                    status_info.append(f"【训练】模式:{mode_display} | 优化器:{optimizer} | LR:{lr} | Batch:{batch_size} | 调度:{lr_scheduler}{perf_str}")
                 else:
                     status_info.append(f"【训练】模式:{mode_display} | 未训练")
 
@@ -692,20 +696,17 @@ class AutoEncoderExtension:
                 status_info.append(f"模式: {mode} | 频率: {freq_config} | 隐空间: {latent_dim}")
                 status_info.append(f"⚠️ 无法获取详细参数: {str(e)}")
         else:
-            # 系统未创建，显示配置信息
+            # 系统未创建，显示配置信息（单行）
             mode = self.main_gui.ae_mode.get()
             freq_config = self.main_gui.ae_freq_config.get()
             latent_dim = self.main_gui.ae_latent_dim.get()
             architecture = self.main_gui.ae_architecture.get()
             activation = self.main_gui.ae_activation.get()
-            status_info.append(f"【配置】模式:{mode} | 架构:{architecture} | 激活:{activation} | 频率:{freq_config} | 隐空间:{latent_dim}D")
+            main_sys = "✓" if (hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system) else "✗"
+            dual_sys = "✓" if (self.wavelet_system and self.direct_system) else "✗"
+            data_loaded = "✓" if (hasattr(self.main_gui, 'rcs_data') and self.main_gui.rcs_data is not None) else "✗"
+            status_info.append(f"【配置】模式:{mode} | 架构:{architecture} | 激活:{activation} | 频率:{freq_config} | 隐空间:{latent_dim}D | 状态: 主系统{main_sys} 双系统{dual_sys} 数据{data_loaded}")
             status_info.append("⚠️ 主系统未创建，请点击'创建AutoEncoder系统'")
-
-        # 系统状态（单行）
-        main_sys = "✓" if (hasattr(self.main_gui, 'ae_system') and self.main_gui.ae_system) else "✗"
-        dual_sys = "✓" if (self.wavelet_system and self.direct_system) else "✗"
-        data_loaded = "✓" if (hasattr(self.main_gui, 'rcs_data') and self.main_gui.rcs_data is not None) else "✗"
-        status_info.append(f"【状态】主系统:{main_sys} | 双系统:{dual_sys} | 数据加载:{data_loaded}")
 
         # 对比结果（如果有）
         if self.comparison_results:
