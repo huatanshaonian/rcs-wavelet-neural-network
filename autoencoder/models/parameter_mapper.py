@@ -16,38 +16,73 @@ import os
 class MLPMapper(nn.Module):
     """
     多层感知机参数映射器
+
+    支持功能：
+    1. 多种激活函数（relu/gelu/sin/swish/mish/tanh）
+    2. 自适应隐藏层维度（根据param_dim→latent_dim自动计算）
+    3. 固定隐藏层维度（向后兼容）
     """
 
     def __init__(self,
                  param_dim: int = 9,
                  latent_dim: int = 256,
-                 hidden_dims: list = [64, 128],
+                 hidden_dims: list = None,
                  dropout_rate: float = 0.3,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 use_adaptive: bool = False,
+                 max_ratio: int = 4):
+        """
+        Args:
+            param_dim: 输入参数维度
+            latent_dim: 输出隐空间维度
+            hidden_dims: 固定隐藏层维度列表（如[64, 128]）。如果use_adaptive=True，此参数被忽略
+            dropout_rate: Dropout比率
+            activation: 激活函数类型
+            use_adaptive: 是否使用自适应隐藏层维度
+            max_ratio: 自适应模式下每级最大压缩比（默认4:1）
+        """
         super().__init__()
 
         self.param_dim = param_dim
         self.latent_dim = latent_dim
-        self.hidden_dims = hidden_dims
+        self.dropout_rate = dropout_rate
+        self.activation_name = activation
+        self.use_adaptive = use_adaptive
+
+        # 确定隐藏层维度
+        if use_adaptive:
+            # 使用自适应层计算
+            from autoencoder.utils.adaptive_layers import calculate_intermediate_dims
+            # ParameterMapper通常从小维度(9)映射到大维度(256)，需要渐进式扩展
+            # 反转输入输出，计算扩展路径，然后反转回来
+            if param_dim < latent_dim:
+                # 从小到大：需要扩展
+                self.hidden_dims = calculate_intermediate_dims(
+                    latent_dim, param_dim, max_ratio=max_ratio, min_layers=2
+                )
+                self.hidden_dims = list(reversed(self.hidden_dims))  # 反转：从小到大
+            else:
+                # 从大到小：需要压缩
+                self.hidden_dims = calculate_intermediate_dims(
+                    param_dim, latent_dim, max_ratio=max_ratio, min_layers=2
+                )
+        else:
+            # 使用固定隐藏层维度
+            if hidden_dims is None:
+                hidden_dims = [64, 128]  # 默认值
+            self.hidden_dims = hidden_dims
 
         # 选择激活函数
-        if activation == 'relu':
-            self.activation = nn.ReLU(inplace=True)
-        elif activation == 'gelu':
-            self.activation = nn.GELU()
-        elif activation == 'leaky_relu':
-            self.activation = nn.LeakyReLU(0.2, inplace=True)
-        else:
-            self.activation = nn.ReLU(inplace=True)
+        self.activation = self._create_activation(activation)
 
         # 构建网络
         layers = []
         input_dim = param_dim
 
-        for hidden_dim in hidden_dims:
+        for hidden_dim in self.hidden_dims:
             layers.extend([
                 nn.Linear(input_dim, hidden_dim),
-                self.activation,
+                self._create_activation(activation),  # 每层独立创建激活函数
                 nn.BatchNorm1d(hidden_dim),
                 nn.Dropout(dropout_rate)
             ])
@@ -58,6 +93,30 @@ class MLPMapper(nn.Module):
 
         self.network = nn.Sequential(*layers)
         self._initialize_weights()
+
+    def _create_activation(self, activation: str) -> nn.Module:
+        """创建激活函数层"""
+        if activation == 'relu':
+            return nn.ReLU(inplace=True)
+        elif activation == 'gelu':
+            return nn.GELU()
+        elif activation == 'leaky_relu':
+            return nn.LeakyReLU(0.2, inplace=True)
+        elif activation == 'sin':
+            from autoencoder.utils.activation_factory import SinActivation
+            return SinActivation()
+        elif activation == 'swish' or activation == 'silu':
+            return nn.SiLU(inplace=True)
+        elif activation == 'mish':
+            try:
+                return nn.Mish(inplace=True)
+            except:
+                from autoencoder.utils.activation_factory import MishActivation
+                return MishActivation()
+        elif activation == 'tanh':
+            return nn.Tanh()
+        else:
+            return nn.ReLU(inplace=True)  # 默认ReLU
 
     def _initialize_weights(self):
         """权重初始化"""
@@ -71,6 +130,28 @@ class MLPMapper(nn.Module):
 
     def forward(self, params: torch.Tensor) -> torch.Tensor:
         return self.network(params)
+
+    def get_parameter_count(self) -> int:
+        """获取模型参数量"""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    def get_model_info(self) -> dict:
+        """获取模型信息"""
+        structure = [self.param_dim] + self.hidden_dims + [self.latent_dim]
+        structure_str = ' → '.join(map(str, structure))
+
+        return {
+            'architecture': 'MLPMapper',
+            'param_dim': self.param_dim,
+            'latent_dim': self.latent_dim,
+            'hidden_dims': self.hidden_dims,
+            'structure': structure_str,
+            'num_layers': len(structure) - 1,
+            'activation': self.activation_name,
+            'dropout_rate': self.dropout_rate,
+            'use_adaptive': self.use_adaptive,
+            'parameter_count': self.get_parameter_count()
+        }
 
 
 class RandomForestMapper:

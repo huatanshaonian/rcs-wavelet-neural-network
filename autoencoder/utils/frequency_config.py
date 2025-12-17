@@ -183,16 +183,22 @@ class FrequencyConfig:
     def create_parameter_mapper(self,
                               param_dim: int = 9,
                               latent_dim: int = 32,
-                              hidden_dims: list = [64, 128],
-                              dropout_rate: float = 0.3) -> ParameterMapper:
+                              hidden_dims: list = None,
+                              dropout_rate: float = 0.3,
+                              activation: str = 'relu',
+                              use_adaptive: bool = False,
+                              max_ratio: int = 4) -> ParameterMapper:
         """
         创建参数映射器 (与频率配置无关，但为了API一致性提供)
 
         Args:
             param_dim: 参数维度
             latent_dim: 隐空间维度
-            hidden_dims: 隐藏层维度
+            hidden_dims: 隐藏层维度列表（如果use_adaptive=True则忽略）
             dropout_rate: Dropout比率
+            activation: 激活函数类型（relu/gelu/sin/swish/mish/tanh）
+            use_adaptive: 是否使用自适应隐藏层维度
+            max_ratio: 自适应模式下每级最大压缩比
 
         Returns:
             ParameterMapper实例
@@ -201,13 +207,19 @@ class FrequencyConfig:
             param_dim=param_dim,
             latent_dim=latent_dim,
             hidden_dims=hidden_dims,
-            dropout_rate=dropout_rate
+            dropout_rate=dropout_rate,
+            activation=activation,
+            use_adaptive=use_adaptive,
+            max_ratio=max_ratio
         )
 
+        info = mapper.get_model_info()
         print(f"创建参数映射器:")
         print(f"  - 参数维度: {param_dim}")
         print(f"  - 隐空间维度: {latent_dim}")
-        print(f"  - 隐藏层: {hidden_dims}")
+        print(f"  - 网络结构: {info['structure']}")
+        print(f"  - 激活函数: {activation}")
+        print(f"  - 自适应层: {'是' if use_adaptive else '否'}")
         print(f"  - 参数量: {mapper.get_parameter_count():,}")
 
         return mapper
@@ -223,7 +235,10 @@ def create_autoencoder_system(config_name: str = '2freq',
                             use_channel_attention: bool = False,
                             activation: str = 'relu',
                             db_transform: bool = False,
-                            normalization_method: str = 'zscore') -> Dict[str, Any]:
+                            normalization_method: str = 'zscore',
+                            mapper_activation: str = None,
+                            mapper_use_adaptive: bool = False,
+                            mapper_hidden_dims: list = None) -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -239,6 +254,9 @@ def create_autoencoder_system(config_name: str = '2freq',
         activation: 激活函数类型 ('relu', 'sin', 'gelu', 'swish'等，默认: 'relu')
         db_transform: 是否使用dB变换（手动控制，默认: False）
         normalization_method: 标准化方法 ('none', 'zscore', 'minmax'，默认: 'zscore')
+        mapper_activation: 参数映射器激活函数（默认None，使用AutoEncoder相同的activation）
+        mapper_use_adaptive: 参数映射器是否使用自适应隐藏层（默认False）
+        mapper_hidden_dims: 参数映射器固定隐藏层维度（仅当mapper_use_adaptive=False时生效）
 
     Returns:
         包含所有组件的字典
@@ -472,7 +490,17 @@ def create_autoencoder_system(config_name: str = '2freq',
         raise ValueError(f"未知的模式: {mode}. 支持的模式: 'wavelet', 'direct', 'differentiable_wavelet'")
 
     data_adapter = freq_config.create_data_adapter(normalize, mode=mode if mode != 'differentiable_wavelet' else 'wavelet', db_transform=db_transform, normalization_method=normalization_method)
-    parameter_mapper = freq_config.create_parameter_mapper(latent_dim=latent_dim)
+
+    # 创建参数映射器（支持独立配置）
+    if mapper_activation is None:
+        mapper_activation = activation  # 默认使用AutoEncoder相同的激活函数
+
+    parameter_mapper = freq_config.create_parameter_mapper(
+        latent_dim=latent_dim,
+        activation=mapper_activation,
+        use_adaptive=mapper_use_adaptive,
+        hidden_dims=mapper_hidden_dims
+    )
 
     # 打印模型参数信息
     ae_params = autoencoder.get_parameter_count()

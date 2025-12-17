@@ -249,6 +249,10 @@ class RCSWaveletGUI:
         self.ae_architecture_type = tk.StringVar(value="CNN")  # 架构类型: CNN或MLP
         self.ae_activation = tk.StringVar(value="relu")  # 激活函数类型
 
+        # 参数映射器配置
+        self.ae_mapper_activation = tk.StringVar(value="auto")  # auto表示与AutoEncoder相同
+        self.ae_mapper_use_adaptive = tk.BooleanVar(value=True)  # 默认使用自适应层
+
         # 训练配置
         self.ae_batch_size = tk.StringVar(value="16")
         self.ae_learning_rate = tk.StringVar(value="1e-3")

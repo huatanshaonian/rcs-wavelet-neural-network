@@ -10,7 +10,8 @@
       "Bash(python:*)",
       "Bash(grep:*)",
       "Bash(wc:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []

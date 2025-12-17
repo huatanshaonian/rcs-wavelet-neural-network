@@ -168,12 +168,24 @@ class AutoEncoderExtension:
                                          values=["db4", "db8", "haar", "bior2.2"], state="readonly", width=12)
         self.wavelet_combo.grid(row=2, column=1, columnspan=3, sticky="ew", pady=(5, 0))
 
-        # 第四行：激活函数类型
-        ttk.Label(model_frame, text="激活函数:").grid(row=3, column=0, sticky="w", pady=(5, 0))
+        # 第四行：激活函数类型（AutoEncoder）
+        ttk.Label(model_frame, text="AE激活函数:").grid(row=3, column=0, sticky="w", pady=(5, 0))
         activation_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_activation,
                                        values=["relu", "sin", "gelu", "swish", "tanh", "sigmoid", "mish", "elu",
                                               "leaky_relu", "prelu"], state="readonly", width=12)
         activation_combo.grid(row=3, column=1, columnspan=3, sticky="ew", pady=(5, 0))
+
+        # 第五行：参数映射器配置
+        ttk.Label(model_frame, text="映射器激活:").grid(row=4, column=0, sticky="w", pady=(5, 0))
+        mapper_activation_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_mapper_activation,
+                                              values=["auto", "relu", "sin", "gelu", "swish", "tanh", "mish"],
+                                              state="readonly", width=12)
+        mapper_activation_combo.grid(row=4, column=1, columnspan=3, sticky="ew", pady=(5, 0))
+
+        # 第六行：自适应层选项
+        mapper_adaptive_cb = ttk.Checkbutton(model_frame, text="映射器使用自适应层",
+                                            variable=self.main_gui.ae_mapper_use_adaptive)
+        mapper_adaptive_cb.grid(row=5, column=0, columnspan=4, sticky="w", pady=(5, 0))
 
         # 绑定模式变化事件（根据模式启用/禁用小波设置）
         self.main_gui.ae_mode.trace('w', self._on_mode_change)
@@ -764,6 +776,12 @@ class AutoEncoderExtension:
             db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取dB变换开关（手动控制）
             activation = self.main_gui.ae_activation.get()  # 从GUI读取激活函数
 
+            # 参数映射器配置
+            mapper_activation = self.main_gui.ae_mapper_activation.get()
+            if mapper_activation == 'auto':
+                mapper_activation = None  # None表示使用与AutoEncoder相同的激活函数
+            mapper_use_adaptive = self.main_gui.ae_mapper_use_adaptive.get()
+
             # 向后兼容：更新 ae_normalize 变量
             self.main_gui.ae_normalize.set(normalization_method != 'none')
 
@@ -779,7 +797,9 @@ class AutoEncoderExtension:
                 use_channel_attention=use_channel_attention,
                 activation=activation,
                 db_transform=db_transform,
-                normalization_method=normalization_method
+                normalization_method=normalization_method,
+                mapper_activation=mapper_activation,
+                mapper_use_adaptive=mapper_use_adaptive
             )
 
             # 添加数据
