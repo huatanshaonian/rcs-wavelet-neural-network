@@ -58,7 +58,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-models/
+/models/
 checkpoints/
 results/
 logs/
