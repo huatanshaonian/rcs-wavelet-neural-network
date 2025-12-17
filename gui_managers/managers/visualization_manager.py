@@ -1512,8 +1512,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 latent1 = autoencoder.encode(input1)
                 latent2 = autoencoder.encode(input2)
 
-                # 线性插值（7个步骤：0%, 16.7%, 33.3%, 50%, 66.7%, 83.3%, 100%）
-                alphas = [0.0, 1/6, 2/6, 3/6, 4/6, 5/6, 1.0]
+                # 线性插值（5个步骤：0%, 25%, 50%, 75%, 100%）
+                alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
                 interpolated_latents = []
                 for alpha in alphas:
                     latent_interp = (1 - alpha) * latent1 + alpha * latent2
@@ -1528,8 +1528,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                     if mode in ('wavelet', 'differentiable_wavelet'):
                         # Wavelet: 标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
                         if data_adapter:
-                            decoded_np = decoded_output.cpu().numpy()
-                            decoded_coeffs = data_adapter.inverse_adapt(decoded_np)
+                            # 修复: inverse_adapt 接收 Tensor (不需要先转numpy)
+                            decoded_coeffs = data_adapter.inverse_adapt(decoded_output)
                             decoded_coeffs_tensor = torch.FloatTensor(decoded_coeffs).to(device)
                         else:
                             decoded_coeffs_tensor = decoded_output
@@ -1537,24 +1537,30 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                     else:
                         # Direct: 标准化RCS → 逆标准化 → RCS
                         if data_adapter:
-                            decoded_np = decoded_output.cpu().numpy()
-                            reconstructed_rcs = data_adapter.inverse_adapt(decoded_np)
+                            # 修复: inverse_adapt 接收 Tensor (不需要先转numpy)
+                            reconstructed_rcs = data_adapter.inverse_adapt(decoded_output)
                             reconstructed_rcs = torch.FloatTensor(reconstructed_rcs).to(device)
                         else:
                             reconstructed_rcs = decoded_output
 
-                    reconstructed_rcs_list.append(reconstructed_rcs.cpu().numpy())
+                    # 确保是numpy array以便后续处理
+                    if isinstance(reconstructed_rcs, torch.Tensor):
+                        reconstructed_rcs_np = reconstructed_rcs.detach().cpu().numpy()
+                    else:
+                        reconstructed_rcs_np = reconstructed_rcs
+
+                    reconstructed_rcs_list.append(reconstructed_rcs_np)
 
             # 可视化
             target_fig.clear()
 
-            # 绘制7个插值步骤（2行7列，第一行theta=0度，第二行theta=90度）
+            # 绘制5个插值步骤（2行5列，第一行theta=0度，第二行theta=90度）
             for i, (alpha, rcs_recon) in enumerate(zip(alphas, reconstructed_rcs_list)):
                 # 提取第一个频率的RCS数据（假设是1.5GHz）
                 rcs_recon_2d = rcs_recon[0, :, :, 0]  # [91, 91]
 
                 # 第一行：phi方向截面（theta=0度）
-                ax1 = target_fig.add_subplot(2, 7, i+1)
+                ax1 = target_fig.add_subplot(2, len(alphas), i+1)
                 phi_slice = rcs_recon_2d[45, :]  # 中心行
                 ax1.plot(phi_slice, linewidth=2)
                 ax1.set_title(f'α={alpha:.2f}\n(样本{sample_id1}→{sample_id2})',
@@ -1565,7 +1571,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 ax1.grid(True, alpha=0.3)
 
                 # 第二行：2D热图
-                ax2 = target_fig.add_subplot(2, 7, i+8)
+                ax2 = target_fig.add_subplot(2, len(alphas), i+len(alphas)+1)
                 im = ax2.imshow(rcs_recon_2d, cmap='jet', aspect='auto', origin='lower')
                 ax2.set_xlabel('φ', fontsize=int(10*fontsize_scale))
                 ax2.set_ylabel('θ', fontsize=int(10*fontsize_scale))
@@ -1581,7 +1587,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             target_fig.tight_layout(rect=[0, 0, 1, 0.96])
             target_canvas.draw()
 
-            log_msg(f"隐空间插值完成: 样本{sample_id1} → 样本{sample_id2} (共7步)")
+            log_msg(f"隐空间插值完成: 样本{sample_id1} → 样本{sample_id2} (共{len(alphas)}步)")
 
         except Exception as e:
             target_fig.clear()
