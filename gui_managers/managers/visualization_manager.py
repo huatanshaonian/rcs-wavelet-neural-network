@@ -1135,8 +1135,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 编码所有数据到隐空间
             with torch.no_grad():
-                # 取前50个样本避免内存问题
-                sample_data = data[:50]
+                # 使用全部样本
+                sample_data = data
 
                 # 根据模式准备输入数据
                 if mode in ('wavelet', 'differentiable_wavelet'):
