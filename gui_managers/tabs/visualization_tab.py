@@ -40,7 +40,7 @@ class VisualizationTab(ttk.Frame):
         self.vis_freq_var = tk.StringVar(value="1.5G")
         self.fontsize_scale_var = tk.DoubleVar(value=1.0)
         self.vis_type_var = tk.StringVar(value="2D热图")
-        self.color_param_var = tk.StringVar(value="参数1(l1)")  # 隐空间分布着色参数
+        self.color_param_var = tk.StringVar(value="参数1(kw)")  # 隐空间分布着色参数
 
         # Matplotlib图形初始化 (作为属性，以便在各种方法中访问和更新)
         self.vis_fig = Figure(figsize=(12, 8), dpi=80)
@@ -91,8 +91,9 @@ class VisualizationTab(ttk.Frame):
         # 着色参数选择（用于隐空间分布）
         ttk.Label(control_frame, text="着色参数:").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
         param_combo = ttk.Combobox(control_frame, textvariable=self.color_param_var,
-                                   values=["参数1(l1)", "参数2(l2)", "参数3(w1)", "参数4(w2)", "参数5(h)", "参数6(s)"],
-                                   state="readonly", width=10)
+                                   values=["参数1(kw)", "参数2(phi)", "参数3(yita)", "参数4(lam)",
+                                          "参数5(Ht)", "参数6(Nc)", "参数7(Theta)", "参数8(R)", "参数9(Beta)"],
+                                   state="readonly", width=12)
         param_combo.grid(row=1, column=7, padx=5, pady=2)
 
         # 生成按钮
@@ -291,8 +292,9 @@ class VisualizationTab(ttk.Frame):
             # 将参数选择转换为索引
             color_param_str = self.color_param_var.get()
             param_map = {
-                "参数1(l1)": 0, "参数2(l2)": 1, "参数3(w1)": 2,
-                "参数4(w2)": 3, "参数5(h)": 4, "参数6(s)": 5
+                "参数1(kw)": 0, "参数2(phi)": 1, "参数3(yita)": 2,
+                "参数4(lam)": 3, "参数5(Ht)": 4, "参数6(Nc)": 5,
+                "参数7(Theta)": 6, "参数8(R)": 7, "参数9(Beta)": 8
             }
             color_param_idx = param_map.get(color_param_str, 0)
 

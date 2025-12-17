@@ -1322,7 +1322,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 智能选择着色依据
             color_values = None
             color_label = "样本序号"
-            param_names = ["l1", "l2", "w1", "w2", "h", "s"]  # 常见参数名
+            # 实际的9个设计参数名称
+            param_names = ["kw", "phi", "yita", "lam", "Ht", "Nc", "Theta", "R", "Beta"]
 
             if params is not None and len(params) > 0:
                 sample_params = params[:len(latent_vectors)]
