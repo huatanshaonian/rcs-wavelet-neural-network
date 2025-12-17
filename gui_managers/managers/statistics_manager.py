@@ -24,8 +24,19 @@ class StatisticsManager:
             parent_gui: 父GUI窗口实例，用于访问GUI状态和数据
         """
         self.gui = parent_gui
-    def plot_global_statistics_comparison(self):
+    def plot_global_statistics_comparison(self, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None, model=None):
         """改进的全局统计对比分析 - 保存到results文件夹"""
+        
+        # 参数处理
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+        
+        # 数据回退
+        current_rcs_data = rcs_data if rcs_data is not None else getattr(self.gui, 'rcs_data', None)
+        current_param_data = param_data if param_data is not None else getattr(self.gui, 'param_data', None)
+        current_model = model if model is not None else getattr(self.gui, 'current_model', None)
+
         try:
             import numpy as np
             from matplotlib import pyplot as plt
@@ -73,12 +84,12 @@ class StatisticsManager:
                 use_ae_system = True
                 print(f"AutoEncoder数据形状: 参数={param_data.shape}, RCS={rcs_data.shape}")
             else:
-                # 情况2/3: 使用数据管理页面加载的数据
-                has_param_data = hasattr(self.gui, 'param_data') and self.gui.param_data is not None
-                has_rcs_data = hasattr(self.gui, 'rcs_data') and self.gui.rcs_data is not None
+                # 情况2/3: 使用数据管理页面加载的数据 (优先使用传入的参数)
+                has_param_data = current_param_data is not None
+                has_rcs_data = current_rcs_data is not None
                 if has_param_data and has_rcs_data:
-                    param_data = self.gui.param_data
-                    rcs_data = self.gui.rcs_data
+                    param_data = current_param_data
+                    rcs_data = current_rcs_data
 
                     # ⚠️ 关键修复：如果有AE系统，从ae_system获取模型组件
                     if has_ae_system:
@@ -611,19 +622,19 @@ class StatisticsManager:
 
             # ===== 在GUI中显示统计对比图 =====
             # 清除当前图形
-            self.gui.vis_fig.clear()
+            target_fig.clear()
 
             # 设置图形尺寸
-            self.gui.vis_fig.set_size_inches(15, 10)
+            target_fig.set_size_inches(15, 10)
 
             # 首先创建并保存散点图
-            self.gui._save_scatter_plots(all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir)
+            self._save_scatter_plots(all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir)
 
             # 创建并保存分布对比图
             self._save_distribution_plots(all_actual_1_5g, all_predicted_1_5g, all_actual_3g, all_predicted_3g, results_dir)
 
             # 子图1: 1.5GHz 模型均值对比图 (dBsm单位)
-            ax1 = self.gui.vis_fig.add_subplot(2, 3, 1)
+            ax1 = target_fig.add_subplot(2, 3, 1)
             stats_1_5_list = [s for s in model_stats if s['freq'] == '1.5GHz']
 
             # 提取各个模型的均值，转换为dBsm
@@ -650,7 +661,7 @@ class StatisticsManager:
             ax1.grid(True, alpha=0.3)
 
             # 子图2: 3GHz 模型均值对比图 (dBsm单位)
-            ax2 = self.gui.vis_fig.add_subplot(2, 3, 2)
+            ax2 = target_fig.add_subplot(2, 3, 2)
             stats_3_list = [s for s in model_stats if s['freq'] == '3GHz']
 
             # 提取各个模型的均值，转换为dBsm
@@ -675,7 +686,7 @@ class StatisticsManager:
             ax2.grid(True, alpha=0.3)
 
             # 子图3: 统计指标对比图（均值、最大值、最小值）
-            ax3 = self.gui.vis_fig.add_subplot(2, 3, 3)
+            ax3 = target_fig.add_subplot(2, 3, 3)
             stats_1_5_list = [s for s in model_stats if s['freq'] == '1.5GHz']
             stats_3_list = [s for s in model_stats if s['freq'] == '3GHz']
 
@@ -708,7 +719,7 @@ class StatisticsManager:
             ax3.grid(True, alpha=0.3)
 
             # 子图4: 性能指标 - 相关系数
-            ax4 = self.gui.vis_fig.add_subplot(2, 3, 4)
+            ax4 = target_fig.add_subplot(2, 3, 4)
             models = [s['model_id'] for s in stats_1_5_list]
             corr_1_5 = [s['correlation'] for s in stats_1_5_list]
             corr_3 = [s['correlation'] for s in stats_3_list]
@@ -724,7 +735,7 @@ class StatisticsManager:
             ax4.grid(True, alpha=0.3)
 
             # 子图5: RMSE对比
-            ax5 = self.gui.vis_fig.add_subplot(2, 3, 5)
+            ax5 = target_fig.add_subplot(2, 3, 5)
             rmse_1_5 = [s['rmse'] for s in stats_1_5_list]
             rmse_3 = [s['rmse'] for s in stats_3_list]
             ax5.bar(x - 0.2, rmse_1_5, 0.4, label='1.5GHz', alpha=0.7)
@@ -738,7 +749,7 @@ class StatisticsManager:
             ax5.grid(True, alpha=0.3)
 
             # 子图6: 整体性能汇总
-            ax6 = self.gui.vis_fig.add_subplot(2, 3, 6)
+            ax6 = target_fig.add_subplot(2, 3, 6)
             avg_r1 = np.mean(corr_1_5)
             avg_r2 = np.mean(corr_3)
             avg_rmse1 = np.mean(rmse_1_5)
@@ -765,13 +776,13 @@ class StatisticsManager:
             ax6.axis('off')
             ax6.set_title('性能汇总统计')
 
-            self.gui.vis_fig.tight_layout()
-            self.gui.vis_canvas.draw()
+            target_fig.tight_layout()
+            target_canvas.draw()
 
-            print(f"改进的全局统计对比分析完成!")
-            print(f"结果保存位置: {results_dir}")
-            print(f"处理模型数量: {len(stats_1_5_list)}")
-            print(f"整体相关系数: 1.5GHz={avg_r1:.4f}, 3GHz={avg_r2:.4f}")
+            log_msg(f"改进的全局统计对比分析完成!")
+            log_msg(f"结果保存位置: {results_dir}")
+            log_msg(f"处理模型数量: {len(stats_1_5_list)}")
+            log_msg(f"整体相关系数: 1.5GHz={avg_r1:.4f}, 3GHz={avg_r2:.4f}")
 
         except Exception as e:
             error_msg = f"改进的全局统计对比分析失败: {str(e)}"

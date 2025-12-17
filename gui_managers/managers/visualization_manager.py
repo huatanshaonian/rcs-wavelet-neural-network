@@ -1202,7 +1202,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 子图3: 维度0直方图
             ax3 = target_fig.add_subplot(2, 2, 3)
             dim0_values = latent_vectors[:, 0]
-            ax3.hist(dim0_values, bins=30, color='skyblue', edgecolor='black', alpha=0.7)
+            ax3.hist(dim0_values, bins=100, color='skyblue', edgecolor='black', alpha=0.7)
             ax3.set_title(f'维度0分布 (μ={dim0_values.mean():.3f}, σ={dim0_values.std():.3f})',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
             ax3.set_xlabel('维度0数值', fontsize=int(20*fontsize_scale), fontweight='bold')
@@ -1213,7 +1213,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 子图4: 维度1直方图
             ax4 = target_fig.add_subplot(2, 2, 4)
             dim1_values = latent_vectors[:, 1]
-            ax4.hist(dim1_values, bins=30, color='lightcoral', edgecolor='black', alpha=0.7)
+            ax4.hist(dim1_values, bins=100, color='lightcoral', edgecolor='black', alpha=0.7)
             ax4.set_title(f'维度1分布 (μ={dim1_values.mean():.3f}, σ={dim1_values.std():.3f})',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
             ax4.set_xlabel('维度1数值', fontsize=int(20*fontsize_scale), fontweight='bold')
