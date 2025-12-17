@@ -253,7 +253,7 @@ class VisualizationTab(ttk.Frame):
     def _plot_ae_latent_space(self):
         """绘制AutoEncoder隐空间分析"""
         if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
-            return self.app.visualization_manager._plot_ae_latent_space(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data)
+            return self.app.visualization_manager._plot_ae_latent_space(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data, self.app.param_data)
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制AutoEncoder隐空间分析。" )
 

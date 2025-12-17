@@ -1063,7 +1063,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 fontsize_scale = 1.0
 
             if chart_type == "AE隐空间分析":
-                self._plot_ae_latent_space(sys, target_fig, target_canvas, log_msg, rcs_data)
+                self._plot_ae_latent_space(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
             elif chart_type == "AE重建质量":
                 self._plot_ae_reconstruction_quality(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
             elif chart_type == "AE参数映射":
@@ -1080,7 +1080,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         except Exception as e:
             log_msg(f"AutoEncoder可视化失败: {str(e)}")
 
-    def _plot_ae_latent_space(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None):
+    def _plot_ae_latent_space(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder隐空间分析"""
         import torch
         import numpy as np
@@ -1097,6 +1097,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             data = sys['rcs_data']
         if data is None:
             data = getattr(self.gui, 'rcs_data', None)
+
+        # param_data
+        params = param_data
+        if params is None and sys is not None and 'param_data' in sys:
+            params = sys['param_data']
+        if params is None:
+            params = getattr(self.gui, 'param_data', None)
 
         log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
 
@@ -1163,6 +1170,24 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 latent_vectors = autoencoder.encode(input_tensor)
                 latent_vectors = latent_vectors.cpu().numpy()
 
+            # 智能选择着色依据
+            color_values = None
+            color_label = "样本序号"
+            if params is not None and len(params) > 0:
+                # 优先使用第一个设计参数着色
+                sample_params = params[:len(latent_vectors)]
+                if sample_params.shape[1] > 0:
+                    color_values = sample_params[:, 0]
+                    color_label = "设计参数1 (l1)"
+                    log_msg(f"使用设计参数1着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+
+            if color_values is None:
+                # 回退方案：使用RCS峰值着色
+                rcs_peak_values = np.max(sample_data.reshape(len(sample_data), -1), axis=1)
+                color_values = rcs_peak_values
+                color_label = "RCS峰值"
+                log_msg(f"使用RCS峰值着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+
             # 降维可视化
             target_fig.clear()
 
@@ -1170,8 +1195,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax1 = target_fig.add_subplot(3, 2, 1)
             pca = PCA(n_components=2)
             latent_2d_pca = pca.fit_transform(latent_vectors)
-            scatter = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
-                                c=range(len(latent_2d_pca)), cmap='viridis', alpha=0.6)
+            scatter1 = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
+                                c=color_values, cmap='viridis', alpha=0.7, s=50)
             ax1.set_title('隐空间分布 - PCA',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
             ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)',
@@ -1179,18 +1204,24 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)',
                            fontsize=int(20*fontsize_scale), fontweight='bold')
             ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            cbar1 = target_fig.colorbar(scatter1, ax=ax1)
+            cbar1.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+            cbar1.ax.tick_params(labelsize=int(14*fontsize_scale))
 
             # 子图2: t-SNE降维
             ax2 = target_fig.add_subplot(3, 2, 2)
             tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
             latent_2d_tsne = tsne.fit_transform(latent_vectors)
-            ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
-                       c=range(len(latent_2d_tsne)), cmap='viridis', alpha=0.6)
+            scatter2 = ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
+                       c=color_values, cmap='viridis', alpha=0.7, s=50)
             ax2.set_title('隐空间分布 - t-SNE',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
             ax2.set_xlabel('t-SNE1', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax2.set_ylabel('t-SNE2', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            cbar2 = target_fig.colorbar(scatter2, ax=ax2)
+            cbar2.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+            cbar2.ax.tick_params(labelsize=int(14*fontsize_scale))
 
             # 子图3: 隐空间维度分布
             ax3 = target_fig.add_subplot(3, 2, 3)
