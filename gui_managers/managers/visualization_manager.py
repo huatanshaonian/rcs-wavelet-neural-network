@@ -1457,6 +1457,16 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         except:
             fontsize_scale = 1.0
 
+        # 获取后处理选项（绝对值）
+        use_postprocess_abs_db = False
+        try:
+            if hasattr(self.gui, 'ae_postprocess_abs_db'):
+                use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+            elif hasattr(self.gui, 'ae_extension') and hasattr(self.gui.ae_extension, 'postprocess_abs_db_var'):
+                use_postprocess_abs_db = self.gui.ae_extension.postprocess_abs_db_var.get()
+        except:
+            pass
+
         try:
             # 将样本ID转换为索引
             try:
@@ -1559,27 +1569,50 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 # 提取第一个频率的RCS数据（假设是1.5GHz）
                 rcs_recon_2d = rcs_recon[0, :, :, 0]  # [91, 91]
 
-                # 第一行：phi方向截面（theta=0度）
+                # 应用绝对值后处理
+                if use_postprocess_abs_db:
+                    rcs_recon_2d = np.abs(rcs_recon_2d)
+
+                # 转换为dB
+                rcs_db = 10 * np.log10(rcs_recon_2d + 1e-10)
+
+                # 第一行：phi方向截面（theta=90度，即中心行）
                 ax1 = target_fig.add_subplot(2, len(alphas), i+1)
-                phi_slice = rcs_recon_2d[45, :]  # 中心行
-                ax1.plot(phi_slice, linewidth=2)
+
+                # 假设RCS数据维度为 91x91，对应 theta [45, 135], phi [-45, 45]
+                # 中心行对应 theta=90
+                center_row_idx = rcs_db.shape[0] // 2
+                phi_slice = rcs_db[center_row_idx, :]
+
+                # x轴坐标
+                phi_axis = np.linspace(-45, 45, len(phi_slice))
+
+                ax1.plot(phi_axis, phi_slice, linewidth=2)
                 ax1.set_title(f'α={alpha:.2f}\n(样本{sample_id1}→{sample_id2})',
                              fontsize=int(12*fontsize_scale), fontweight='bold')
-                ax1.set_xlabel('φ', fontsize=int(10*fontsize_scale))
-                ax1.set_ylabel('RCS', fontsize=int(10*fontsize_scale))
+                ax1.set_xlabel('φ (°)', fontsize=int(10*fontsize_scale))
+                ax1.set_ylabel('RCS (dB)', fontsize=int(10*fontsize_scale))
                 ax1.tick_params(axis='both', labelsize=int(8*fontsize_scale))
                 ax1.grid(True, alpha=0.3)
 
-                # 第二行：2D热图
+                # 第二行：2D热图 (严格参照 plot_rcs_heatmap)
                 ax2 = target_fig.add_subplot(2, len(alphas), i+len(alphas)+1)
-                im = ax2.imshow(rcs_recon_2d, cmap='jet', aspect='auto', origin='lower')
-                ax2.set_xlabel('φ', fontsize=int(10*fontsize_scale))
-                ax2.set_ylabel('θ', fontsize=int(10*fontsize_scale))
+
+                # 定义extent (与 plot_rcs_heatmap 一致)
+                # phi: -45 ~ 45, theta: 45 ~ 135
+                # extent y: [135, 45] (对应 plot_rcs_heatmap 的 ymin=135, ymax=45)
+                extent = [-45, 45, 135, 45]
+
+                im = ax2.imshow(rcs_db, cmap='jet', aspect='equal', extent=extent)
+
+                ax2.set_xlabel('φ (°)', fontsize=int(10*fontsize_scale))
+                ax2.set_ylabel('θ (°)', fontsize=int(10*fontsize_scale))
                 ax2.tick_params(axis='both', labelsize=int(8*fontsize_scale))
 
                 # 仅在最后一个子图添加colorbar
                 if i == len(alphas) - 1:
                     cbar = target_fig.colorbar(im, ax=ax2)
+                    cbar.set_label('RCS (dB)', fontsize=int(10*fontsize_scale))
                     cbar.ax.tick_params(labelsize=int(8*fontsize_scale))
 
             target_fig.suptitle(f'隐空间插值: 样本{sample_id1} → 样本{sample_id2}',
