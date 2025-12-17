@@ -927,6 +927,7 @@ class AETrainer:
             scheduler_type = training_config['lr_scheduler']
 
             best_val_loss = float('inf')
+            best_epoch = 0
             best_model_state = None
             patience_counter = 0
             train_losses, val_losses = [], []
@@ -1015,6 +1016,7 @@ class AETrainer:
 
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
+                    best_epoch = epoch + 1
                     patience_counter = 0
                     best_model_state = {
                         'autoencoder': deepcopy(autoencoder.state_dict()),
