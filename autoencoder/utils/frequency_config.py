@@ -23,7 +23,8 @@ except ImportError:
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from models.cnn_autoencoder import WaveletAutoEncoder, ParameterMapper
+from models.cnn_autoencoder import WaveletAutoEncoder
+from models.parameter_mapper import MLPMapper as ParameterMapper
 from models.direct_autoencoder import DirectAutoEncoder
 from models.mlp_autoencoder import WaveletMLPAutoEncoder, DirectMLPAutoEncoder
 from models.enhanced_cnn_autoencoder import EnhancedWaveletAutoEncoder, EnhancedDirectAutoEncoder

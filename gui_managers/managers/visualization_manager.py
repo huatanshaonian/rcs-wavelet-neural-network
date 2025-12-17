@@ -1170,106 +1170,56 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 latent_vectors = autoencoder.encode(input_tensor)
                 latent_vectors = latent_vectors.cpu().numpy()
 
-            # 智能选择着色依据
-            color_values = None
-            color_label = "样本序号"
-            if params is not None and len(params) > 0:
-                # 优先使用第一个设计参数着色
-                sample_params = params[:len(latent_vectors)]
-                if sample_params.shape[1] > 0:
-                    color_values = sample_params[:, 0]
-                    color_label = "设计参数1 (l1)"
-                    log_msg(f"使用设计参数1着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
-
-            if color_values is None:
-                # 回退方案：使用RCS峰值着色
-                rcs_peak_values = np.max(sample_data.reshape(len(sample_data), -1), axis=1)
-                color_values = rcs_peak_values
-                color_label = "RCS峰值"
-                log_msg(f"使用RCS峰值着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
-
-            # 降维可视化
+            # 统计分析可视化
             target_fig.clear()
 
-            # 子图1: PCA降维
-            ax1 = target_fig.add_subplot(3, 2, 1)
-            pca = PCA(n_components=2)
-            latent_2d_pca = pca.fit_transform(latent_vectors)
-            scatter1 = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
-                                c=color_values, cmap='viridis', alpha=0.7, s=50)
-            ax1.set_title('隐空间分布 - PCA',
-                          fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)',
-                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)',
-                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-            cbar1 = target_fig.colorbar(scatter1, ax=ax1)
-            cbar1.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
-            cbar1.ax.tick_params(labelsize=int(14*fontsize_scale))
-
-            # 子图2: t-SNE降维
-            ax2 = target_fig.add_subplot(3, 2, 2)
-            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
-            latent_2d_tsne = tsne.fit_transform(latent_vectors)
-            scatter2 = ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
-                       c=color_values, cmap='viridis', alpha=0.7, s=50)
-            ax2.set_title('隐空间分布 - t-SNE',
-                          fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.set_xlabel('t-SNE1', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.set_ylabel('t-SNE2', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-            cbar2 = target_fig.colorbar(scatter2, ax=ax2)
-            cbar2.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
-            cbar2.ax.tick_params(labelsize=int(14*fontsize_scale))
-
-            # 子图3: 隐空间维度分布
-            ax3 = target_fig.add_subplot(3, 2, 3)
+            # 子图1: 隐空间维度统计
+            ax1 = target_fig.add_subplot(2, 2, 1)
             latent_means = np.mean(latent_vectors, axis=0)
             latent_stds = np.std(latent_vectors, axis=0)
             dims = range(len(latent_means[:20]))  # 只显示前20个维度
-            ax3.errorbar(dims, latent_means[:20], yerr=latent_stds[:20],
+            ax1.errorbar(dims, latent_means[:20], yerr=latent_stds[:20],
                         capsize=3, marker='o', markersize=4)
-            ax3.set_title('隐空间维度统计 (前20维)',
+            ax1.set_title('隐空间维度统计 (前20维)',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.set_xlabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.set_ylabel('数值', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-            ax3.grid(True, alpha=0.3)
+            ax1.set_xlabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel('数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax1.grid(True, alpha=0.3)
 
-            # 子图4: 隐空间激活热图
-            ax4 = target_fig.add_subplot(3, 2, 4)
-            im = ax4.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
-            ax4.set_title('隐空间激活模式 (前10样本×前20维)',
+            # 子图2: 隐空间激活热图
+            ax2 = target_fig.add_subplot(2, 2, 2)
+            im = ax2.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
+            ax2.set_title('隐空间激活模式 (前10样本×前20维)',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax4.set_xlabel('样本索引', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax4.set_ylabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
-            cbar = target_fig.colorbar(im, ax=ax4)
+            ax2.set_xlabel('样本索引', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar = target_fig.colorbar(im, ax=ax2)
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
             cbar.set_label('激活值', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
-            # 子图5: 维度0直方图
-            ax5 = target_fig.add_subplot(3, 2, 5)
+            # 子图3: 维度0直方图
+            ax3 = target_fig.add_subplot(2, 2, 3)
             dim0_values = latent_vectors[:, 0]
-            ax5.hist(dim0_values, bins=30, color='skyblue', edgecolor='black', alpha=0.7)
-            ax5.set_title(f'维度0分布 (μ={dim0_values.mean():.3f}, σ={dim0_values.std():.3f})',
+            ax3.hist(dim0_values, bins=30, color='skyblue', edgecolor='black', alpha=0.7)
+            ax3.set_title(f'维度0分布 (μ={dim0_values.mean():.3f}, σ={dim0_values.std():.3f})',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax5.set_xlabel('维度0数值', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax5.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax5.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-            ax5.grid(True, alpha=0.3, axis='y')
+            ax3.set_xlabel('维度0数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax3.grid(True, alpha=0.3, axis='y')
 
-            # 子图6: 维度1直方图
-            ax6 = target_fig.add_subplot(3, 2, 6)
+            # 子图4: 维度1直方图
+            ax4 = target_fig.add_subplot(2, 2, 4)
             dim1_values = latent_vectors[:, 1]
-            ax6.hist(dim1_values, bins=30, color='lightcoral', edgecolor='black', alpha=0.7)
-            ax6.set_title(f'维度1分布 (μ={dim1_values.mean():.3f}, σ={dim1_values.std():.3f})',
+            ax4.hist(dim1_values, bins=30, color='lightcoral', edgecolor='black', alpha=0.7)
+            ax4.set_title(f'维度1分布 (μ={dim1_values.mean():.3f}, σ={dim1_values.std():.3f})',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax6.set_xlabel('维度1数值', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax6.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax6.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-            ax6.grid(True, alpha=0.3, axis='y')
+            ax4.set_xlabel('维度1数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax4.grid(True, alpha=0.3, axis='y')
 
             target_fig.tight_layout()
             target_canvas.draw()
@@ -1281,6 +1231,185 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
             target_canvas.draw()
+
+    def _plot_ae_latent_distribution(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None, color_param_idx=0):
+        """绘制AutoEncoder隐空间分布（PCA, t-SNE, UMAP）"""
+        import torch
+        import numpy as np
+        from sklearn.decomposition import PCA
+        from sklearn.manifold import TSNE
+        try:
+            import umap
+        except ImportError:
+            umap = None
+
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        data = rcs_data
+        if data is None and sys is not None and 'rcs_data' in sys:
+            data = sys['rcs_data']
+        if data is None:
+            data = getattr(self.gui, 'rcs_data', None)
+
+        # param_data
+        params = param_data
+        if params is None and sys is not None and 'param_data' in sys:
+            params = sys['param_data']
+        if params is None:
+            params = getattr(self.gui, 'param_data', None)
+
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if data is None:
+            log_msg("错误: RCS数据未加载")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
+        # 获取字号缩放因子
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
+
+        try:
+            # 获取AutoEncoder组件
+            autoencoder = sys['autoencoder']
+            wavelet_transform = sys.get('wavelet_transform', None)
+            data_adapter = sys.get('data_adapter', None)
+            mode = sys.get('mode', 'direct')
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
+
+            # 编码所有数据到隐空间
+            with torch.no_grad():
+                sample_data = data
+
+                # 根据模式准备输入数据
+                if mode in ('wavelet', 'differentiable_wavelet'):
+                    rcs_tensor = torch.FloatTensor(sample_data).to(device)
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                    if data_adapter:
+                        wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                        input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = wavelet_coeffs
+                else:
+                    if data_adapter:
+                        input_adapted = data_adapter.adapt_rcs_data(sample_data)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = torch.FloatTensor(sample_data).to(device)
+
+                latent_vectors = autoencoder.encode(input_tensor)
+                latent_vectors = latent_vectors.cpu().numpy()
+
+            # 智能选择着色依据
+            color_values = None
+            color_label = "样本序号"
+            param_names = ["l1", "l2", "w1", "w2", "h", "s"]  # 常见参数名
+
+            if params is not None and len(params) > 0:
+                sample_params = params[:len(latent_vectors)]
+                if sample_params.shape[1] > color_param_idx:
+                    color_values = sample_params[:, color_param_idx]
+                    param_name = param_names[color_param_idx] if color_param_idx < len(param_names) else f"参数{color_param_idx+1}"
+                    color_label = f"设计参数 {param_name}"
+                    log_msg(f"使用设计参数{color_param_idx+1}({param_name})着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+
+            if color_values is None:
+                rcs_peak_values = np.max(sample_data.reshape(len(sample_data), -1), axis=1)
+                color_values = rcs_peak_values
+                color_label = "RCS峰值"
+                log_msg(f"使用RCS峰值着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+
+            # 降维可视化
+            target_fig.clear()
+
+            # 子图1: PCA降维
+            ax1 = target_fig.add_subplot(1, 3, 1)
+            pca = PCA(n_components=2)
+            latent_2d_pca = pca.fit_transform(latent_vectors)
+            scatter1 = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
+                                c=color_values, cmap='viridis', alpha=0.7, s=50)
+            ax1.set_title('PCA降维',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
+                           fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})',
+                           fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            cbar1 = target_fig.colorbar(scatter1, ax=ax1)
+            cbar1.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+            cbar1.ax.tick_params(labelsize=int(14*fontsize_scale))
+
+            # 子图2: t-SNE降维
+            ax2 = target_fig.add_subplot(1, 3, 2)
+            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
+            latent_2d_tsne = tsne.fit_transform(latent_vectors)
+            scatter2 = ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
+                       c=color_values, cmap='viridis', alpha=0.7, s=50)
+            ax2.set_title('t-SNE降维',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_xlabel('t-SNE1', fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('t-SNE2', fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            cbar2 = target_fig.colorbar(scatter2, ax=ax2)
+            cbar2.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+            cbar2.ax.tick_params(labelsize=int(14*fontsize_scale))
+
+            # 子图3: UMAP降维
+            ax3 = target_fig.add_subplot(1, 3, 3)
+            if umap is not None:
+                reducer = umap.UMAP(n_components=2, random_state=42, n_neighbors=min(15, len(latent_vectors)-1))
+                latent_2d_umap = reducer.fit_transform(latent_vectors)
+                scatter3 = ax3.scatter(latent_2d_umap[:, 0], latent_2d_umap[:, 1],
+                           c=color_values, cmap='viridis', alpha=0.7, s=50)
+                ax3.set_title('UMAP降维',
+                              fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax3.set_xlabel('UMAP1', fontsize=int(18*fontsize_scale), fontweight='bold')
+                ax3.set_ylabel('UMAP2', fontsize=int(18*fontsize_scale), fontweight='bold')
+                ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+                cbar3 = target_fig.colorbar(scatter3, ax=ax3)
+                cbar3.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+                cbar3.ax.tick_params(labelsize=int(14*fontsize_scale))
+                log_msg("UMAP降维完成")
+            else:
+                ax3.text(0.5, 0.5, 'UMAP未安装\n请运行: pip install umap-learn',
+                        transform=ax3.transAxes, ha='center', va='center',
+                        fontsize=int(18*fontsize_scale), fontweight='bold')
+                ax3.set_title('UMAP降维 (未安装)',
+                              fontsize=int(20*fontsize_scale), fontweight='bold')
+                log_msg("警告: UMAP未安装，跳过UMAP降维")
+
+            target_fig.suptitle(f'隐空间分布可视化 (着色: {color_label})',
+                               fontsize=int(24*fontsize_scale), fontweight='bold')
+            target_fig.tight_layout(rect=[0, 0, 1, 0.96])
+            target_canvas.draw()
+
+        except Exception as e:
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'隐空间分布可视化失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
+            target_canvas.draw()
+            log_msg(f"错误: {str(e)}")
 
     def _plot_ae_latent_interpolation(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, sample_id1='001', sample_id2='002'):
         """绘制AutoEncoder隐空间插值可视化"""

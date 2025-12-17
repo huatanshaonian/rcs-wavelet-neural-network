@@ -2,12 +2,12 @@
 AutoEncoder模型定义
 """
 
-from .cnn_autoencoder import WaveletAutoEncoder, ParameterMapper
+from .cnn_autoencoder import WaveletAutoEncoder
 from .direct_autoencoder import DirectAutoEncoder
 from .mlp_autoencoder import WaveletMLPAutoEncoder, DirectMLPAutoEncoder
 from .enhanced_cnn_autoencoder import EnhancedWaveletAutoEncoder, EnhancedDirectAutoEncoder
 from .deep_autoencoder import DeepWaveletAutoEncoder, DeepDirectAutoEncoder
-from .parameter_mapper import ParameterMapperFactory
+from .parameter_mapper import ParameterMapperFactory, MLPMapper as ParameterMapper
 from .differentiable_wavelet_autoencoder import (
     DifferentiableWaveletAutoEncoder,
     DifferentiableWaveletMLPAutoEncoder

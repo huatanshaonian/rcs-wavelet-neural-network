@@ -40,6 +40,7 @@ class VisualizationTab(ttk.Frame):
         self.vis_freq_var = tk.StringVar(value="1.5G")
         self.fontsize_scale_var = tk.DoubleVar(value=1.0)
         self.vis_type_var = tk.StringVar(value="2D热图")
+        self.color_param_var = tk.StringVar(value="参数1(l1)")  # 隐空间分布着色参数
 
         # Matplotlib图形初始化 (作为属性，以便在各种方法中访问和更新)
         self.vis_fig = Figure(figsize=(12, 8), dpi=80)
@@ -83,9 +84,16 @@ class VisualizationTab(ttk.Frame):
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         type_combo = ttk.Combobox(control_frame, textvariable=self.vis_type_var,
                                  values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "差值分析", "相关性分析",
-                                        "训练历史", "统计对比", "AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"],
+                                        "训练历史", "统计对比", "AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"],
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
+
+        # 着色参数选择（用于隐空间分布）
+        ttk.Label(control_frame, text="着色参数:").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
+        param_combo = ttk.Combobox(control_frame, textvariable=self.color_param_var,
+                                   values=["参数1(l1)", "参数2(l2)", "参数3(w1)", "参数4(w2)", "参数5(h)", "参数6(s)"],
+                                   state="readonly", width=10)
+        param_combo.grid(row=1, column=7, padx=5, pady=2)
 
         # 生成按钮
         ttk.Button(control_frame, text="生成图表", command=self.generate_visualization,
@@ -123,7 +131,7 @@ class VisualizationTab(ttk.Frame):
                     self._plot_training_history()
                 elif chart_type == "统计对比":
                     self._plot_global_statistics_comparison()
-            elif chart_type in ["AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"]:
+            elif chart_type in ["AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"]:
                 # AutoEncoder特定图表
                 if not has_ae_model:
                     messagebox.showwarning("警告", "AutoEncoder图表需要先训练或加载AutoEncoder模型")
@@ -132,6 +140,8 @@ class VisualizationTab(ttk.Frame):
                     self._plot_attention_weights()
                 elif chart_type == "AE隐空间插值":
                     self._plot_ae_latent_interpolation()
+                elif chart_type == "AE隐空间分布":
+                    self._plot_ae_latent_distribution()
                 else:
                     self._plot_autoencoder_visualization(chart_type)
             elif chart_type in ["2D热图", "3D表面图", "球坐标图"]:
@@ -275,6 +285,22 @@ class VisualizationTab(ttk.Frame):
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制隐空间插值。" )
 
+    def _plot_ae_latent_distribution(self):
+        """绘制AutoEncoder隐空间分布（PCA, t-SNE, UMAP）"""
+        if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
+            # 将参数选择转换为索引
+            color_param_str = self.color_param_var.get()
+            param_map = {
+                "参数1(l1)": 0, "参数2(l2)": 1, "参数3(w1)": 2,
+                "参数4(w2)": 3, "参数5(h)": 4, "参数6(s)": 5
+            }
+            color_param_idx = param_map.get(color_param_str, 0)
+
+            return self.app.visualization_manager._plot_ae_latent_distribution(
+                self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message,
+                self.app.rcs_data, self.app.param_data, color_param_idx)
+        else:
+            self.app.log_message("警告: VisualizationManager未初始化，无法绘制隐空间分布。" )
 
     def _plot_ae_parameter_mapping(self):
         """绘制AutoEncoder参数映射分析"""
