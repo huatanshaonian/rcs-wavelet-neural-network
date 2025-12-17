@@ -36,6 +36,7 @@ class VisualizationTab(ttk.Frame):
 
         # 可视化UI变量
         self.vis_model_var = tk.StringVar(value="001")
+        self.vis_aux_model_var = tk.StringVar(value="002")  # 辅助样本ID（用于插值）
         self.vis_freq_var = tk.StringVar(value="1.5G")
         self.fontsize_scale_var = tk.DoubleVar(value=1.0)
         self.vis_type_var = tk.StringVar(value="2D热图")
@@ -82,13 +83,17 @@ class VisualizationTab(ttk.Frame):
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         type_combo = ttk.Combobox(control_frame, textvariable=self.vis_type_var,
                                  values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "差值分析", "相关性分析",
-                                        "训练历史", "统计对比", "AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重"],
+                                        "训练历史", "统计对比", "AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"],
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
 
         # 生成按钮
         ttk.Button(control_frame, text="生成图表", command=self.generate_visualization,
                   style="Accent.TButton").grid(row=1, column=3, padx=5, pady=2)
+
+        # 辅助样本ID（用于隐空间插值）
+        ttk.Label(control_frame, text="辅助样本ID:").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(control_frame, textvariable=self.vis_aux_model_var, width=10).grid(row=1, column=5, padx=5, pady=2)
 
         # 图表显示区域
         chart_group = ttk.LabelFrame(main_frame, text="图表显示")
@@ -118,13 +123,15 @@ class VisualizationTab(ttk.Frame):
                     self._plot_training_history()
                 elif chart_type == "统计对比":
                     self._plot_global_statistics_comparison()
-            elif chart_type in ["AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重"]:
+            elif chart_type in ["AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"]:
                 # AutoEncoder特定图表
                 if not has_ae_model:
                     messagebox.showwarning("警告", "AutoEncoder图表需要先训练或加载AutoEncoder模型")
                     return
                 if chart_type == "AE注意力权重":
                     self._plot_attention_weights()
+                elif chart_type == "AE隐空间插值":
+                    self._plot_ae_latent_interpolation()
                 else:
                     self._plot_autoencoder_visualization(chart_type)
             elif chart_type in ["2D热图", "3D表面图", "球坐标图"]:
@@ -256,6 +263,17 @@ class VisualizationTab(ttk.Frame):
             return self.app.visualization_manager._plot_ae_reconstruction_quality(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data, self.app.param_data)
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制AutoEncoder重建质量分析。" )
+
+    def _plot_ae_latent_interpolation(self):
+        """绘制AutoEncoder隐空间插值"""
+        if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
+            sample_id1 = self.vis_model_var.get()
+            sample_id2 = self.vis_aux_model_var.get()
+            return self.app.visualization_manager._plot_ae_latent_interpolation(
+                self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message,
+                self.app.rcs_data, sample_id1, sample_id2)
+        else:
+            self.app.log_message("警告: VisualizationManager未初始化，无法绘制隐空间插值。" )
 
 
     def _plot_ae_parameter_mapping(self):

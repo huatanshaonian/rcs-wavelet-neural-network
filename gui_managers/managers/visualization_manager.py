@@ -1167,7 +1167,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             target_fig.clear()
 
             # 子图1: PCA降维
-            ax1 = target_fig.add_subplot(2, 2, 1)
+            ax1 = target_fig.add_subplot(3, 2, 1)
             pca = PCA(n_components=2)
             latent_2d_pca = pca.fit_transform(latent_vectors)
             scatter = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
@@ -1181,7 +1181,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图2: t-SNE降维
-            ax2 = target_fig.add_subplot(2, 2, 2)
+            ax2 = target_fig.add_subplot(3, 2, 2)
             tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
             latent_2d_tsne = tsne.fit_transform(latent_vectors)
             ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
@@ -1193,7 +1193,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
 
             # 子图3: 隐空间维度分布
-            ax3 = target_fig.add_subplot(2, 2, 3)
+            ax3 = target_fig.add_subplot(3, 2, 3)
             latent_means = np.mean(latent_vectors, axis=0)
             latent_stds = np.std(latent_vectors, axis=0)
             dims = range(len(latent_means[:20]))  # 只显示前20个维度
@@ -1207,7 +1207,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             ax3.grid(True, alpha=0.3)
 
             # 子图4: 隐空间激活热图
-            ax4 = target_fig.add_subplot(2, 2, 4)
+            ax4 = target_fig.add_subplot(3, 2, 4)
             im = ax4.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
             ax4.set_title('隐空间激活模式 (前10样本×前20维)',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
@@ -1217,6 +1217,28 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
             cbar.set_label('激活值', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+            # 子图5: 维度0直方图
+            ax5 = target_fig.add_subplot(3, 2, 5)
+            dim0_values = latent_vectors[:, 0]
+            ax5.hist(dim0_values, bins=30, color='skyblue', edgecolor='black', alpha=0.7)
+            ax5.set_title(f'维度0分布 (μ={dim0_values.mean():.3f}, σ={dim0_values.std():.3f})',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax5.set_xlabel('维度0数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax5.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax5.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax5.grid(True, alpha=0.3, axis='y')
+
+            # 子图6: 维度1直方图
+            ax6 = target_fig.add_subplot(3, 2, 6)
+            dim1_values = latent_vectors[:, 1]
+            ax6.hist(dim1_values, bins=30, color='lightcoral', edgecolor='black', alpha=0.7)
+            ax6.set_title(f'维度1分布 (μ={dim1_values.mean():.3f}, σ={dim1_values.std():.3f})',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax6.set_xlabel('维度1数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax6.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax6.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax6.grid(True, alpha=0.3, axis='y')
 
             target_fig.tight_layout()
             target_canvas.draw()
@@ -1228,6 +1250,175 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
             target_canvas.draw()
+
+    def _plot_ae_latent_interpolation(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, sample_id1='001', sample_id2='002'):
+        """绘制AutoEncoder隐空间插值可视化"""
+        import torch
+        import numpy as np
+
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        data = rcs_data if rcs_data is not None else getattr(self.gui, 'rcs_data', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if data is None:
+            log_msg("错误: RCS数据未加载")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
+        # 获取字号缩放因子
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
+
+        try:
+            # 将样本ID转换为索引
+            try:
+                idx1 = int(sample_id1) - 1
+                idx2 = int(sample_id2) - 1
+            except:
+                log_msg(f"错误: 样本ID格式错误 ({sample_id1}, {sample_id2})")
+                return
+
+            if idx1 < 0 or idx1 >= len(data) or idx2 < 0 or idx2 >= len(data):
+                log_msg(f"错误: 样本ID超出范围 (有效范围: 1-{len(data)})")
+                return
+
+            # 获取AutoEncoder组件
+            autoencoder = sys['autoencoder']
+            wavelet_transform = sys.get('wavelet_transform', None)
+            data_adapter = sys.get('data_adapter', None)
+            mode = sys.get('mode', 'direct')
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
+
+            # 获取两个样本的RCS数据
+            rcs1 = data[idx1:idx1+1]
+            rcs2 = data[idx2:idx2+1]
+
+            # 编码到隐空间
+            with torch.no_grad():
+                # 准备输入数据（根据模式）
+                def prepare_input(rcs_sample):
+                    if mode in ('wavelet', 'differentiable_wavelet'):
+                        # Wavelet模式：RCS → 小波变换 → 标准化
+                        rcs_tensor = torch.FloatTensor(rcs_sample).to(device)
+                        wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                        if data_adapter:
+                            wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                            input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                            return torch.FloatTensor(input_adapted).to(device)
+                        else:
+                            return wavelet_coeffs
+                    else:
+                        # Direct模式：RCS → 标准化
+                        if data_adapter:
+                            input_adapted = data_adapter.adapt_rcs_data(rcs_sample)
+                            return torch.FloatTensor(input_adapted).to(device)
+                        else:
+                            return torch.FloatTensor(rcs_sample).to(device)
+
+                input1 = prepare_input(rcs1)
+                input2 = prepare_input(rcs2)
+
+                latent1 = autoencoder.encode(input1)
+                latent2 = autoencoder.encode(input2)
+
+                # 线性插值（7个步骤：0%, 16.7%, 33.3%, 50%, 66.7%, 83.3%, 100%）
+                alphas = [0.0, 1/6, 2/6, 3/6, 4/6, 5/6, 1.0]
+                interpolated_latents = []
+                for alpha in alphas:
+                    latent_interp = (1 - alpha) * latent1 + alpha * latent2
+                    interpolated_latents.append(latent_interp)
+
+                # Decode所有插值向量
+                reconstructed_rcs_list = []
+                for latent_interp in interpolated_latents:
+                    decoded_output = autoencoder.decode(latent_interp)
+
+                    # 逆变换到RCS空间
+                    if mode in ('wavelet', 'differentiable_wavelet'):
+                        # Wavelet: 标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                        if data_adapter:
+                            decoded_np = decoded_output.cpu().numpy()
+                            decoded_coeffs = data_adapter.inverse_adapt(decoded_np)
+                            decoded_coeffs_tensor = torch.FloatTensor(decoded_coeffs).to(device)
+                        else:
+                            decoded_coeffs_tensor = decoded_output
+                        reconstructed_rcs = wavelet_transform.inverse_transform(decoded_coeffs_tensor)
+                    else:
+                        # Direct: 标准化RCS → 逆标准化 → RCS
+                        if data_adapter:
+                            decoded_np = decoded_output.cpu().numpy()
+                            reconstructed_rcs = data_adapter.inverse_adapt(decoded_np)
+                            reconstructed_rcs = torch.FloatTensor(reconstructed_rcs).to(device)
+                        else:
+                            reconstructed_rcs = decoded_output
+
+                    reconstructed_rcs_list.append(reconstructed_rcs.cpu().numpy())
+
+            # 可视化
+            target_fig.clear()
+
+            # 绘制7个插值步骤（2行7列，第一行theta=0度，第二行theta=90度）
+            for i, (alpha, rcs_recon) in enumerate(zip(alphas, reconstructed_rcs_list)):
+                # 提取第一个频率的RCS数据（假设是1.5GHz）
+                rcs_recon_2d = rcs_recon[0, :, :, 0]  # [91, 91]
+
+                # 第一行：phi方向截面（theta=0度）
+                ax1 = target_fig.add_subplot(2, 7, i+1)
+                phi_slice = rcs_recon_2d[45, :]  # 中心行
+                ax1.plot(phi_slice, linewidth=2)
+                ax1.set_title(f'α={alpha:.2f}\n(样本{sample_id1}→{sample_id2})',
+                             fontsize=int(12*fontsize_scale), fontweight='bold')
+                ax1.set_xlabel('φ', fontsize=int(10*fontsize_scale))
+                ax1.set_ylabel('RCS', fontsize=int(10*fontsize_scale))
+                ax1.tick_params(axis='both', labelsize=int(8*fontsize_scale))
+                ax1.grid(True, alpha=0.3)
+
+                # 第二行：2D热图
+                ax2 = target_fig.add_subplot(2, 7, i+8)
+                im = ax2.imshow(rcs_recon_2d, cmap='jet', aspect='auto', origin='lower')
+                ax2.set_xlabel('φ', fontsize=int(10*fontsize_scale))
+                ax2.set_ylabel('θ', fontsize=int(10*fontsize_scale))
+                ax2.tick_params(axis='both', labelsize=int(8*fontsize_scale))
+
+                # 仅在最后一个子图添加colorbar
+                if i == len(alphas) - 1:
+                    cbar = target_fig.colorbar(im, ax=ax2)
+                    cbar.ax.tick_params(labelsize=int(8*fontsize_scale))
+
+            target_fig.suptitle(f'隐空间插值: 样本{sample_id1} → 样本{sample_id2}',
+                               fontsize=int(24*fontsize_scale), fontweight='bold')
+            target_fig.tight_layout(rect=[0, 0, 1, 0.96])
+            target_canvas.draw()
+
+            log_msg(f"隐空间插值完成: 样本{sample_id1} → 样本{sample_id2} (共7步)")
+
+        except Exception as e:
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'隐空间插值失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
+            target_canvas.draw()
+            log_msg(f"错误: {str(e)}")
 
     def _plot_ae_reconstruction_quality(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder重建质量分析 - 使用统一重建接口"""
