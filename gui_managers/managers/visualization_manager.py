@@ -1259,6 +1259,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             params = sys['param_data']
         if params is None:
             params = getattr(self.gui, 'param_data', None)
+            if params is not None:
+                log_msg(f"从GUI获取参数数据: {params.shape}")
 
         log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
 
@@ -1327,17 +1329,26 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             if params is not None and len(params) > 0:
                 sample_params = params[:len(latent_vectors)]
-                if sample_params.shape[1] > color_param_idx:
-                    color_values = sample_params[:, color_param_idx]
-                    param_name = param_names[color_param_idx] if color_param_idx < len(param_names) else f"参数{color_param_idx+1}"
+                # 确保索引是整数
+                try:
+                    c_idx = int(color_param_idx)
+                except:
+                    c_idx = 0
+                
+                if sample_params.shape[1] > c_idx:
+                    color_values = sample_params[:, c_idx]
+                    param_name = param_names[c_idx] if c_idx < len(param_names) else f"参数{c_idx+1}"
                     color_label = f"设计参数 {param_name}"
-                    log_msg(f"使用设计参数{color_param_idx+1}({param_name})着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+                    log_msg(f"使用设计参数{c_idx+1}({param_name})着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+                else:
+                     log_msg(f"警告: 参数索引 {c_idx} 超出范围 (参数维度: {sample_params.shape[1]})")
 
             if color_values is None:
+                # 如果没有参数数据，尝试使用RCS峰值
                 rcs_peak_values = np.max(sample_data.reshape(len(sample_data), -1), axis=1)
                 color_values = rcs_peak_values
                 color_label = "RCS峰值"
-                log_msg(f"使用RCS峰值着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+                log_msg(f"未找到有效设计参数，回退使用RCS峰值着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
 
             # 降维可视化
             target_fig.clear()
