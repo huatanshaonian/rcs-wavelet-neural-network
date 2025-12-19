@@ -452,7 +452,7 @@ class AETrainer:
             val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
 
             # 创建优化器和调度器 (复用项目标准)
-            optimizer, scheduler = self._create_optimizer_and_scheduler(autoencoder.parameters(), training_config)
+            optimizer, scheduler = self._create_optimizer_and_scheduler(autoencoder.parameters(), training_config, stage='stage1')
 
             # 创建损失函数 (支持三阶段独立配置)
             criterion = self._create_stage_loss_function(training_config, stage='stage1')
@@ -733,7 +733,7 @@ class AETrainer:
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False)
 
-            optimizer, scheduler = self._create_optimizer_and_scheduler(parameter_mapper.parameters(), training_config)
+            optimizer, scheduler = self._create_optimizer_and_scheduler(parameter_mapper.parameters(), training_config, stage='stage2')
             criterion = self._create_stage_loss_function(training_config, stage='stage2')
 
             epochs = training_config['epochs']['stage2']
@@ -919,7 +919,8 @@ class AETrainer:
             
             optimizer, scheduler = self._create_optimizer_and_scheduler(
                 list(autoencoder.parameters()) + list(parameter_mapper.parameters()),
-                cfg_fine
+                cfg_fine,
+                stage='stage3'
             )
             criterion = self._create_stage_loss_function(training_config, stage='stage3')
             epochs = training_config['epochs']['stage3']
@@ -1082,8 +1083,15 @@ class AETrainer:
         # Assuming this is just a long stage 3.
         return self.train_stage3(rcs_data, param_data, {**training_config, 'epochs': {'stage3': total_epochs}})
 
-    def _create_optimizer_and_scheduler(self, params, training_config):
-        """创建优化器和学习率调度器（支持Adam/AdamW/SGD/L-BFGS）"""
+    def _create_optimizer_and_scheduler(self, params, training_config, stage='stage1'):
+        """
+        创建优化器和学习率调度器（支持Adam/AdamW/SGD/L-BFGS）
+
+        Args:
+            params: 模型参数
+            training_config: 训练配置
+            stage: 当前训练阶段 ('stage1', 'stage2', 'stage3')，用于选择对应的patience
+        """
         optimizer_type = training_config.get('optimizer_type', 'adam').lower()
         lr = training_config['learning_rate']
         weight_decay = training_config.get('weight_decay', 1e-4)
@@ -1118,12 +1126,15 @@ class AETrainer:
             scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=training_config.get('restart_period', 50))
         elif scheduler_type == 'adaptive':
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
-        elif scheduler_type == 'multi_stage':
+        elif scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
             # 多阶段学习率调度器（patience驱动）
             from autoencoder.training.multi_stage_scheduler import create_patience_driven_scheduler
             num_stages = training_config.get('num_lr_stages', 3)
             lr_decay = training_config.get('lr_decay_factor', 0.1)
-            initial_patience = training_config['patience'].get('stage1', 30)
+
+            # ✅ 使用当前阶段对应的patience（而非总是使用stage1）
+            initial_patience = training_config['patience'].get(stage, 30)
+
             scheduler = create_patience_driven_scheduler(
                 optimizer,
                 initial_lr=lr,
@@ -1132,6 +1143,7 @@ class AETrainer:
                 initial_patience=initial_patience,
                 verbose=True
             )
+            self.gui.ae_log(f"✅ 多阶段调度器：使用{stage}的patience={initial_patience}作为基准")
         else:
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda e: 1.0)
 

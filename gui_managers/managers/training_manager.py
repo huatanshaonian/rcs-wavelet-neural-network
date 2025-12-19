@@ -343,8 +343,8 @@ class TrainingManager:
     def _print_latent_space_statistics(self, rcs_data):
         return self.ae_trainer.print_latent_space_statistics(rcs_data)
 
-    def _create_ae_optimizer_and_scheduler(self, params, config):
-        return self.ae_trainer._create_optimizer_and_scheduler(params, config)
+    def _create_ae_optimizer_and_scheduler(self, params, config, stage='stage1'):
+        return self.ae_trainer._create_optimizer_and_scheduler(params, config, stage)
 
     def _create_stage_loss_function(self, config, stage='stage1'):
         return self.ae_trainer._create_stage_loss_function(config, stage)
