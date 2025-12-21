@@ -662,7 +662,13 @@ class AutoEncoderExtension:
 
                 # 训练模式
                 training_mode = self.main_gui.ae_system.get('training_mode', 'N/A')
-                mode_display = {'stage1_only': 'Stage1', 'three_stage': '3Stage'}.get(training_mode, training_mode)
+                mode_display = {
+                    'stage1_only': 'Stage1',
+                    'three_stage': '3Stage',
+                    'stage2_only': 'Stage2',
+                    'joint_training': '联合',
+                    'end_to_end': '端到端'
+                }.get(training_mode, training_mode)
 
                 # 通道注意力（如果有）
                 channel_attn = config.get('channel_attention', False)

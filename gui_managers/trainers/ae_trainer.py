@@ -246,6 +246,7 @@ class AETrainer:
                     # 更新配置，保留stage_histories
                     self.gui.ae_training_history['training_mode'] = 'stage1_only'
                     self.gui.ae_training_history['training_config'] = training_config
+                    self.gui.ae_system['training_mode'] = 'stage1_only'  # ✅ 同步到ae_system
                     if 'stage_histories' not in self.gui.ae_training_history:
                         self.gui.ae_training_history['stage_histories'] = {}
                 else:
@@ -256,6 +257,7 @@ class AETrainer:
                         'stage_histories': {},
                         'training_config': training_config
                     }
+                    self.gui.ae_system['training_mode'] = 'stage1_only'  # ✅ 同步到ae_system
 
                 # 阶段1: AutoEncoder预训练
                 self.gui.ae_log("📊 开始阶段1: AutoEncoder预训练...")
@@ -326,6 +328,9 @@ class AETrainer:
                 stage3_history = self.train_stage3(rcs_data, param_data, training_config)
                 self.gui.ae_training_history['stage_histories']['stage3'] = stage3_history
 
+                # ✅ 三阶段训练完成，同步训练模式到ae_system
+                self.gui.ae_system['training_mode'] = 'three_stage'
+
                 self.gui.ae_log("🎉 三阶段训练完成!")
 
                 # 打印通道注意力权重（如果启用）
@@ -356,6 +361,12 @@ class AETrainer:
 
             # 实现端到端训练
             self.train_end_to_end_full(rcs_data, param_data, training_config, total_epochs)
+
+            # ✅ 端到端训练完成，同步训练模式到ae_system
+            if not hasattr(self.gui, 'ae_training_history'):
+                self.gui.ae_training_history = {}
+            self.gui.ae_training_history['training_mode'] = 'end_to_end'
+            self.gui.ae_system['training_mode'] = 'end_to_end'
 
             self.gui.ae_log("🎉 端到端训练完成!")
 
