@@ -273,36 +273,10 @@ class AutoEncoderExtension:
         ttk.Label(training_frame, text="阶段3(E2E):").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
         ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage3, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
-        # 第三行：联合训练轮数和patience
+        # 第三行：联合训练轮数
         ttk.Label(training_frame, text="联合训练:").grid(row=2, column=0, sticky="w", pady=(5, 0))
         ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_joint, width=8).grid(row=2, column=1, sticky="w", pady=(5, 0))
-        ttk.Label(training_frame, text="Patience:").grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.main_gui.ae_patience_joint, width=8).grid(row=2, column=3, sticky="w", pady=(5, 0))
-
-        # 联合训练损失权重配置（折叠区域）
-        joint_loss_group = ttk.LabelFrame(training_group, text="📊 联合训练损失权重 (α, β, γ)")
-        joint_loss_group.pack(fill=tk.X, padx=5, pady=(5, 0))
-
-        joint_loss_frame = ttk.Frame(joint_loss_group)
-        joint_loss_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        # 第一行：α (RCS重建) 和 β (一致性)
-        ttk.Label(joint_loss_frame, text="α (RCS重建):").grid(row=0, column=0, sticky="w")
-        ttk.Entry(joint_loss_frame, textvariable=self.main_gui.ae_alpha_recon, width=8).grid(row=0, column=1, sticky="w")
-        ttk.Label(joint_loss_frame, text="β (一致性):").grid(row=0, column=2, sticky="w", padx=(10, 0))
-        ttk.Entry(joint_loss_frame, textvariable=self.main_gui.ae_beta_consistency, width=8).grid(row=0, column=3, sticky="w")
-
-        # 第二行：γ (参数重建，最重要)
-        ttk.Label(joint_loss_frame, text="γ (参数→RCS):").grid(row=1, column=0, sticky="w", pady=(5, 0))
-        ttk.Entry(joint_loss_frame, textvariable=self.main_gui.ae_gamma_param_recon, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
-        ttk.Label(joint_loss_frame, text="(最重要)").grid(row=1, column=2, columnspan=2, sticky="w", padx=(10, 0), pady=(5, 0))
-
-        # 第三行：配置按钮和说明
-        config_button = ttk.Button(joint_loss_frame, text="高级配置 (可选)",
-                                    command=self._open_joint_loss_config)
-        config_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
-        ttk.Label(joint_loss_frame, text="默认全部MSE", font=("", 8), foreground="gray").grid(
-            row=2, column=2, columnspan=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Label(training_frame, text="epochs").grid(row=2, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
 
         # 5. 优化器配置组
         optimizer_group = ttk.LabelFrame(left_column, text="⚙️ 优化器配置")
@@ -389,6 +363,10 @@ class AutoEncoderExtension:
         ttk.Label(patience_frame, text="端到端耐心:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
         ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_e2e, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
+        # 第三行：联合训练的早停耐心值
+        ttk.Label(patience_frame, text="联合训练耐心:").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(patience_frame, textvariable=self.main_gui.ae_patience_joint, width=8).grid(row=2, column=1, sticky="w", pady=(5, 0))
+
         # 7. 损失函数配置组
         loss_group = ttk.LabelFrame(right_column, text="🔧 损失函数")
         loss_group.pack(fill=tk.X, pady=(0, 10))
@@ -400,6 +378,8 @@ class AutoEncoderExtension:
         ttk.Checkbutton(loss_frame, text="使用自定义损失函数", variable=self.main_gui.ae_use_custom_loss).pack(anchor=tk.W)
         # 打开损失函数配置对话框
         ttk.Button(loss_frame, text="配置损失函数", command=self.main_gui._open_loss_config_for_ae).pack(fill=tk.X, pady=(5, 0))
+        # 联合训练配置按钮
+        ttk.Button(loss_frame, text="联合训练配置 (权重+损失)", command=self._open_joint_loss_config).pack(fill=tk.X, pady=(5, 0))
 
         # 8. 训练控制组
         training_control_group = ttk.LabelFrame(right_column, text="⚙️ 训练控制")
@@ -1463,8 +1443,8 @@ class AutoEncoderExtension:
     def _open_joint_loss_config(self):
         """打开联合训练损失函数配置对话框"""
         dialog = tk.Toplevel(self.main_gui.root)
-        dialog.title("联合训练损失函数配置")
-        dialog.geometry("500x400")
+        dialog.title("联合训练配置")
+        dialog.geometry("550x580")
         dialog.transient(self.main_gui.root)
         dialog.grab_set()
 
@@ -1480,41 +1460,63 @@ class AutoEncoderExtension:
         desc_text.pack(fill=tk.X, pady=(0, 10))
         desc_text.insert("1.0",
             "1. L_recon_rcs (权重α): RCS重建损失\n"
-            "   - 衡量AutoEncoder的压缩重建能力\n\n"
+            "   - RCS → Encoder → Decoder → RCS，衡量AE压缩重建能力\n\n"
             "2. L_consistency (权重β): 隐空间一致性损失\n"
-            "   - 强制Encoder和Mapper学到相同的隐空间\n\n"
-            "3. L_param_recon (权重γ): 参数重建损失 (最重要)\n"
-            "   - 直接优化 params → RCS 的能力"
+            "   - 强制Encoder和Mapper学到相同的隐空间（通常MSE）\n\n"
+            "3. L_param_recon (权重γ): 参数重建损失 (最重要！)\n"
+            "   - Params → Mapper → Decoder → RCS，直接优化params→RCS"
         )
         desc_text.config(state=tk.DISABLED)
 
-        # 配置选项
-        config_frame = ttk.LabelFrame(main_frame, text="损失函数配置选项", padding="10")
-        config_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # === 权重配置区 ===
+        weight_group = ttk.LabelFrame(main_frame, text="⚖️ 损失权重配置", padding="10")
+        weight_group.pack(fill=tk.X, pady=(0, 10))
+
+        weight_frame = ttk.Frame(weight_group)
+        weight_frame.pack(fill=tk.X)
+
+        # α权重
+        ttk.Label(weight_frame, text="α (RCS重建):").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Entry(weight_frame, textvariable=self.main_gui.ae_alpha_recon, width=10).grid(row=0, column=1, sticky="w", padx=5)
+        ttk.Label(weight_frame, text="默认0.3", foreground="gray", font=("", 9)).grid(row=0, column=2, sticky="w")
+
+        # β权重
+        ttk.Label(weight_frame, text="β (一致性):").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Entry(weight_frame, textvariable=self.main_gui.ae_beta_consistency, width=10).grid(row=1, column=1, sticky="w", padx=5)
+        ttk.Label(weight_frame, text="默认0.5", foreground="gray", font=("", 9)).grid(row=1, column=2, sticky="w")
+
+        # γ权重
+        ttk.Label(weight_frame, text="γ (参数→RCS):").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Entry(weight_frame, textvariable=self.main_gui.ae_gamma_param_recon, width=10).grid(row=2, column=1, sticky="w", padx=5)
+        ttk.Label(weight_frame, text="默认1.0 (最重要)", foreground="green", font=("", 9, "bold")).grid(row=2, column=2, sticky="w")
+
+        # 权重说明
+        weight_hint = ttk.Label(weight_group,
+                               text="💡 总损失 = α×L_recon_rcs + β×L_consistency + γ×L_param_recon",
+                               foreground="blue", font=("", 9))
+        weight_hint.pack(anchor=tk.W, pady=(5, 0))
+
+        # === 损失函数类型配置 ===
+        loss_type_group = ttk.LabelFrame(main_frame, text="🔧 损失函数类型", padding="10")
+        loss_type_group.pack(fill=tk.X, pady=(0, 10))
 
         # 选项1：使用默认MSE（推荐）
-        ttk.Radiobutton(config_frame, text="✅ 使用默认MSE (推荐)",
-                       variable=tk.StringVar(value="default")).grid(row=0, column=0, sticky=tk.W, pady=5)
-        ttk.Label(config_frame, text="所有三个损失都使用MSE", foreground="gray", font=("", 9)).grid(
-            row=0, column=1, sticky=tk.W, padx=(10, 0))
+        ttk.Radiobutton(loss_type_group, text="✅ 使用默认MSE (推荐)",
+                       variable=tk.StringVar(value="default")).pack(anchor=tk.W, pady=3)
+        ttk.Label(loss_type_group, text="   所有三个损失都使用MSE", foreground="gray", font=("", 9)).pack(anchor=tk.W)
 
         # 选项2：使用全局自定义损失
-        ttk.Radiobutton(config_frame, text="使用全局自定义损失",
-                       variable=tk.StringVar(value="global")).grid(row=1, column=0, sticky=tk.W, pady=5)
-        ttk.Label(config_frame, text="recon_rcs和param_recon使用全局配置", foreground="gray", font=("", 9)).grid(
-            row=1, column=1, sticky=tk.W, padx=(10, 0))
-
-        # 选项3：高级配置（暂不实现）
-        adv_button = ttk.Button(config_frame, text="⚠️ 高级配置 (未实现)",
-                               state=tk.DISABLED)
-        adv_button.grid(row=2, column=0, sticky=tk.W, pady=5)
-        ttk.Label(config_frame, text="分别配置三个损失函数（未来版本）", foreground="gray", font=("", 9)).grid(
-            row=2, column=1, sticky=tk.W, padx=(10, 0))
+        ttk.Radiobutton(loss_type_group, text="使用全局自定义损失",
+                       variable=tk.StringVar(value="global")).pack(anchor=tk.W, pady=(10, 3))
+        ttk.Label(loss_type_group, text="   L_recon_rcs和L_param_recon使用全局配置（在【损失函数配置】页面设置）",
+                 foreground="gray", font=("", 9)).pack(anchor=tk.W)
+        ttk.Label(loss_type_group, text="   L_consistency保持MSE（隐空间不需要复杂损失）",
+                 foreground="gray", font=("", 9)).pack(anchor=tk.W)
 
         # 提示
         hint_text = ttk.Label(main_frame,
-                             text="💡 提示：对于大多数情况，默认MSE已经足够。\n"
-                                  "如需自定义损失，请先在【损失函数配置】页面设置全局配置。",
+                             text="💡 提示：默认配置（α=0.3, β=0.5, γ=1.0, 全部MSE）适合大多数场景。\n"
+                                  "   γ权重最高确保优先优化 params → RCS 的能力。",
                              foreground="blue", font=("", 9))
         hint_text.pack(pady=(0, 10))
 
