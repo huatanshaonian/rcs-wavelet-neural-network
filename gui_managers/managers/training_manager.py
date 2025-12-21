@@ -410,10 +410,14 @@ class TrainingManager:
 
             if hasattr(self.gui, 'ae_custom_loss_config'):
                 config['custom_loss_config'] = self.gui.ae_custom_loss_config
-                
+
             if hasattr(self.gui, 'ae_stage_loss_configs'):
                 for stage, loss_cfg in self.gui.ae_stage_loss_configs.items():
                     config[f'{stage}_loss_config'] = loss_cfg
+
+            # 联合训练损失配置（三个独立的损失函数）
+            if hasattr(self.gui, 'ae_joint_loss_config'):
+                config['joint_loss_config'] = self.gui.ae_joint_loss_config
 
             return config
 

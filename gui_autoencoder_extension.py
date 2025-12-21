@@ -297,6 +297,13 @@ class AutoEncoderExtension:
         ttk.Entry(joint_loss_frame, textvariable=self.main_gui.ae_gamma_param_recon, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
         ttk.Label(joint_loss_frame, text="(最重要)").grid(row=1, column=2, columnspan=2, sticky="w", padx=(10, 0), pady=(5, 0))
 
+        # 第三行：配置按钮和说明
+        config_button = ttk.Button(joint_loss_frame, text="高级配置 (可选)",
+                                    command=self._open_joint_loss_config)
+        config_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        ttk.Label(joint_loss_frame, text="默认全部MSE", font=("", 8), foreground="gray").grid(
+            row=2, column=2, columnspan=2, sticky="w", padx=(10, 0), pady=(5, 0))
+
         # 5. 优化器配置组
         optimizer_group = ttk.LabelFrame(left_column, text="⚙️ 优化器配置")
         optimizer_group.pack(fill=tk.X, pady=(0, 10))
@@ -1452,6 +1459,71 @@ class AutoEncoderExtension:
 
         except Exception as e:
             messagebox.showerror("错误", f"显示小波分析结果失败: {e}")
+
+    def _open_joint_loss_config(self):
+        """打开联合训练损失函数配置对话框"""
+        dialog = tk.Toplevel(self.main_gui.root)
+        dialog.title("联合训练损失函数配置")
+        dialog.geometry("500x400")
+        dialog.transient(self.main_gui.root)
+        dialog.grab_set()
+
+        # 主框架
+        main_frame = ttk.Frame(dialog, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 说明文字
+        info_text = ttk.Label(main_frame, text="联合训练使用三个独立的损失函数：", font=("", 10, "bold"))
+        info_text.pack(anchor=tk.W, pady=(0, 10))
+
+        desc_text = tk.Text(main_frame, height=6, width=60, wrap=tk.WORD, background="#f0f0f0")
+        desc_text.pack(fill=tk.X, pady=(0, 10))
+        desc_text.insert("1.0",
+            "1. L_recon_rcs (权重α): RCS重建损失\n"
+            "   - 衡量AutoEncoder的压缩重建能力\n\n"
+            "2. L_consistency (权重β): 隐空间一致性损失\n"
+            "   - 强制Encoder和Mapper学到相同的隐空间\n\n"
+            "3. L_param_recon (权重γ): 参数重建损失 (最重要)\n"
+            "   - 直接优化 params → RCS 的能力"
+        )
+        desc_text.config(state=tk.DISABLED)
+
+        # 配置选项
+        config_frame = ttk.LabelFrame(main_frame, text="损失函数配置选项", padding="10")
+        config_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        # 选项1：使用默认MSE（推荐）
+        ttk.Radiobutton(config_frame, text="✅ 使用默认MSE (推荐)",
+                       variable=tk.StringVar(value="default")).grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(config_frame, text="所有三个损失都使用MSE", foreground="gray", font=("", 9)).grid(
+            row=0, column=1, sticky=tk.W, padx=(10, 0))
+
+        # 选项2：使用全局自定义损失
+        ttk.Radiobutton(config_frame, text="使用全局自定义损失",
+                       variable=tk.StringVar(value="global")).grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(config_frame, text="recon_rcs和param_recon使用全局配置", foreground="gray", font=("", 9)).grid(
+            row=1, column=1, sticky=tk.W, padx=(10, 0))
+
+        # 选项3：高级配置（暂不实现）
+        adv_button = ttk.Button(config_frame, text="⚠️ 高级配置 (未实现)",
+                               state=tk.DISABLED)
+        adv_button.grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(config_frame, text="分别配置三个损失函数（未来版本）", foreground="gray", font=("", 9)).grid(
+            row=2, column=1, sticky=tk.W, padx=(10, 0))
+
+        # 提示
+        hint_text = ttk.Label(main_frame,
+                             text="💡 提示：对于大多数情况，默认MSE已经足够。\n"
+                                  "如需自定义损失，请先在【损失函数配置】页面设置全局配置。",
+                             foreground="blue", font=("", 9))
+        hint_text.pack(pady=(0, 10))
+
+        # 底部按钮
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+
+        ttk.Button(button_frame, text="确定", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT)
 
 
 def integrate_extension_to_gui(main_gui):

@@ -1229,6 +1229,41 @@ class AETrainer:
             return loss_dict['total']
         return loss_wrapper
 
+    def _create_joint_loss_function(self, training_config, loss_name):
+        """
+        为联合训练创建指定的损失函数
+
+        Args:
+            training_config: 训练配置字典
+            loss_name: 损失名称 ('recon_rcs', 'consistency', 'param_recon')
+
+        Returns:
+            损失函数
+
+        优先级：
+        1. joint_loss_config[loss_name] (最高)
+        2. 全局自定义配置 use_custom_loss
+        3. 默认MSE
+        """
+        # 1. 检查联合训练特定配置
+        if 'joint_loss_config' in training_config:
+            joint_config = training_config['joint_loss_config']
+            if loss_name in joint_config:
+                from configurable_loss import create_loss_function
+                self.gui.ae_log(f"  使用自定义{loss_name}损失函数")
+                return self._wrap_configurable_loss(create_loss_function(joint_config[loss_name]))
+
+        # 2. 检查全局自定义配置（仅对recon_rcs和param_recon，不对consistency）
+        # consistency是隐空间的MSE，通常不需要自定义
+        if loss_name != 'consistency' and training_config.get('use_custom_loss', False):
+            if 'custom_loss_config' in training_config:
+                from configurable_loss import create_loss_function
+                self.gui.ae_log(f"  {loss_name}使用全局自定义损失函数")
+                return self._wrap_configurable_loss(create_loss_function(training_config['custom_loss_config']))
+
+        # 3. 默认MSE
+        return nn.MSELoss()
+
     def _step_scheduler(self, scheduler, scheduler_type, val_loss):
         if scheduler_type == 'adaptive':
             scheduler.step(val_loss)
@@ -1369,6 +1404,16 @@ class AETrainer:
             'val_loss_recon': [], 'val_loss_consistency': [], 'val_loss_param_recon': []
         }
 
+        # 创建三个损失函数（支持configurable_loss）
+        criterion_recon = self._create_joint_loss_function(training_config, 'recon_rcs')
+        criterion_consistency = self._create_joint_loss_function(training_config, 'consistency')
+        criterion_param_recon = self._create_joint_loss_function(training_config, 'param_recon')
+
+        self.gui.ae_log("✅ 联合训练损失函数已创建")
+        self.gui.ae_log(f"  L_recon_rcs: {type(criterion_recon).__name__}")
+        self.gui.ae_log(f"  L_consistency: {type(criterion_consistency).__name__}")
+        self.gui.ae_log(f"  L_param_recon: {type(criterion_param_recon).__name__}")
+
         # 检测L-BFGS
         is_lbfgs = self._is_lbfgs_optimizer(optimizer)
         if is_lbfgs:
@@ -1405,11 +1450,9 @@ class AETrainer:
                 recon_from_params = autoencoder.decode(latent_from_params)
 
                 # ========== 损失计算 ==========
-                criterion = nn.MSELoss()
-
-                L_recon_rcs = criterion(recon_rcs, rcs_batch)          # α
-                L_consistency = criterion(latent_from_rcs, latent_from_params)  # β
-                L_param_recon = criterion(recon_from_params, rcs_batch)  # γ
+                L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)          # α
+                L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)  # β
+                L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)  # γ
 
                 # 总损失（加权）
                 total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
@@ -1453,9 +1496,9 @@ class AETrainer:
                     recon_from_params = autoencoder.decode(latent_from_params)
 
                     # 损失计算
-                    L_recon_rcs = criterion(recon_rcs, rcs_batch)
-                    L_consistency = criterion(latent_from_rcs, latent_from_params)
-                    L_param_recon = criterion(recon_from_params, rcs_batch)
+                    L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)
+                    L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)
+                    L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)
                     total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
 
                     val_loss_total += total_loss.item() * batch_size_actual
