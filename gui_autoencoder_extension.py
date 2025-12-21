@@ -1497,21 +1497,51 @@ class AutoEncoderExtension:
         weight_hint.pack(anchor=tk.W, pady=(5, 0))
 
         # === 损失函数类型配置 ===
-        loss_type_group = ttk.LabelFrame(main_frame, text="🔧 损失函数类型", padding="10")
+        loss_type_group = ttk.LabelFrame(main_frame, text="🔧 损失函数类型 (如何应用自定义loss)", padding="10")
         loss_type_group.pack(fill=tk.X, pady=(0, 10))
 
-        # 选项1：使用默认MSE（推荐）
-        ttk.Radiobutton(loss_type_group, text="✅ 使用默认MSE (推荐)",
-                       variable=tk.StringVar(value="default")).pack(anchor=tk.W, pady=3)
-        ttk.Label(loss_type_group, text="   所有三个损失都使用MSE", foreground="gray", font=("", 9)).pack(anchor=tk.W)
+        # 当前状态显示
+        current_state_frame = ttk.Frame(loss_type_group)
+        current_state_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # 选项2：使用全局自定义损失
-        ttk.Radiobutton(loss_type_group, text="使用全局自定义损失",
-                       variable=tk.StringVar(value="global")).pack(anchor=tk.W, pady=(10, 3))
-        ttk.Label(loss_type_group, text="   L_recon_rcs和L_param_recon使用全局配置（在【损失函数配置】页面设置）",
-                 foreground="gray", font=("", 9)).pack(anchor=tk.W)
-        ttk.Label(loss_type_group, text="   L_consistency保持MSE（隐空间不需要复杂损失）",
-                 foreground="gray", font=("", 9)).pack(anchor=tk.W)
+        custom_loss_enabled = self.main_gui.ae_use_custom_loss.get()
+        if custom_loss_enabled:
+            status_text = "✅ 当前已启用自定义损失函数"
+            status_color = "green"
+        else:
+            status_text = "⭕ 当前使用默认MSE损失"
+            status_color = "gray"
+
+        ttk.Label(current_state_frame, text=status_text,
+                 foreground=status_color, font=("", 9, "bold")).pack(anchor=tk.W)
+
+        # 详细说明
+        detail_frame = ttk.Frame(loss_type_group)
+        detail_frame.pack(fill=tk.X)
+
+        ttk.Label(detail_frame, text="📌 自定义损失应用规则：", font=("", 9, "bold")).pack(anchor=tk.W, pady=(5, 3))
+
+        if custom_loss_enabled:
+            ttk.Label(detail_frame, text="   • L_recon_rcs (α权重) → 使用自定义损失 ✓",
+                     foreground="green", font=("", 9)).pack(anchor=tk.W)
+            ttk.Label(detail_frame, text="   • L_consistency (β权重) → 保持MSE (隐空间对齐)",
+                     foreground="blue", font=("", 9)).pack(anchor=tk.W)
+            ttk.Label(detail_frame, text="   • L_param_recon (γ权重) → 使用自定义损失 ✓",
+                     foreground="green", font=("", 9)).pack(anchor=tk.W)
+        else:
+            ttk.Label(detail_frame, text="   • L_recon_rcs (α权重) → MSE",
+                     foreground="gray", font=("", 9)).pack(anchor=tk.W)
+            ttk.Label(detail_frame, text="   • L_consistency (β权重) → MSE",
+                     foreground="gray", font=("", 9)).pack(anchor=tk.W)
+            ttk.Label(detail_frame, text="   • L_param_recon (γ权重) → MSE",
+                     foreground="gray", font=("", 9)).pack(anchor=tk.W)
+
+        # 配置按钮
+        config_button_frame = ttk.Frame(loss_type_group)
+        config_button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        ttk.Button(config_button_frame, text="🔧 配置自定义损失函数",
+                  command=self.main_gui._open_loss_config_for_ae).pack(fill=tk.X)
 
         # 提示
         hint_text = ttk.Label(main_frame,
