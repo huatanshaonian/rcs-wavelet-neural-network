@@ -1218,6 +1218,24 @@ class RCSWaveletGUI:
                 else:
                     self.ae_log(f"  标准化方法: {normalization_method}")
 
+                # 读取ParameterMapper配置（如果存在）
+                mapper_config = config.get('mapper_config', None)
+                if mapper_config:
+                    self.ae_log(f"  检测到Mapper配置:")
+                    self.ae_log(f"    - 隐空间维度: {mapper_config.get('latent_dim', 'N/A')}")
+                    self.ae_log(f"    - 隐藏层维度: {mapper_config.get('hidden_dims', 'N/A')}")
+                    self.ae_log(f"    - 激活函数: {mapper_config.get('activation', 'N/A')}")
+                    self.ae_log(f"    - 自适应层: {mapper_config.get('use_adaptive', False)}")
+                    mapper_activation = mapper_config.get('activation', None)
+                    mapper_use_adaptive = mapper_config.get('use_adaptive', False)
+                    mapper_hidden_dims = mapper_config.get('hidden_dims', None)
+                else:
+                    # 旧版模型：使用默认mapper配置
+                    self.ae_log("  ⚠️ 未检测到Mapper配置，使用默认值")
+                    mapper_activation = None
+                    mapper_use_adaptive = False
+                    mapper_hidden_dims = None
+
                 self.ae_system = create_autoencoder_system(
                     config_name=freq_config,
                     latent_dim=latent_dim,
@@ -1228,7 +1246,10 @@ class RCSWaveletGUI:
                     architecture=architecture,
                     activation=activation,
                     db_transform=db_transform,
-                    normalization_method=normalization_method
+                    normalization_method=normalization_method,
+                    mapper_activation=mapper_activation,
+                    mapper_use_adaptive=mapper_use_adaptive,
+                    mapper_hidden_dims=mapper_hidden_dims
                 )
 
                 # 加载模型权重

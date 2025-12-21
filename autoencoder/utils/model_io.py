@@ -97,6 +97,19 @@ def create_model_state_dict(
     if loss_normalization_factor is not None:
         model_state['loss_normalization_factor'] = float(loss_normalization_factor)
 
+    # 保存ParameterMapper配置（关键！用于正确重建mapper）
+    parameter_mapper = ae_system.get('parameter_mapper', None)
+    if parameter_mapper is not None and hasattr(parameter_mapper, 'hidden_dims'):
+        mapper_config = {
+            'param_dim': getattr(parameter_mapper, 'param_dim', 9),
+            'latent_dim': getattr(parameter_mapper, 'latent_dim', 256),
+            'hidden_dims': getattr(parameter_mapper, 'hidden_dims', None),
+            'dropout_rate': getattr(parameter_mapper, 'dropout_rate', 0.3),
+            'activation': getattr(parameter_mapper, 'activation_name', 'relu'),
+            'use_adaptive': getattr(parameter_mapper, 'use_adaptive', False)
+        }
+        model_state['config']['mapper_config'] = mapper_config
+
     return model_state
 
 
