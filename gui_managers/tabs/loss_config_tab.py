@@ -60,6 +60,12 @@ class LossConfigTab(ttk.Frame):
         self.use_laplacian_loss = tk.BooleanVar(value=False)
         self.laplacian_weight = tk.StringVar(value="0.05")
 
+        # 统计特性损失配置
+        self.use_mean_loss = tk.BooleanVar(value=False)
+        self.mean_weight = tk.StringVar(value="0.01")
+        self.mean_type = tk.StringVar(value="channel")  # 'channel' 或 'global'
+        self.mean_use_l1 = tk.BooleanVar(value=False)  # False=L2, True=L1
+
         # 联合训练权重配置（用于AE联合训练模式）
         # 注意：这些变量需要与gui.py中的变量同步
         if hasattr(self.app, 'ae_alpha_recon'):
@@ -184,6 +190,20 @@ class LossConfigTab(ttk.Frame):
         ttk.Label(laplacian_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
         ttk.Entry(laplacian_frame, textvariable=self.laplacian_weight, width=8).pack(side=tk.LEFT)
 
+        # 均值损失（统计特性）
+        mean_frame = ttk.Frame(physics_group)
+        mean_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Checkbutton(mean_frame, text="均值损失（统计特性）", variable=self.use_mean_loss).pack(side=tk.LEFT)
+        ttk.Label(mean_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Entry(mean_frame, textvariable=self.mean_weight, width=8).pack(side=tk.LEFT)
+
+        mean_type_frame = ttk.Frame(physics_group)
+        mean_type_frame.pack(fill=tk.X, padx=20, pady=2)
+        ttk.Label(mean_type_frame, text="类型:").pack(side=tk.LEFT)
+        ttk.Radiobutton(mean_type_frame, text="按通道", variable=self.mean_type, value="channel").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(mean_type_frame, text="全局", variable=self.mean_type, value="global").pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(mean_type_frame, text="使用L1距离", variable=self.mean_use_l1).pack(side=tk.LEFT, padx=(20, 0))
+
         # 联合训练配置组
         joint_training_group = ttk.LabelFrame(left_panel, text="⚖️ 联合训练损失权重 (仅用于AE联合训练模式)")
         joint_training_group.pack(fill=tk.X, pady=(0, 10))
@@ -281,6 +301,10 @@ class LossConfigTab(ttk.Frame):
                 config_text += f"  ✅ 多尺度损失 (权重: {self.multiscale_weight.get()})\n"
             if self.use_laplacian_loss.get():
                 config_text += f"  ✅ 拉普拉斯损失 (权重: {self.laplacian_weight.get()})\n"
+            if self.use_mean_loss.get():
+                mean_type_str = "按通道" if self.mean_type.get() == "channel" else "全局"
+                distance_str = "L1" if self.mean_use_l1.get() else "L2"
+                config_text += f"  ✅ 均值损失 (权重: {self.mean_weight.get()}, 类型: {mean_type_str}, 距离: {distance_str})\n"
 
             # 计算总权重
             total_weight = 0
@@ -302,6 +326,8 @@ class LossConfigTab(ttk.Frame):
                 total_weight += float(self.multiscale_weight.get())
             if self.use_laplacian_loss.get():
                 total_weight += float(self.laplacian_weight.get())
+            if self.use_mean_loss.get():
+                total_weight += float(self.mean_weight.get())
 
             config_text += f"\n📈 总权重: {total_weight:.3f}\n"
 
@@ -366,6 +392,11 @@ class LossConfigTab(ttk.Frame):
 
                 'use_laplacian': self.use_laplacian_loss.get(),
                 'laplacian_weight': float(self.laplacian_weight.get()) if self.use_laplacian_loss.get() else 0,
+
+                'use_mean': self.use_mean_loss.get(),
+                'mean_weight': float(self.mean_weight.get()) if self.use_mean_loss.get() else 0,
+                'mean_type': self.mean_type.get(),
+                'mean_use_l1': self.mean_use_l1.get(),
             }
 
             # 保存到训练配置中
@@ -416,6 +447,11 @@ class LossConfigTab(ttk.Frame):
         self.use_laplacian_loss.set(False)
         self.laplacian_weight.set("0.05")
 
+        self.use_mean_loss.set(False)
+        self.mean_weight.set("0.01")
+        self.mean_type.set("channel")
+        self.mean_use_l1.set(False)
+
         self.update_loss_config_preview()
         messagebox.showinfo("完成", "损失函数配置已重置为默认值")
 
@@ -434,6 +470,11 @@ class LossConfigTab(ttk.Frame):
 
         self.use_multiscale_loss.set(True)
         self.multiscale_weight.set("0.1")
+
+        self.use_mean_loss.set(True)
+        self.mean_weight.set("0.01")
+        self.mean_type.set("channel")
+        self.mean_use_l1.set(False)
 
         self.update_loss_config_preview()
 
@@ -461,6 +502,11 @@ class LossConfigTab(ttk.Frame):
 
         self.use_multiscale_loss.set(False)
 
+        self.use_mean_loss.set(True)
+        self.mean_weight.set("0.02")
+        self.mean_type.set("channel")
+        self.mean_use_l1.set(False)
+
         self.update_loss_config_preview()
 
     def load_robust_preset(self):
@@ -485,6 +531,11 @@ class LossConfigTab(ttk.Frame):
         self.use_continuity_loss.set(False)
         self.use_multiscale_loss.set(False)
 
+        self.use_mean_loss.set(True)
+        self.mean_weight.set("0.015")
+        self.mean_type.set("channel")
+        self.mean_use_l1.set(True)
+
         self.update_loss_config_preview()
 
     def load_highfreq_preset(self):
@@ -506,6 +557,8 @@ class LossConfigTab(ttk.Frame):
         self.continuity_type.set("adaptive")
 
         self.use_multiscale_loss.set(False)
+
+        self.use_mean_loss.set(False)
 
         self.update_loss_config_preview()
 
@@ -532,6 +585,11 @@ class LossConfigTab(ttk.Frame):
         self.use_multiscale_loss.set(True)
         self.multiscale_weight.set("0.1")
 
+        self.use_mean_loss.set(True)
+        self.mean_weight.set("0.05")
+        self.mean_type.set("channel")
+        self.mean_use_l1.set(False)
+
         self.update_loss_config_preview()
 
     def load_perceptual_preset(self):
@@ -555,6 +613,11 @@ class LossConfigTab(ttk.Frame):
         self.use_freq_consistency.set(False)
         self.use_continuity_loss.set(False)
         self.use_multiscale_loss.set(False)
+
+        self.use_mean_loss.set(True)
+        self.mean_weight.set("0.02")
+        self.mean_type.set("channel")
+        self.mean_use_l1.set(False)
 
         self.update_loss_config_preview()
 
