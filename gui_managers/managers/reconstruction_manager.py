@@ -65,7 +65,7 @@ class ReconstructionManager:
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         autoencoder.to(device).eval()
-        if training_mode == 'three_stage':
+        if training_mode in ('three_stage', 'joint_training'):
             parameter_mapper.to(device).eval()
 
         # 初始化小波系数变量
@@ -76,8 +76,10 @@ class ReconstructionManager:
         if input_type == 'auto':
             if training_mode == 'stage1_only':
                 input_type = 'rcs'
-            else:
+            elif training_mode in ('three_stage', 'joint_training'):
                 input_type = 'params'
+            else:
+                input_type = 'params'  # 默认从参数重建
 
         # 3. 处理model_ids输入（转换为实际数据）
         if input_type == 'model_ids':
@@ -93,8 +95,8 @@ class ReconstructionManager:
                     indices.append(int(mid))
 
             # 根据training_mode获取对应数据
-            if training_mode == 'three_stage':
-                # Three-Stage: 从参数重建
+            if training_mode in ('three_stage', 'joint_training'):
+                # Three-Stage/Joint-Training: 从参数重建
                 param_data = self.gui.ae_system.get('param_data', None)
                 if param_data is None:
                     param_data = self.gui.ae_system.get('parameter_data', None)
@@ -127,9 +129,9 @@ class ReconstructionManager:
         # 5. 执行重建
         with torch.no_grad():
             if input_type == 'params':
-                # ========== Three-Stage模式：从参数重建 ==========
-                if training_mode != 'three_stage':
-                    raise ValueError("从参数重建需要Three-Stage训练模式")
+                # ========== Three-Stage/Joint-Training模式：从参数重建 ==========
+                if training_mode not in ('three_stage', 'joint_training'):
+                    raise ValueError(f"从参数重建需要Three-Stage或Joint-Training训练模式，当前模式: {training_mode}")
 
                 # ✅ 使用param_scaler标准化参数（与训练时保持一致）
                 param_scaler = self.gui.ae_system.get('param_scaler', None)

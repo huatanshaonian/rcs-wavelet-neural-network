@@ -709,9 +709,9 @@ class AETrainer:
             self.gui.ae_log("\n📊 分析训练完成后的隐空间分布...")
             self.print_latent_space_statistics(rcs_data)
 
-            # ✅ 三阶段训练时自动保存Stage 1 checkpoint
+            # ✅ 三阶段训练和联合训练时自动保存Stage 1 checkpoint
             training_mode = training_config.get('training_mode', 'three_stage')
-            if training_mode == 'three_stage':
+            if training_mode in ('three_stage', 'joint_training'):
                 self._save_stage1_checkpoint(best_val_loss, best_epoch)
 
             return {

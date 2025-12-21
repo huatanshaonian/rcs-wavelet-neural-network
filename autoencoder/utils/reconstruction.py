@@ -293,7 +293,7 @@ def validate_ae_system(ae_system: Dict, training_mode: str = 'three_stage') -> N
     """
     required_keys = ['autoencoder', 'mode']
 
-    if training_mode == 'three_stage':
+    if training_mode in ('three_stage', 'joint_training'):
         required_keys.append('parameter_mapper')
 
     for key in required_keys:

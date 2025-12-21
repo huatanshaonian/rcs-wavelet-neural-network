@@ -101,13 +101,16 @@ class EvaluationManager:
             self.gui.log_message(f"  训练模式: {training_mode}")
             self.gui.log_message(f"  测试样本数: {test_size}")
             self.gui.log_message(f"  RCS数据: {test_rcs.shape}")
-            if training_mode == 'three_stage':
+            if training_mode in ('three_stage', 'joint_training'):
                 self.gui.log_message(f"  参数数据: {test_params.shape}")
 
             if training_mode == 'stage1_only':
                 self.gui.log_message("📈 开始AutoEncoder重建评估（Stage 1 Only）...")
                 self.gui.log_message("  评估方式: RCS → Encoder → Decoder → 重建RCS")
-            else:
+            elif training_mode == 'joint_training':
+                self.gui.log_message("📈 开始AutoEncoder端到端评估（Joint Training）...")
+                self.gui.log_message("  评估方式: 参数 → ParameterMapper → Decoder → RCS")
+            else:  # three_stage
                 self.gui.log_message("📈 开始AutoEncoder端到端评估（Three Stage）...")
                 self.gui.log_message("  评估方式: 参数 → ParameterMapper → Decoder → RCS")
 
@@ -125,7 +128,7 @@ class EvaluationManager:
                 batch_targets = test_rcs[start_idx:end_idx]
 
                 # 准备输入数据
-                if training_mode == 'three_stage':
+                if training_mode in ('three_stage', 'joint_training'):
                     batch_input = test_params[start_idx:end_idx]
                 else:
                     batch_input = test_rcs[start_idx:end_idx]
