@@ -1330,6 +1330,13 @@ class AETrainer:
         data_adapter = self.gui.ae_system.get('data_adapter', None)
         mode = self.gui.ae_system.get('mode', 'wavelet')
 
+        # 获取损失归一化系数（如果已初始化）
+        loss_normalization_factor = self.gui.ae_system.get('loss_normalization_factor', 1.0)
+        if loss_normalization_factor != 1.0:
+            self.gui.ae_log(f"🔧 使用Loss归一化系数: {loss_normalization_factor:.6f}")
+        else:
+            self.gui.ae_log("⚠️ 未初始化Loss归一化（使用默认系数1.0）")
+
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         autoencoder.to(device)
         parameter_mapper.to(device)
@@ -1461,6 +1468,9 @@ class AETrainer:
                 # 总损失（加权）
                 total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
 
+                # 应用损失归一化
+                total_loss = total_loss * loss_normalization_factor
+
                 # ========== 反向传播 ==========
                 total_loss.backward()
                 optimizer.step()
@@ -1504,6 +1514,9 @@ class AETrainer:
                     L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)
                     L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)
                     total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
+
+                    # 应用损失归一化（与训练保持一致）
+                    total_loss = total_loss * loss_normalization_factor
 
                     val_loss_total += total_loss.item() * batch_size_actual
                     val_loss_recon += L_recon_rcs.item() * batch_size_actual

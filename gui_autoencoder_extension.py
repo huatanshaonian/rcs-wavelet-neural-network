@@ -858,10 +858,21 @@ class AutoEncoderExtension:
             data_adapter = ae_system.get('data_adapter', None)
             mode = ae_system.get('mode', 'wavelet')
 
-            # 获取训练配置
+            # 获取训练配置和训练模式
             training_config = self.main_gui.training_config
             batch_size = training_config.get('batch_size', 32)
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            training_mode = self.main_gui.ae_training_mode.get()
+
+            self.main_gui.ae_log(f"🎯 检测到训练模式: {training_mode}")
+
+            # 根据训练模式选择初始化方式
+            if training_mode == "联合训练":
+                self._initialize_loss_normalization_joint_mode(ae_system, training_config, device)
+                return
+
+            # 其他模式使用Stage 1的loss初始化（三阶段/端到端/仅Stage 1/仅Stage 2）
+            self.main_gui.ae_log("📊 使用Stage 1 AE重建loss进行归一化初始化")
 
             # 准备数据（使用与训练相同的预处理）
             rcs_data = self.main_gui.rcs_data
@@ -947,6 +958,151 @@ class AutoEncoderExtension:
             error_msg = f"初始化Loss归一化失败: {e}\n{traceback.format_exc()}"
             self.main_gui.ae_log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
+
+    def _initialize_loss_normalization_joint_mode(self, ae_system, training_config, device):
+        """
+        联合训练模式的损失归一化初始化
+
+        计算 total_loss = α*L_recon_rcs + β*L_consistency + γ*L_param_recon 的初始值
+        并生成归一化系数使其归一化为1.0
+
+        Args:
+            ae_system: AutoEncoder系统字典
+            training_config: 训练配置
+            device: 训练设备
+        """
+        import torch
+        from torch.utils.data import DataLoader, TensorDataset
+        from tkinter import messagebox
+
+        self.main_gui.ae_log("📊 使用联合训练loss进行归一化初始化")
+
+        # 获取组件
+        autoencoder = ae_system['autoencoder']
+        parameter_mapper = ae_system['parameter_mapper']
+        wavelet_transform = ae_system.get('wavelet_transform', None)
+        data_adapter = ae_system.get('data_adapter', None)
+        mode = ae_system.get('mode', 'wavelet')
+
+        # 获取损失权重
+        alpha = training_config.get('alpha_recon', 0.3)
+        beta = training_config.get('beta_consistency', 0.5)
+        gamma = training_config.get('gamma_param_recon', 1.0)
+
+        self.main_gui.ae_log(f"  ⚖️ 损失权重: α={alpha}, β={beta}, γ={gamma}")
+
+        # 准备RCS数据
+        rcs_data = self.main_gui.rcs_data
+
+        if mode in ['wavelet', 'differentiable_wavelet']:
+            # 小波模式：原始RCS → 小波变换 → 标准化
+            self.main_gui.ae_log("🔄 预处理RCS数据（小波变换 + 标准化）...")
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+
+            if isinstance(wavelet_coeffs, torch.Tensor):
+                wavelet_coeffs_np = wavelet_coeffs.detach().cpu().numpy()
+            else:
+                wavelet_coeffs_np = wavelet_coeffs
+
+            if data_adapter:
+                input_data = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+            else:
+                input_data = wavelet_coeffs_np
+        else:
+            # Direct模式：原始RCS → 标准化
+            self.main_gui.ae_log("🔄 预处理RCS数据（标准化）...")
+            if data_adapter:
+                input_data = data_adapter.adapt_rcs_data(rcs_data)
+            else:
+                input_data = rcs_data
+
+        # 准备参数数据
+        param_data = self.main_gui.param_data
+
+        from sklearn.preprocessing import StandardScaler
+        self.main_gui.ae_log("🔧 标准化设计参数...")
+        param_scaler = StandardScaler()
+        param_normalized = param_scaler.fit_transform(param_data)
+        ae_system['param_scaler'] = param_scaler
+
+        # 创建数据集
+        input_tensor = torch.FloatTensor(input_data)
+        param_tensor = torch.FloatTensor(param_normalized)
+        dataset = TensorDataset(input_tensor, param_tensor)
+
+        # 创建DataLoader
+        batch_size = training_config.get('batch_size', 32)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+
+        # 创建三个损失函数
+        criterion_recon = self.main_gui._create_joint_loss_function(training_config, 'recon_rcs')
+        criterion_consistency = self.main_gui._create_joint_loss_function(training_config, 'consistency')
+        criterion_param_recon = self.main_gui._create_joint_loss_function(training_config, 'param_recon')
+
+        self.main_gui.ae_log(f"  L_recon_rcs: {type(criterion_recon).__name__}")
+        self.main_gui.ae_log(f"  L_consistency: {type(criterion_consistency).__name__}")
+        self.main_gui.ae_log(f"  L_param_recon: {type(criterion_param_recon).__name__}")
+
+        # 将模型移到设备
+        autoencoder.to(device)
+        parameter_mapper.to(device)
+        autoencoder.eval()
+        parameter_mapper.eval()
+
+        # 计算初始总损失
+        total_loss_sum = 0.0
+        total_samples = 0
+
+        self.main_gui.ae_log("🔄 计算初始联合训练loss...")
+
+        with torch.no_grad():
+            for rcs_batch, param_batch in dataloader:
+                rcs_batch = rcs_batch.to(device)
+                param_batch = param_batch.to(device)
+                batch_size_actual = rcs_batch.size(0)
+
+                # 三条路径前向传播
+                # 路径1: RCS → Encoder → Decoder → RCS
+                recon_rcs, latent_from_rcs = autoencoder(rcs_batch)
+
+                # 路径2: Params → Mapper → Latent
+                latent_from_params = parameter_mapper(param_batch)
+
+                # 路径3: Params → Mapper → Decoder → RCS
+                recon_from_params = autoencoder.decode(latent_from_params)
+
+                # 计算三个损失
+                L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)
+                L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)
+                L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)
+
+                # 总损失（加权）
+                total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
+
+                # sample-weighted累加
+                total_loss_sum += total_loss.item() * batch_size_actual
+                total_samples += batch_size_actual
+
+        # 计算平均总损失
+        initial_loss = total_loss_sum / total_samples
+
+        # 计算归一化系数
+        loss_normalization_factor = 1.0 / initial_loss
+
+        # 保存到ae_system
+        ae_system['loss_normalization_factor'] = loss_normalization_factor
+
+        self.main_gui.ae_log(f"✅ Loss归一化初始化完成（联合训练模式）！")
+        self.main_gui.ae_log(f"  初始总Loss: {initial_loss:.6f}")
+        self.main_gui.ae_log(f"  归一化系数: {loss_normalization_factor:.6f}")
+        self.main_gui.ae_log(f"  归一化后Loss: {initial_loss * loss_normalization_factor:.6f}")
+
+        messagebox.showinfo("成功",
+            f"Loss归一化初始化成功（联合训练模式）！\n\n"
+            f"初始总Loss: {initial_loss:.6f}\n"
+            f"归一化系数: {loss_normalization_factor:.6f}\n"
+            f"归一化后Loss: 1.0")
 
     def save_ae_config(self):
         """保存AE训练配置到JSON文件"""
