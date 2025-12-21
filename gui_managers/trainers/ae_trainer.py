@@ -1384,7 +1384,11 @@ class AETrainer:
         all_params = chain(autoencoder.parameters(), parameter_mapper.parameters())
         optimizer, scheduler = self._create_optimizer_and_scheduler(all_params, training_config, stage='joint')
 
+        # 获取调度器类型（用于后续step调用）
+        scheduler_type = training_config.get('lr_scheduler', 'constant')
+
         self.gui.ae_log("✅ 联合优化器已创建（包含AutoEncoder + ParameterMapper）")
+        self.gui.ae_log(f"  调度器类型: {scheduler_type}")
 
         # 训练循环
         autoencoder.train()
@@ -1523,11 +1527,17 @@ class AETrainer:
             history['val_loss_consistency'].append(avg_val_consistency)
             history['val_loss_param_recon'].append(avg_val_param_recon)
 
-            # 学习率调度
-            if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-                scheduler.step(avg_val_loss)
-            else:
-                scheduler.step()
+            # 学习率调度（使用统一的_step_scheduler方法）
+            old_lr = optimizer.param_groups[0]['lr']
+            self._step_scheduler(scheduler, scheduler_type, avg_val_loss)
+            current_lr = optimizer.param_groups[0]['lr']
+
+            # 如果学习率下降，回退到最佳模型（多阶段调度器特性）
+            if current_lr < old_lr and best_ae_state is not None:
+                autoencoder.load_state_dict(best_ae_state)
+                parameter_mapper.load_state_dict(best_mapper_state)
+                patience_counter = 0
+                self.gui.ae_log(f"  🔄 学习率下降 {old_lr:.2e} → {current_lr:.2e}，回退到最佳模型")
 
             # 早停检查
             if avg_val_loss < best_val_loss:
@@ -1551,10 +1561,31 @@ class AETrainer:
                     f"LR={current_lr:.2e}"
                 )
 
-            # 早停
-            if patience_counter >= patience:
-                self.gui.ae_log(f"⏹️ 早停触发 (patience={patience}), 最佳epoch={best_epoch+1}")
-                break
+            # 早停（支持patience驱动的多阶段调度器）
+            current_patience = patience
+            if scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
+                from autoencoder.training.multi_stage_scheduler import PatienceDrivenMultiStageLRScheduler
+                if isinstance(scheduler, PatienceDrivenMultiStageLRScheduler):
+                    current_patience = scheduler.get_current_patience()
+                    if patience_counter >= current_patience:
+                        switched = scheduler.switch_to_next_stage()
+                        if switched:
+                            self.gui.ae_log(f"  🔄 切换到下一学习率阶段，回退到最佳模型")
+                            autoencoder.load_state_dict(best_ae_state)
+                            parameter_mapper.load_state_dict(best_mapper_state)
+                            patience_counter = 0
+                            continue
+                        else:
+                            self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 已是最后学习率阶段")
+                            break
+                else:
+                    if patience_counter >= current_patience:
+                        self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1})")
+                        break
+            else:
+                if patience_counter >= current_patience:
+                    self.gui.ae_log(f"⏹️ 早停触发 (patience={patience}), 最佳epoch={best_epoch+1}")
+                    break
 
         # 恢复最佳模型
         if best_ae_state is not None:
