@@ -164,8 +164,8 @@ class RCSWaveletGUI:
         """
         self.root = root
         self.root.title("RCS小波神经网络预测系统 v1.0")
-        self.root.geometry("1400x900")
-        self.root.minsize(1200, 800)
+        self.root.geometry("1400x1050")
+        self.root.minsize(1200, 900)
 
         # 设置字体 (使用系统默认字体避免字体问题)
         try:

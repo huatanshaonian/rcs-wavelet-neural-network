@@ -60,6 +60,17 @@ class LossConfigTab(ttk.Frame):
         self.use_laplacian_loss = tk.BooleanVar(value=False)
         self.laplacian_weight = tk.StringVar(value="0.05")
 
+        # 联合训练权重配置（用于AE联合训练模式）
+        # 注意：这些变量需要与gui.py中的变量同步
+        if hasattr(self.app, 'ae_alpha_recon'):
+            # 如果app已经有这些变量，使用app的变量
+            pass
+        else:
+            # 否则创建本地变量（但最好在gui.py初始化时统一创建）
+            self.app.ae_alpha_recon = tk.StringVar(value="0.3")
+            self.app.ae_beta_consistency = tk.StringVar(value="0.5")
+            self.app.ae_gamma_param_recon = tk.StringVar(value="1.0")
+
     def create_widgets(self):
         """创建界面组件"""
         # 主框架
@@ -173,6 +184,50 @@ class LossConfigTab(ttk.Frame):
         ttk.Label(laplacian_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
         ttk.Entry(laplacian_frame, textvariable=self.laplacian_weight, width=8).pack(side=tk.LEFT)
 
+        # 联合训练配置组
+        joint_training_group = ttk.LabelFrame(left_panel, text="⚖️ 联合训练损失权重 (仅用于AE联合训练模式)")
+        joint_training_group.pack(fill=tk.X, pady=(0, 10))
+
+        # 说明文字
+        joint_info = ttk.Label(joint_training_group,
+                              text="联合训练同时优化AE和Mapper，使用三个损失函数：",
+                              font=("", 9))
+        joint_info.pack(anchor=tk.W, padx=5, pady=(5, 2))
+
+        # α权重 - L_recon_rcs
+        alpha_frame = ttk.Frame(joint_training_group)
+        alpha_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Label(alpha_frame, text="α (RCS重建):").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Entry(alpha_frame, textvariable=self.app.ae_alpha_recon, width=8).grid(row=0, column=1, sticky="w")
+        ttk.Label(alpha_frame, text="RCS→Encoder→Decoder→RCS", foreground="gray", font=("", 8)).grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        # β权重 - L_consistency
+        beta_frame = ttk.Frame(joint_training_group)
+        beta_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Label(beta_frame, text="β (一致性):").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Entry(beta_frame, textvariable=self.app.ae_beta_consistency, width=8).grid(row=0, column=1, sticky="w")
+        ttk.Label(beta_frame, text="强制Encoder和Mapper对齐", foreground="gray", font=("", 8)).grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        # γ权重 - L_param_recon
+        gamma_frame = ttk.Frame(joint_training_group)
+        gamma_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Label(gamma_frame, text="γ (参数→RCS):").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Entry(gamma_frame, textvariable=self.app.ae_gamma_param_recon, width=8).grid(row=0, column=1, sticky="w")
+        ttk.Label(gamma_frame, text="Params→Mapper→Decoder→RCS (主目标)", foreground="green", font=("", 8, "bold")).grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        # 总损失公式
+        formula_frame = ttk.Frame(joint_training_group)
+        formula_frame.pack(fill=tk.X, padx=5, pady=(5, 5))
+        ttk.Label(formula_frame, text="总损失 = α×L_recon_rcs + β×L_consistency + γ×L_param_recon",
+                 foreground="blue", font=("", 9)).pack(anchor=tk.W)
+
+        # 自定义损失应用说明
+        custom_loss_frame = ttk.Frame(joint_training_group)
+        custom_loss_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        ttk.Label(custom_loss_frame,
+                 text="💡 勾选「使用自定义损失函数」时，α和γ会应用上方配置的自定义loss，β保持MSE",
+                 foreground="purple", font=("", 8), wraplength=450).pack(anchor=tk.W)
+
         # 右侧面板：配置预览和控制
         right_panel = ttk.Frame(main_frame)
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(10, 0))
@@ -261,6 +316,13 @@ class LossConfigTab(ttk.Frame):
 
             if self.use_freq_consistency.get() and self.use_continuity_loss.get():
                 config_text += "  ⚠️ 同时启用频率和连续性约束可能过度平滑\n"
+
+            # 联合训练权重配置
+            config_text += "\n⚖️ 联合训练权重:\n"
+            config_text += f"  α (RCS重建): {self.app.ae_alpha_recon.get()}\n"
+            config_text += f"  β (一致性): {self.app.ae_beta_consistency.get()}\n"
+            config_text += f"  γ (参数→RCS): {self.app.ae_gamma_param_recon.get()}\n"
+            config_text += f"  总损失 = {self.app.ae_alpha_recon.get()}×L_recon + {self.app.ae_beta_consistency.get()}×L_consist + {self.app.ae_gamma_param_recon.get()}×L_param\n"
 
             self.loss_config_text.delete(1.0, tk.END)
             self.loss_config_text.insert(1.0, config_text)

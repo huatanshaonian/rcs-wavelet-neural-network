@@ -1,0 +1,9 @@
+修复：损失函数配置和波形转换问题
+
+解决 `initialize_loss_normalization` 方法中的 `AttributeError: 'numpy.ndarray' object has no attribute 'detach'`。
+修改 `correct_wavelet_transform.py` 中的 `forward_transform` 方法，使其能够处理 `numpy.ndarray` 和 `torch.Tensor` 输入。
+修改 `gui_autoencoder_extension.py`，确保在将 `wavelet_coeffs` 传递给 `data_adapter.adapt_rcs_data` 之前将其转换为 NumPy 数组。
+
+修复 `LossConfigDialog` 导入错误。
+删除 `loss_config_tab.py` 中错误的 `LossConfigDialog` 类定义。
+修改 `training_manager.py` 中的 `_open_loss_config_for_ae` 方法，使其在点击时直接切换到主界面已有的“损失函数配置”标签页。

@@ -376,10 +376,8 @@ class AutoEncoderExtension:
 
         # 使用自定义损失函数选项
         ttk.Checkbutton(loss_frame, text="使用自定义损失函数", variable=self.main_gui.ae_use_custom_loss).pack(anchor=tk.W)
-        # 打开损失函数配置对话框
-        ttk.Button(loss_frame, text="配置损失函数", command=self.main_gui._open_loss_config_for_ae).pack(fill=tk.X, pady=(5, 0))
-        # 联合训练配置按钮
-        ttk.Button(loss_frame, text="联合训练配置 (权重+损失)", command=self._open_joint_loss_config).pack(fill=tk.X, pady=(5, 0))
+        # 打开损失函数配置对话框（包含联合训练权重配置）
+        ttk.Button(loss_frame, text="配置损失函数 (包含联合训练权重)", command=self.main_gui._open_loss_config_for_ae).pack(fill=tk.X, pady=(5, 0))
 
         # 8. 训练控制组
         training_control_group = ttk.LabelFrame(right_column, text="⚙️ 训练控制")
@@ -1595,123 +1593,6 @@ class AutoEncoderExtension:
 
         except Exception as e:
             messagebox.showerror("错误", f"显示小波分析结果失败: {e}")
-
-    def _open_joint_loss_config(self):
-        """打开联合训练损失函数配置对话框"""
-        dialog = tk.Toplevel(self.main_gui.root)
-        dialog.title("联合训练配置")
-        dialog.geometry("550x580")
-        dialog.transient(self.main_gui.root)
-        dialog.grab_set()
-
-        # 主框架
-        main_frame = ttk.Frame(dialog, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # 说明文字
-        info_text = ttk.Label(main_frame, text="联合训练使用三个独立的损失函数：", font=("", 10, "bold"))
-        info_text.pack(anchor=tk.W, pady=(0, 10))
-
-        desc_text = tk.Text(main_frame, height=6, width=60, wrap=tk.WORD, background="#f0f0f0")
-        desc_text.pack(fill=tk.X, pady=(0, 10))
-        desc_text.insert("1.0",
-            "1. L_recon_rcs (权重α): RCS重建损失\n"
-            "   - RCS → Encoder → Decoder → RCS，衡量AE压缩重建能力\n\n"
-            "2. L_consistency (权重β): 隐空间一致性损失\n"
-            "   - 强制Encoder和Mapper学到相同的隐空间（通常MSE）\n\n"
-            "3. L_param_recon (权重γ): 参数重建损失 (最重要！)\n"
-            "   - Params → Mapper → Decoder → RCS，直接优化params→RCS"
-        )
-        desc_text.config(state=tk.DISABLED)
-
-        # === 权重配置区 ===
-        weight_group = ttk.LabelFrame(main_frame, text="⚖️ 损失权重配置", padding="10")
-        weight_group.pack(fill=tk.X, pady=(0, 10))
-
-        weight_frame = ttk.Frame(weight_group)
-        weight_frame.pack(fill=tk.X)
-
-        # α权重
-        ttk.Label(weight_frame, text="α (RCS重建):").grid(row=0, column=0, sticky="w", pady=5)
-        ttk.Entry(weight_frame, textvariable=self.main_gui.ae_alpha_recon, width=10).grid(row=0, column=1, sticky="w", padx=5)
-        ttk.Label(weight_frame, text="默认0.3", foreground="gray", font=("", 9)).grid(row=0, column=2, sticky="w")
-
-        # β权重
-        ttk.Label(weight_frame, text="β (一致性):").grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Entry(weight_frame, textvariable=self.main_gui.ae_beta_consistency, width=10).grid(row=1, column=1, sticky="w", padx=5)
-        ttk.Label(weight_frame, text="默认0.5", foreground="gray", font=("", 9)).grid(row=1, column=2, sticky="w")
-
-        # γ权重
-        ttk.Label(weight_frame, text="γ (参数→RCS):").grid(row=2, column=0, sticky="w", pady=5)
-        ttk.Entry(weight_frame, textvariable=self.main_gui.ae_gamma_param_recon, width=10).grid(row=2, column=1, sticky="w", padx=5)
-        ttk.Label(weight_frame, text="默认1.0 (最重要)", foreground="green", font=("", 9, "bold")).grid(row=2, column=2, sticky="w")
-
-        # 权重说明
-        weight_hint = ttk.Label(weight_group,
-                               text="💡 总损失 = α×L_recon_rcs + β×L_consistency + γ×L_param_recon",
-                               foreground="blue", font=("", 9))
-        weight_hint.pack(anchor=tk.W, pady=(5, 0))
-
-        # === 损失函数类型配置 ===
-        loss_type_group = ttk.LabelFrame(main_frame, text="🔧 损失函数类型 (如何应用自定义loss)", padding="10")
-        loss_type_group.pack(fill=tk.X, pady=(0, 10))
-
-        # 当前状态显示
-        current_state_frame = ttk.Frame(loss_type_group)
-        current_state_frame.pack(fill=tk.X, pady=(0, 10))
-
-        custom_loss_enabled = self.main_gui.ae_use_custom_loss.get()
-        if custom_loss_enabled:
-            status_text = "✅ 当前已启用自定义损失函数"
-            status_color = "green"
-        else:
-            status_text = "⭕ 当前使用默认MSE损失"
-            status_color = "gray"
-
-        ttk.Label(current_state_frame, text=status_text,
-                 foreground=status_color, font=("", 9, "bold")).pack(anchor=tk.W)
-
-        # 详细说明
-        detail_frame = ttk.Frame(loss_type_group)
-        detail_frame.pack(fill=tk.X)
-
-        ttk.Label(detail_frame, text="📌 自定义损失应用规则：", font=("", 9, "bold")).pack(anchor=tk.W, pady=(5, 3))
-
-        if custom_loss_enabled:
-            ttk.Label(detail_frame, text="   • L_recon_rcs (α权重) → 使用自定义损失 ✓",
-                     foreground="green", font=("", 9)).pack(anchor=tk.W)
-            ttk.Label(detail_frame, text="   • L_consistency (β权重) → 保持MSE (隐空间对齐)",
-                     foreground="blue", font=("", 9)).pack(anchor=tk.W)
-            ttk.Label(detail_frame, text="   • L_param_recon (γ权重) → 使用自定义损失 ✓",
-                     foreground="green", font=("", 9)).pack(anchor=tk.W)
-        else:
-            ttk.Label(detail_frame, text="   • L_recon_rcs (α权重) → MSE",
-                     foreground="gray", font=("", 9)).pack(anchor=tk.W)
-            ttk.Label(detail_frame, text="   • L_consistency (β权重) → MSE",
-                     foreground="gray", font=("", 9)).pack(anchor=tk.W)
-            ttk.Label(detail_frame, text="   • L_param_recon (γ权重) → MSE",
-                     foreground="gray", font=("", 9)).pack(anchor=tk.W)
-
-        # 配置按钮
-        config_button_frame = ttk.Frame(loss_type_group)
-        config_button_frame.pack(fill=tk.X, pady=(10, 0))
-
-        ttk.Button(config_button_frame, text="🔧 配置自定义损失函数",
-                  command=self.main_gui._open_loss_config_for_ae).pack(fill=tk.X)
-
-        # 提示
-        hint_text = ttk.Label(main_frame,
-                             text="💡 提示：默认配置（α=0.3, β=0.5, γ=1.0, 全部MSE）适合大多数场景。\n"
-                                  "   γ权重最高确保优先优化 params → RCS 的能力。",
-                             foreground="blue", font=("", 9))
-        hint_text.pack(pady=(0, 10))
-
-        # 底部按钮
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
-
-        ttk.Button(button_frame, text="确定", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT)
 
 
 def integrate_extension_to_gui(main_gui):

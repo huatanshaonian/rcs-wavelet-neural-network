@@ -11,7 +11,8 @@
       "Bash(grep:*)",
       "Bash(wc:*)",
       "Bash(git reset:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
