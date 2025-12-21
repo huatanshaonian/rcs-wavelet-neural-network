@@ -164,8 +164,14 @@ class RCSWaveletGUI:
         """
         self.root = root
         self.root.title("RCS小波神经网络预测系统 v1.0")
-        self.root.geometry("1400x1050")
+        self.root.geometry("1600x1200")  # 增加默认尺寸
         self.root.minsize(1200, 900)
+        
+        # 尝试最大化窗口
+        # try:
+        #     self.root.state('zoomed')
+        # except:
+        #     pass
 
         # 设置字体 (使用系统默认字体避免字体问题)
         try:
@@ -248,6 +254,14 @@ class RCSWaveletGUI:
         self.ae_wavelet_type = tk.StringVar(value="db4")
         self.ae_architecture_type = tk.StringVar(value="CNN")  # 架构类型: CNN或MLP
         self.ae_activation = tk.StringVar(value="relu")  # 激活函数类型
+
+        # Additive Dual-Branch专用配置
+        self.ae_activation_encoder = tk.StringVar(value="relu")  # Encoder激活函数
+        self.ae_activation_high = tk.StringVar(value="sin")  # 高频Decoder激活函数
+        self.ae_activation_smooth = tk.StringVar(value="tanh")  # 低频Decoder激活函数
+        self.ae_learnable_weights = tk.BooleanVar(value=False)  # 是否使用可学习权重
+        self.ae_alpha_high = tk.StringVar(value="0.5")  # 高频权重（固定权重模式）
+        self.ae_alpha_smooth = tk.StringVar(value="0.5")  # 低频权重（固定权重模式）
 
         # 参数映射器配置
         self.ae_mapper_activation = tk.StringVar(value="auto")  # auto表示与AutoEncoder相同
@@ -1330,6 +1344,18 @@ class RCSWaveletGUI:
                 self.ae_architecture_type.set(architecture_display)
                 self.ae_activation.set(activation)
                 self.ae_log(f"  架构类型: {architecture_display}, 激活函数: {activation}")
+
+                # 恢复Mapper配置选项到GUI界面
+                if mapper_config:
+                    mapper_act = mapper_config.get('activation', 'relu')
+                    mapper_adaptive = mapper_config.get('use_adaptive', False)
+
+                    if hasattr(self, 'ae_mapper_activation'):
+                        self.ae_mapper_activation.set(mapper_act)
+                    if hasattr(self, 'ae_mapper_use_adaptive'):
+                        self.ae_mapper_use_adaptive.set(mapper_adaptive)
+
+                    self.ae_log(f"  Mapper GUI选项已更新: 激活={mapper_act}, 自适应={mapper_adaptive}")
 
                 # 4. 模式选项（ae_mode由ae_extension初始化到main_gui）
                 if hasattr(self, 'ae_mode'):

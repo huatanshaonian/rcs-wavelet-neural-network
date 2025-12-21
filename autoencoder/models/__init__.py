@@ -28,6 +28,10 @@ from .additive_dual_branch_autoencoder import (
     AdditiveDualBranchWaveletAutoEncoder,
     AdditiveDualBranchDirectAutoEncoder
 )
+from .additive_dual_branch_mlp import (
+    AdditiveDualBranchWaveletMLPAutoEncoder,
+    AdditiveDualBranchDirectMLPAutoEncoder
+)
 
 __all__ = [
     'WaveletAutoEncoder',
@@ -54,5 +58,7 @@ __all__ = [
     'DualBranchDifferentiableWaveletMLPAutoEncoderV2',
     # 叠加型双分支模式 (输出叠加：高频+低频)
     'AdditiveDualBranchWaveletAutoEncoder',
-    'AdditiveDualBranchDirectAutoEncoder'
+    'AdditiveDualBranchDirectAutoEncoder',
+    'AdditiveDualBranchWaveletMLPAutoEncoder',
+    'AdditiveDualBranchDirectMLPAutoEncoder'
 ]

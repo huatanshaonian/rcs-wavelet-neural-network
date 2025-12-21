@@ -157,12 +157,12 @@ class AutoEncoderExtension:
         # 第二行：架构类型
         # CNN: 标准4层卷积，平衡速度与性能 | Enhanced_CNN: 多尺度+注意力，大感受野 | Deep_CNN: 双卷积块，最强表达 | MLP: 全连接，参数敏感性分析
         # Dual_Branch_CNN: 双分支CNN V2，正确对称架构（推荐） | Dual_Branch_MLP: 双分支MLP V2，正确对称架构（推荐）
-        # Dual_Branch_CNN_V1: 旧版，仅向后兼容 | Dual_Branch_MLP_V1: 旧版，仅向后兼容
+        # Additive_Dual_Branch: 叠加式双分支，高频/低频分离
         ttk.Label(model_frame, text="架构类型:").grid(row=1, column=0, sticky="w", pady=(5, 0))
         architecture_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_architecture_type,
                                          values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP",
                                                 "Dual_Branch_CNN", "Dual_Branch_MLP",
-                                                "Dual_Branch_CNN_V1", "Dual_Branch_MLP_V1"], state="readonly", width=15)
+                                                "Additive_Dual_Branch", "Additive_Dual_Branch_MLP"], state="readonly", width=25)
         architecture_combo.grid(row=1, column=1, columnspan=3, sticky="ew", pady=(5, 0))
 
         # 第三行：小波类型（仅Wavelet模式可用）
@@ -189,6 +189,67 @@ class AutoEncoderExtension:
         mapper_adaptive_cb = ttk.Checkbutton(model_frame, text="映射器使用自适应层",
                                             variable=self.main_gui.ae_mapper_use_adaptive)
         mapper_adaptive_cb.grid(row=5, column=0, columnspan=4, sticky="w", pady=(5, 0))
+
+        # === Additive Dual-Branch专用控件 ===
+        self.additive_frame = ttk.LabelFrame(model_frame, text="叠加双分支配置")
+        self.additive_frame.grid(row=6, column=0, columnspan=4, sticky="ew", pady=(5, 0))
+
+        # 为了配合 _hide_additive_controls，必须创建所有引用
+        
+        # 行1：编码器 & 高频解码器
+        self.additive_encoder_label = ttk.Label(self.additive_frame, text="编码器:")
+        self.additive_encoder_label.grid(row=0, column=0, sticky="w")
+        
+        self.additive_encoder_combo = ttk.Combobox(self.additive_frame, textvariable=self.main_gui.ae_activation_encoder,
+                                                   values=["relu", "sin", "gelu", "swish", "tanh", "sigmoid", "mish", "elu", "leaky_relu", "prelu"], 
+                                                   state="readonly", width=7)
+        self.additive_encoder_combo.grid(row=0, column=1, sticky="ew", padx=2)
+        
+        self.additive_high_label = ttk.Label(self.additive_frame, text="高频解码:")
+        self.additive_high_label.grid(row=0, column=2, sticky="w", padx=(5,0))
+        
+        self.additive_high_combo = ttk.Combobox(self.additive_frame, textvariable=self.main_gui.ae_activation_high,
+                                                values=["relu", "sin", "gelu", "swish", "tanh", "sigmoid", "mish", "elu", "leaky_relu", "prelu"], 
+                                                state="readonly", width=7)
+        self.additive_high_combo.grid(row=0, column=3, sticky="ew", padx=2)
+
+        # 行2：低频解码器 & 可学习权重
+        self.additive_smooth_label = ttk.Label(self.additive_frame, text="低频解码:")
+        self.additive_smooth_label.grid(row=1, column=0, sticky="w")
+        
+        self.additive_smooth_combo = ttk.Combobox(self.additive_frame, textvariable=self.main_gui.ae_activation_smooth,
+                                                  values=["relu", "sin", "gelu", "swish", "tanh", "sigmoid", "mish", "elu", "leaky_relu", "prelu"], 
+                                                  state="readonly", width=7)
+        self.additive_smooth_combo.grid(row=1, column=1, sticky="ew", padx=2)
+
+        self.additive_learnable_cb = ttk.Checkbutton(self.additive_frame, text="可学习权重", 
+                                                    variable=self.main_gui.ae_learnable_weights,
+                                                    command=self._on_learnable_weights_change)
+        self.additive_learnable_cb.grid(row=1, column=2, columnspan=2, sticky="w", padx=(5, 0))
+
+        # 行3：固定权重配置
+        # dummy label for compatibility
+        self.additive_label = ttk.Label(self.additive_frame, text="") 
+        
+        self.additive_alpha_label = ttk.Label(self.additive_frame, text="固定权重:")
+        self.additive_alpha_label.grid(row=2, column=0, sticky="w", pady=(2, 0))
+        
+        alpha_frame = ttk.Frame(self.additive_frame)
+        alpha_frame.grid(row=2, column=1, columnspan=3, sticky="ew", pady=(2, 0))
+        
+        ttk.Label(alpha_frame, text="α(高频):").pack(side=tk.LEFT)
+        self.additive_alpha_high_entry = ttk.Entry(alpha_frame, textvariable=self.main_gui.ae_alpha_high, width=5)
+        self.additive_alpha_high_entry.pack(side=tk.LEFT, padx=(0, 5))
+        
+        ttk.Label(alpha_frame, text="β(低频):").pack(side=tk.LEFT)
+        self.additive_alpha_smooth_entry = ttk.Entry(alpha_frame, textvariable=self.main_gui.ae_alpha_smooth, width=5)
+        self.additive_alpha_smooth_entry.pack(side=tk.LEFT)
+
+        # 默认隐藏
+        self._hide_additive_controls()
+
+        # 绑定架构类型变化事件
+        self.main_gui.ae_architecture_type.trace('w', self._on_architecture_change)
 
         # 绑定模式变化事件（根据模式启用/禁用小波设置）
         self.main_gui.ae_mode.trace('w', self._on_mode_change)
@@ -487,6 +548,34 @@ class AutoEncoderExtension:
         ttk.Button(gradient_frame, text="📋 梯度监控报告",
                   command=lambda: self.main_gui.visualization_manager._show_gradient_report()).pack(fill=tk.X)
 
+
+    def _hide_additive_controls(self):
+        """隐藏Additive Dual-Branch专用控件"""
+        if hasattr(self, 'additive_frame'):
+            self.additive_frame.grid_remove()
+
+    def _show_additive_controls(self):
+        """显示Additive Dual-Branch专用控件"""
+        if hasattr(self, 'additive_frame'):
+            self.additive_frame.grid()
+        self._on_learnable_weights_change()
+
+    def _on_architecture_change(self, *args):
+        """架构类型变化回调"""
+        architecture = self.main_gui.ae_architecture_type.get()
+        if architecture.startswith("Additive_Dual_Branch"):
+            self._show_additive_controls()
+        else:
+            self._hide_additive_controls()
+
+    def _on_learnable_weights_change(self):
+        """可学习权重变化回调"""
+        learnable = self.main_gui.ae_learnable_weights.get()
+        state = "disabled" if learnable else "normal"
+        if hasattr(self, 'additive_alpha_high_entry'):
+            self.additive_alpha_high_entry.configure(state=state)
+        if hasattr(self, 'additive_alpha_smooth_entry'):
+            self.additive_alpha_smooth_entry.configure(state=state)
 
     def _create_right_panel(self, parent):
         """创建右侧状态和结果面板"""
@@ -809,6 +898,14 @@ class AutoEncoderExtension:
             # 向后兼容：更新 ae_normalize 变量
             self.main_gui.ae_normalize.set(normalization_method != 'none')
 
+            # 读取Additive Dual-Branch专用参数
+            activation_encoder = self.main_gui.ae_activation_encoder.get()
+            activation_high = self.main_gui.ae_activation_high.get()
+            activation_smooth = self.main_gui.ae_activation_smooth.get()
+            learnable_weights = self.main_gui.ae_learnable_weights.get()
+            alpha_high = float(self.main_gui.ae_alpha_high.get())
+            alpha_smooth = float(self.main_gui.ae_alpha_smooth.get())
+
             # 创建系统（使用frequency_config的扩展参数）
             self.main_gui.ae_system = create_autoencoder_system(
                 config_name=freq_config,
@@ -823,7 +920,14 @@ class AutoEncoderExtension:
                 db_transform=db_transform,
                 normalization_method=normalization_method,
                 mapper_activation=mapper_activation,
-                mapper_use_adaptive=mapper_use_adaptive
+                mapper_use_adaptive=mapper_use_adaptive,
+                # Additive Dual-Branch专用参数
+                activation_encoder=activation_encoder,
+                activation_high=activation_high,
+                activation_smooth=activation_smooth,
+                learnable_weights=learnable_weights,
+                alpha_high=alpha_high,
+                alpha_smooth=alpha_smooth
             )
 
             # 添加数据

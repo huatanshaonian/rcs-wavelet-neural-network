@@ -191,6 +191,31 @@ def save_model_config_json(
     # 构建可读的配置信息（不包含state_dict等二进制数据）
     config = model_state.get('config', {})
 
+    # 提取并简化训练历史（仅保留关键指标，避免文件过大）
+    full_history = model_state.get('training_history', {})
+    history_summary = {}
+
+    if full_history:
+        # 保留训练配置
+        if 'training_config' in full_history:
+            history_summary['training_config'] = full_history['training_config']
+
+        # 简化各阶段历史（只保留最佳值和最终值）
+        if 'stage_histories' in full_history:
+            history_summary['stage_histories'] = {}
+            for stage_name, stage_data in full_history['stage_histories'].items():
+                summary = {
+                    'best_val_loss': stage_data.get('best_val_loss', 'N/A'),
+                    'best_epoch': stage_data.get('best_epoch', 'N/A')
+                }
+                # 提取最终loss
+                if 'loss_history' in stage_data and stage_data['loss_history']:
+                    summary['final_loss'] = stage_data['loss_history'][-1]
+                if 'val_loss_history' in stage_data and stage_data['val_loss_history']:
+                    summary['final_val_loss'] = stage_data['val_loss_history'][-1]
+                
+                history_summary['stage_histories'][stage_name] = summary
+
     json_data = {
         'model_info': {
             'mode': config.get('mode', 'N/A'),
@@ -211,7 +236,7 @@ def save_model_config_json(
         },
         'training_info': {
             'training_mode': model_state.get('training_mode', 'N/A'),
-            'training_history': model_state.get('training_history', {}),
+            'training_history_summary': history_summary,
             'loss_normalization_factor': model_state.get('loss_normalization_factor', 'N/A')
         },
         'save_info': {

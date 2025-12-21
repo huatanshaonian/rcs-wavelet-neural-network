@@ -45,6 +45,14 @@ from models.dual_branch_differentiable_autoencoder_v2 import (
     DualBranchDifferentiableWaveletAutoEncoderV2,
     DualBranchDifferentiableWaveletMLPAutoEncoderV2
 )
+from models.additive_dual_branch_autoencoder import (
+    AdditiveDualBranchWaveletAutoEncoder,
+    AdditiveDualBranchDirectAutoEncoder
+)
+from models.additive_dual_branch_mlp import (
+    AdditiveDualBranchWaveletMLPAutoEncoder,
+    AdditiveDualBranchDirectMLPAutoEncoder
+)
 from utils.correct_wavelet_transform import CorrectWaveletTransform as WaveletTransform
 from utils.data_adapters import RCS_DataAdapter
 
@@ -239,7 +247,14 @@ def create_autoencoder_system(config_name: str = '2freq',
                             normalization_method: str = 'zscore',
                             mapper_activation: str = None,
                             mapper_use_adaptive: bool = False,
-                            mapper_hidden_dims: list = None) -> Dict[str, Any]:
+                            mapper_hidden_dims: list = None,
+                            # 叠加型双分支专用参数
+                            activation_encoder: str = None,
+                            activation_high: str = None,
+                            activation_smooth: str = None,
+                            learnable_weights: bool = False,
+                            alpha_high: float = 0.5,
+                            alpha_smooth: float = 0.5) -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -258,6 +273,12 @@ def create_autoencoder_system(config_name: str = '2freq',
         mapper_activation: 参数映射器激活函数（默认None，使用AutoEncoder相同的activation）
         mapper_use_adaptive: 参数映射器是否使用自适应隐藏层（默认False）
         mapper_hidden_dims: 参数映射器固定隐藏层维度（仅当mapper_use_adaptive=False时生效）
+        activation_encoder: 叠加型双分支Encoder激活函数（仅additive_dual_branch架构，默认None使用activation）
+        activation_high: 叠加型双分支高频Decoder激活函数（仅additive_dual_branch架构，默认None使用'sin'）
+        activation_smooth: 叠加型双分支低频Decoder激活函数（仅additive_dual_branch架构，默认None使用'tanh'）
+        learnable_weights: 叠加型双分支是否学习权重（仅additive_dual_branch架构，默认False）
+        alpha_high: 叠加型双分支高频权重（仅additive_dual_branch架构，默认0.5）
+        alpha_smooth: 叠加型双分支低频权重（仅additive_dual_branch架构，默认0.5）
 
     Returns:
         包含所有组件的字典
@@ -340,6 +361,50 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation=activation
             )
             print(f"使用 DualBranchWaveletMLPAutoEncoder (双分支MLP, LL和高频分离处理, 激活函数: {activation})")
+        elif architecture.lower() in ('additive_dual_branch_cnn', 'additive_dual_branch'):
+            # 小波 + 叠加型双分支CNN
+            _activation_encoder = activation_encoder if activation_encoder else activation
+            _activation_high = activation_high if activation_high else 'sin'
+            _activation_smooth = activation_smooth if activation_smooth else 'tanh'
+
+            autoencoder = AdditiveDualBranchWaveletAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                input_size=wavelet_size,
+                activation_encoder=_activation_encoder,
+                activation_high=_activation_high,
+                activation_smooth=_activation_smooth,
+                learnable_weights=learnable_weights,
+                alpha_high=alpha_high,
+                alpha_smooth=alpha_smooth
+            )
+            weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
+            print(f"使用 AdditiveDualBranchWaveletAutoEncoder (叠加型双分支CNN, {weight_mode})")
+            print(f"  Encoder激活: {_activation_encoder}, 高频Decoder: {_activation_high}, 低频Decoder: {_activation_smooth}")
+        elif architecture.lower() == 'additive_dual_branch_mlp':
+            # 小波 + 叠加型双分支MLP
+            _activation_encoder = activation_encoder if activation_encoder else activation
+            _activation_high = activation_high if activation_high else 'sin'
+            _activation_smooth = activation_smooth if activation_smooth else 'relu'
+
+            autoencoder = AdditiveDualBranchWaveletMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                wavelet_bands=freq_config.config['wavelet_bands'],
+                dropout_rate=dropout_rate,
+                input_size=wavelet_size,
+                activation_encoder=_activation_encoder,
+                activation_high=_activation_high,
+                activation_smooth=_activation_smooth,
+                learnable_weights=learnable_weights,
+                alpha_high=alpha_high,
+                alpha_smooth=alpha_smooth
+            )
+            weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
+            print(f"使用 AdditiveDualBranchWaveletMLPAutoEncoder (叠加型双分支MLP, {weight_mode})")
+            print(f"  Encoder激活: {_activation_encoder}, 高频Decoder: {_activation_high}, 低频Decoder: {_activation_smooth}")
         else:
             # 小波 + CNN (默认)
             autoencoder = WaveletAutoEncoder(
@@ -390,6 +455,48 @@ def create_autoencoder_system(config_name: str = '2freq',
             )
             attention_status = "输入层+中间层双注意力" if use_channel_attention else "仅中间层注意力"
             print(f"使用 DeepDirectAutoEncoder (深度CNN, {attention_status}, 激活函数: {activation})")
+        elif architecture.lower() in ('additive_dual_branch_cnn', 'additive_dual_branch'):
+            # 直接 + 叠加型双分支
+            _activation_encoder = activation_encoder if activation_encoder else activation
+            _activation_high = activation_high if activation_high else 'sin'
+            _activation_smooth = activation_smooth if activation_smooth else 'tanh'
+
+            autoencoder = AdditiveDualBranchDirectAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                input_size=91,
+                activation_encoder=_activation_encoder,
+                activation_high=_activation_high,
+                activation_smooth=_activation_smooth,
+                learnable_weights=learnable_weights,
+                alpha_high=alpha_high,
+                alpha_smooth=alpha_smooth
+            )
+            weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
+            print(f"使用 AdditiveDualBranchDirectAutoEncoder (叠加型双分支CNN, {weight_mode})")
+            print(f"  Encoder激活: {_activation_encoder}, 高频Decoder: {_activation_high}, 低频Decoder: {_activation_smooth}")
+        elif architecture.lower() == 'additive_dual_branch_mlp':
+            # 直接 + 叠加型双分支MLP
+            _activation_encoder = activation_encoder if activation_encoder else activation
+            _activation_high = activation_high if activation_high else 'sin'
+            _activation_smooth = activation_smooth if activation_smooth else 'relu'
+
+            autoencoder = AdditiveDualBranchDirectMLPAutoEncoder(
+                latent_dim=latent_dim,
+                num_frequencies=freq_config.config['num_frequencies'],
+                dropout_rate=dropout_rate,
+                input_size=91,
+                activation_encoder=_activation_encoder,
+                activation_high=_activation_high,
+                activation_smooth=_activation_smooth,
+                learnable_weights=learnable_weights,
+                alpha_high=alpha_high,
+                alpha_smooth=alpha_smooth
+            )
+            weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
+            print(f"使用 AdditiveDualBranchDirectMLPAutoEncoder (叠加型双分支MLP, {weight_mode})")
+            print(f"  Encoder激活: {_activation_encoder}, 高频Decoder: {_activation_high}, 低频Decoder: {_activation_smooth}")
         else:
             # 直接 + CNN (默认)
             autoencoder = DirectAutoEncoder(

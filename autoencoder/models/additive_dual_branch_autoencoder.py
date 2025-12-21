@@ -24,7 +24,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple
+from typing import Tuple, Dict
 import numpy as np
 
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
@@ -263,9 +263,9 @@ class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
         # ===== 输出叠加 =====
         # 确保权重归一化（可选，防止输出爆炸）
         if self.learnable_weights:
-            # 可学习权重：Sigmoid归一化
-            alpha_high_norm = torch.sigmoid(self.alpha_high)
-            alpha_smooth_norm = 1.0 - alpha_high_norm
+            # 可学习权重：直接使用，不强制归一化，允许模型自适应学习幅度
+            alpha_high_norm = self.alpha_high
+            alpha_smooth_norm = self.alpha_smooth
         else:
             # 固定权重：直接使用
             alpha_high_norm = self.alpha_high
@@ -296,6 +296,38 @@ class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
         latent = self.encode(x)
         recon = self.decode(latent)
         return recon, latent
+
+    def get_parameter_count(self) -> Dict[str, int]:
+        """获取参数统计"""
+        # Encoder参数
+        encoder_params = sum(p.numel() for p in self.encoder.parameters()) + \
+                        sum(p.numel() for p in self.encoder_fc.parameters())
+
+        # High-frequency Decoder参数
+        decoder_high_params = sum(p.numel() for p in self.decoder_high_fc.parameters()) + \
+                             sum(p.numel() for p in self.decoder_high_conv.parameters()) + \
+                             sum(p.numel() for p in self.final_conv_high.parameters())
+
+        # Low-frequency Decoder参数
+        decoder_smooth_params = sum(p.numel() for p in self.decoder_smooth_fc.parameters()) + \
+                               sum(p.numel() for p in self.decoder_smooth_conv.parameters()) + \
+                               sum(p.numel() for p in self.final_conv_smooth.parameters())
+
+        # 总decoder参数（两个分支之和）
+        decoder_params = decoder_high_params + decoder_smooth_params
+
+        # 总参数和可训练参数
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+        return {
+            'encoder': encoder_params,
+            'decoder': decoder_params,
+            'decoder_high': decoder_high_params,
+            'decoder_smooth': decoder_smooth_params,
+            'total': total_params,
+            'trainable': trainable_params
+        }
 
     def get_model_info(self) -> dict:
         """返回模型信息"""
@@ -524,8 +556,9 @@ class AdditiveDualBranchDirectAutoEncoder(nn.Module):
 
         # 叠加
         if self.learnable_weights:
-            alpha_high_norm = torch.sigmoid(self.alpha_high)
-            alpha_smooth_norm = 1.0 - alpha_high_norm
+            # 可学习权重：直接使用，不强制归一化
+            alpha_high_norm = self.alpha_high
+            alpha_smooth_norm = self.alpha_smooth
         else:
             alpha_high_norm = self.alpha_high
             alpha_smooth_norm = self.alpha_smooth
@@ -544,6 +577,38 @@ class AdditiveDualBranchDirectAutoEncoder(nn.Module):
         latent = self.encode(x)
         recon = self.decode(latent)
         return recon, latent
+
+    def get_parameter_count(self) -> Dict[str, int]:
+        """获取参数统计"""
+        # Encoder参数
+        encoder_params = sum(p.numel() for p in self.encoder.parameters()) + \
+                        sum(p.numel() for p in self.encoder_fc.parameters())
+
+        # High-frequency Decoder参数
+        decoder_high_params = sum(p.numel() for p in self.decoder_high_fc.parameters()) + \
+                             sum(p.numel() for p in self.decoder_high_conv.parameters()) + \
+                             sum(p.numel() for p in self.final_conv_high.parameters())
+
+        # Low-frequency Decoder参数
+        decoder_smooth_params = sum(p.numel() for p in self.decoder_smooth_fc.parameters()) + \
+                               sum(p.numel() for p in self.decoder_smooth_conv.parameters()) + \
+                               sum(p.numel() for p in self.final_conv_smooth.parameters())
+
+        # 总decoder参数（两个分支之和）
+        decoder_params = decoder_high_params + decoder_smooth_params
+
+        # 总参数和可训练参数
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+        return {
+            'encoder': encoder_params,
+            'decoder': decoder_params,
+            'decoder_high': decoder_high_params,
+            'decoder_smooth': decoder_smooth_params,
+            'total': total_params,
+            'trainable': trainable_params
+        }
 
     def get_model_info(self) -> dict:
         """返回模型信息"""
