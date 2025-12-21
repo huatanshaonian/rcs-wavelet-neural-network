@@ -259,6 +259,7 @@ class RCSWaveletGUI:
         self.ae_epochs_stage1 = tk.StringVar(value="100")  # AE预训练轮数
         self.ae_epochs_stage2 = tk.StringVar(value="50")   # 参数映射训练轮数
         self.ae_epochs_stage3 = tk.StringVar(value="20")   # 端到端微调轮数
+        self.ae_epochs_joint = tk.StringVar(value="200")   # 联合训练轮数
 
         # 优化器配置
         self.ae_optimizer_type = tk.StringVar(value="adam")  # adam/adamw/sgd - 优化算法选择
@@ -282,6 +283,12 @@ class RCSWaveletGUI:
         self.ae_patience_stage2 = tk.StringVar(value="10")  # 阶段2早停耐心值
         self.ae_patience_stage3 = tk.StringVar(value="5")   # 阶段3早停耐心值
         self.ae_patience_e2e = tk.StringVar(value="15")     # 端到端早停耐心值
+        self.ae_patience_joint = tk.StringVar(value="50")   # 联合训练早停耐心值
+
+        # 联合训练损失权重配置
+        self.ae_alpha_recon = tk.StringVar(value="0.3")       # RCS重建损失权重
+        self.ae_beta_consistency = tk.StringVar(value="0.5")  # 一致性损失权重
+        self.ae_gamma_param_recon = tk.StringVar(value="1.0") # 参数重建损失权重（最重要）
 
         # 数据预处理配置
         # 预处理选项已移至数据管理页面，此处不再需要相关变量

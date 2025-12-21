@@ -191,6 +191,10 @@ class TrainingManager:
                 self.gui.ae_training_history['training_mode'] = 'stage2_only'
                 self.gui.ae_system['training_mode'] = 'stage2_only'
                 self.gui.ae_log("✅ 参数映射器训练完成！")
+            elif training_mode == "联合训练":
+                # 联合训练模式：同时训练AE和Mapper，强制隐空间对齐
+                training_config['training_mode'] = 'joint_training'
+                self.ae_trainer.run_joint_training(rcs_data, param_data, training_config)
             else:
                 self.ae_trainer.run_end_to_end_training(rcs_data, param_data, training_config)
 
@@ -375,14 +379,16 @@ class TrainingManager:
             config['epochs'] = {
                 'stage1': int(self.gui.ae_epochs_stage1.get()),
                 'stage2': int(self.gui.ae_epochs_stage2.get()),
-                'stage3': int(self.gui.ae_epochs_stage3.get())
+                'stage3': int(self.gui.ae_epochs_stage3.get()),
+                'joint': int(getattr(self.gui, 'ae_epochs_joint', tk.IntVar(value=200)).get())
             }
 
             config['patience'] = {
                 'stage1': int(self.gui.ae_patience_stage1.get()),
                 'stage2': int(self.gui.ae_patience_stage2.get()),
                 'stage3': int(self.gui.ae_patience_stage3.get()),
-                'e2e': int(self.gui.ae_patience_e2e.get())
+                'e2e': int(self.gui.ae_patience_e2e.get()),
+                'joint': int(getattr(self.gui, 'ae_patience_joint', tk.IntVar(value=50)).get())
             }
 
             config['num_lr_stages'] = int(self.gui.ae_num_lr_stages.get())
@@ -393,8 +399,14 @@ class TrainingManager:
                 '三阶段训练': 'three_stage',
                 '端到端训练': 'end_to_end',
                 '仅Stage 1': 'stage1_only',
-                '仅Stage 2': 'stage2_only'
+                '仅Stage 2': 'stage2_only',
+                '联合训练': 'joint_training'
             }.get(self.gui.ae_training_mode.get(), 'three_stage')
+
+            # 联合训练损失权重配置
+            config['alpha_recon'] = float(getattr(self.gui, 'ae_alpha_recon', tk.DoubleVar(value=0.3)).get())
+            config['beta_consistency'] = float(getattr(self.gui, 'ae_beta_consistency', tk.DoubleVar(value=0.5)).get())
+            config['gamma_param_recon'] = float(getattr(self.gui, 'ae_gamma_param_recon', tk.DoubleVar(value=1.0)).get())
 
             if hasattr(self.gui, 'ae_custom_loss_config'):
                 config['custom_loss_config'] = self.gui.ae_custom_loss_config

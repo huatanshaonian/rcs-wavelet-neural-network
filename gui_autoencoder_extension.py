@@ -273,6 +273,30 @@ class AutoEncoderExtension:
         ttk.Label(training_frame, text="阶段3(E2E):").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
         ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_stage3, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
+        # 第三行：联合训练轮数和patience
+        ttk.Label(training_frame, text="联合训练:").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_epochs_joint, width=8).grid(row=2, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(training_frame, text="Patience:").grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.main_gui.ae_patience_joint, width=8).grid(row=2, column=3, sticky="w", pady=(5, 0))
+
+        # 联合训练损失权重配置（折叠区域）
+        joint_loss_group = ttk.LabelFrame(training_group, text="📊 联合训练损失权重 (α, β, γ)")
+        joint_loss_group.pack(fill=tk.X, padx=5, pady=(5, 0))
+
+        joint_loss_frame = ttk.Frame(joint_loss_group)
+        joint_loss_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：α (RCS重建) 和 β (一致性)
+        ttk.Label(joint_loss_frame, text="α (RCS重建):").grid(row=0, column=0, sticky="w")
+        ttk.Entry(joint_loss_frame, textvariable=self.main_gui.ae_alpha_recon, width=8).grid(row=0, column=1, sticky="w")
+        ttk.Label(joint_loss_frame, text="β (一致性):").grid(row=0, column=2, sticky="w", padx=(10, 0))
+        ttk.Entry(joint_loss_frame, textvariable=self.main_gui.ae_beta_consistency, width=8).grid(row=0, column=3, sticky="w")
+
+        # 第二行：γ (参数重建，最重要)
+        ttk.Label(joint_loss_frame, text="γ (参数→RCS):").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(joint_loss_frame, textvariable=self.main_gui.ae_gamma_param_recon, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(joint_loss_frame, text="(最重要)").grid(row=1, column=2, columnspan=2, sticky="w", padx=(10, 0), pady=(5, 0))
+
         # 5. 优化器配置组
         optimizer_group = ttk.LabelFrame(left_column, text="⚙️ 优化器配置")
         optimizer_group.pack(fill=tk.X, pady=(0, 10))
@@ -377,10 +401,10 @@ class AutoEncoderExtension:
         training_control_frame = ttk.Frame(training_control_group)
         training_control_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 训练模式选择（三阶段/端到端/仅Stage 1/仅Stage 2）
+        # 训练模式选择（三阶段/端到端/仅Stage 1/仅Stage 2/联合训练）
         ttk.Label(training_control_frame, text="训练模式:").grid(row=0, column=0, sticky="w")
         mode_combo = ttk.Combobox(training_control_frame, textvariable=self.main_gui.ae_training_mode,
-                                values=["三阶段训练", "端到端训练", "仅Stage 1", "仅Stage 2"], state="readonly", width=12)
+                                values=["三阶段训练", "端到端训练", "仅Stage 1", "仅Stage 2", "联合训练"], state="readonly", width=12)
         mode_combo.grid(row=0, column=1, columnspan=3, sticky="ew")
 
         # 按钮组（紧凑排列）
