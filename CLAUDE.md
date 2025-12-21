@@ -117,16 +117,24 @@ input_channels = 12  # 3频率 × 4小波带
 
 ```
 wavelet/
-├── gui.py                          # 主GUI（6000+行，核心界面）
-├── gui_autoencoder_extension.py   # AutoEncoder GUI扩展（包含所有AE配置）
-├── gui_batch_experiment_extension.py  # 批量实验GUI扩展（新增）
-├── wavelet_gui_helper.py          # 小波分析辅助工具
+├── gui.py                          # 主GUI（待重构）
 ├── main.py                         # 命令行入口
-├── test_batch_experiment.py       # 批量实验测试启动脚本（新增）
+├── gui_managers/                   # GUI管理器模块
+│   ├── extensions/                 # GUI扩展模块
+│   │   ├── gui_autoencoder_extension.py # AutoEncoder扩展
+│   │   └── gui_batch_experiment_extension.py # 批量实验扩展
+│   ├── managers/                   # 业务逻辑管理器
+│   ├── tabs/                       # 界面标签页
+│   └── trainers/                   # 训练器封装
+├── scripts/                        # 诊断、修复与运行脚本
+├── tools/                          # 可视化与教学工具
+├── networks/                       # 网络定义与管理
+│   ├── network_registry.py         # 网络注册系统
+│   └── example_networks.py         # 示例网络
 ├── CLAUDE.md                       # 本文档
 ├── README.md                       # 完整项目文档
-├── PARAMETERS_REFERENCE.md        # 参数参考文档（新增⚠️重要）
-├── DESIGN_ANALYSIS.md             # 设计分析文档（新增 - 架构决策参考）
+├── PARAMETERS_REFERENCE.md        # 参数参考文档
+├── DESIGN_ANALYSIS.md             # 设计分析文档
 │
 ├── autoencoder/
 │   ├── models/                     # 网络定义
@@ -137,40 +145,26 @@ wavelet/
 │   │   ├── enhanced_cnn_autoencoder.py  # Enhanced系列
 │   │   ├── parameter_mapper.py    # 参数映射器
 │   │   ├── MODEL_INVENTORY.md     # 模型清单文档
-│   │   └── experimental/          # 实验性/废弃模型
-│   │       ├── README.md
-│   │       ├── correct_cnn_autoencoder.py  # 废弃
-│   │       ├── deep_cnn_autoencoder.py     # 5层深度
-│   │       ├── efficient_cnn_autoencoder.py # 轻量3层
-│   │       └── micro_latent_autoencoder.py  # 微隐空间
+│   │   └── experimental/          # 实验性模型
 │   │
 │   ├── utils/                      # 工具模块
-│   │   ├── frequency_config.py    # 创建AutoEncoder系统（核心）
+│   │   ├── frequency_config.py    # 创建AutoEncoder系统
 │   │   ├── correct_wavelet_transform.py  # 小波变换
-│   │   ├── data_adapter.py        # 数据预处理
+│   │   ├── data_adapters.py       # 数据预处理
 │   │   ├── comparison_system.py   # 网络对比框架
-│   │   └── batch_experiment.py    # 批量实验管理器（新增）
+│   │   ├── batch_experiment.py    # 批量实验管理器
+│   │   ├── configurable_loss.py   # 可配置损失函数
+│   │   └── data_cache.py          # 数据缓存工具
 │   │
 │   └── training/
-│       └── ae_trainer.py          # 训练器（独立训练脚本用）
+│       └── ae_trainer.py          # 训练器
 │
 ├── data_processing/
 │   ├── data_loader.py             # 数据加载
 │   └── data_preprocessor.py       # 预处理
 │
-├── network_system/
-│   ├── network_interface.py       # 网络接口基类
-│   └── network_registry.py        # 网络注册系统
-│
-└── batch_experiments/             # 批量实验结果目录（新增）
+└── batch_experiments/             # 批量实验结果目录
     └── experiment_name_timestamp/
-        ├── experiment_config.json
-        ├── results_summary.csv
-        ├── detailed_results.json
-        ├── comparison_plots/      # 对比图表
-        ├── models/                # 所有模型文件
-        ├── visualizations/        # 单模型可视化
-        └── training_logs/         # 训练日志
 ```
 
 ---

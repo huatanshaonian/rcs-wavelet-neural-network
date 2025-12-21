@@ -18,7 +18,7 @@ from gui_managers.trainers.ae_trainer import AETrainer
 # 导入训练相关模块 (Config helpers need these)
 from training import CrossValidationTrainer, RCSDataset
 from wavelet_network import create_model, create_loss_function
-from configurable_loss import create_loss_function as create_configurable_loss
+from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
 
 
 class TrainingManager:

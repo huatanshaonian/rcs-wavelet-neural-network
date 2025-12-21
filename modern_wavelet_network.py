@@ -10,7 +10,7 @@ import warnings
 
 # 导入新的插件化架构
 try:
-    from network_registry import (
+    from networks.network_registry import (
         NetworkRegistry, NetworkConfig, LossConfig,
         create_network as registry_create_network,
         create_loss as registry_create_loss,

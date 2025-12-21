@@ -76,11 +76,11 @@ from gui_managers.tabs.prediction_tab import PredictionTab
 # 导入项目模块
 try:
     from wavelet_network import create_model, create_loss_function
-    from configurable_loss import create_loss_function as create_configurable_loss
+    from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
     from training import (CrossValidationTrainer, RCSDataLoader,
                          create_training_config, create_data_config, RCSDataset)
     from evaluation import RCSEvaluator, evaluate_model_with_visualizations
-    from data_cache import create_cache_manager
+    from autoencoder.utils.data_cache import create_cache_manager
 
     # 导入现代化的网络接口
     try:
@@ -1848,7 +1848,7 @@ def main():
 
     # 初始化AutoEncoder扩展（如果可用）
     try:
-        from gui_autoencoder_extension import AutoEncoderExtension
+        from gui_managers.extensions.gui_autoencoder_extension import AutoEncoderExtension
         app.ae_extension = AutoEncoderExtension(app)
         app.ae_extension.extend_autoencoder_tab()
         print("✓ AutoEncoder扩展已加载")
@@ -1859,7 +1859,7 @@ def main():
 
     # 初始化批量实验扩展（如果可用）
     try:
-        from gui_batch_experiment_extension import BatchExperimentExtension
+        from gui_managers.extensions.gui_batch_experiment_extension import BatchExperimentExtension
         batch_extension = BatchExperimentExtension(app)
         batch_extension.extend_batch_experiment_tab()
         print("✓ 批量实验扩展已加载")

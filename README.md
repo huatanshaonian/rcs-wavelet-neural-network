@@ -121,56 +121,44 @@
 
 ```
 wavelet/
-├── gui.py                              # 主GUI程序（6000+行）
-├── gui_autoencoder_extension.py        # AutoEncoder GUI扩展（包含所有AE配置）
-├── gui_managers/                        # GUI管理器模块
-│   └── managers/
-│       └── training_manager.py         # 训练管理器（三阶段训练）
-├── wavelet_gui_helper.py               # 小波分析辅助工具
+├── gui.py                              # 主GUI程序（待重构）
 ├── main.py                             # 命令行入口
-├── CLAUDE.md                           # 项目开发上下文（重要）
-├── README.md                           # 本文档
-│
+├── gui_managers/                       # GUI管理器模块
+│   ├── extensions/                     # GUI扩展模块
+│   │   ├── gui_autoencoder_extension.py # AutoEncoder扩展
+│   │   └── gui_batch_experiment_extension.py # 批量实验扩展
+│   ├── managers/                       # 业务逻辑管理器
+│   ├── tabs/                           # 界面标签页实现
+│   └── trainers/                       # 训练器封装
+├── scripts/                            # [新增] 诊断、修复与运行脚本
+├── tools/                              # [新增] 可视化分析与教学工具
+├── networks/                           # 网络定义与管理
+│   ├── network_registry.py             # 网络注册表
+│   └── example_networks.py             # 示例网络
 ├── autoencoder/                        # AutoEncoder完整系统
 │   ├── models/                         # 模型定义
 │   │   ├── __init__.py                # 导出核心网络
 │   │   ├── cnn_autoencoder.py         # CNN AutoEncoder (Wavelet)
 │   │   ├── direct_autoencoder.py      # Direct CNN AutoEncoder
-│   │   ├── mlp_autoencoder.py         # MLP系列（Wavelet/Direct）
-│   │   ├── enhanced_cnn_autoencoder.py # Enhanced系列（多尺度）
-│   │   ├── deep_autoencoder.py        # Deep CNN系列（最强表达力）
-│   │   ├── dual_branch_autoencoder.py  # 双分支系列（LL/HF分离）⭐
+│   │   ├── mlp_autoencoder.py         # MLP系列
+│   │   ├── dual_branch_autoencoder.py  # 双分支系列 ⭐
 │   │   ├── differentiable_wavelet_autoencoder.py # 可微分小波系列
-│   │   ├── parameter_mapper.py        # 参数映射器
-│   │   ├── channel_attention.py       # 通道注意力模块
-│   │   ├── MODEL_INVENTORY.md         # 模型清单文档
-│   │   └── experimental/              # 实验性模型
-│   │       └── README.md
+│   │   └── ...
 │   ├── training/                       # 训练模块
 │   │   └── ae_trainer.py              # 三阶段训练器
 │   ├── evaluation/                     # 评估模块
-│   │   ├── ae_evaluator.py            # AutoEncoder评估器
-│   │   └── reconstruction_metrics.py   # 重建指标计算
 │   └── utils/                          # 工具模块
-│       ├── frequency_config.py        # 频率配置系统（核心）
-│       ├── correct_wavelet_transform.py # 小波变换工具
-│       ├── data_adapters.py           # 数据预处理适配器
-│       ├── adaptive_layers.py         # 自适应层工具
-│       └── comparison_system.py       # 性能对比框架
+│       ├── frequency_config.py        # 频率配置系统
+│       ├── configurable_loss.py       # 可配置损失函数
+│       ├── data_cache.py              # 数据缓存工具
+│       └── ...
+├── CLAUDE.md                           # 项目开发上下文（重要）
+├── README.md                           # 本文档
 │
 ├── docs/                               # 文档目录 📚
 │   ├── architecture/                  # 架构文档
-│   │   ├── MLP_Architecture.md       # MLP架构详解
-│   │   └── CNN_Receptive_Field_Analysis.md # CNN改进方案
 │   ├── DATA_PIPELINE.md              # 数据处理流程
-│   ├── DUAL_BRANCH_IMPLEMENTATION.md  # 双分支实现文档
-│   ├── CHANNEL_ATTENTION_USAGE.md     # 通道注意力使用指南
-│   ├── WAVELET_CHANNEL_SEPARATION_ANALYSIS.md # 通道分离分析
-│   ├── ATTENTION_STANDARDIZATION_SOLUTIONS.md # 注意力与标准化冲突解决
-│   ├── ADAPTIVE_LAYERS_GUIDE.md       # 自适应层指南
-│   ├── DIFFERENTIABLE_WAVELET_SMALL_LATENT_REPORT.md # 小隐空间报告
-│   ├── autoencoder_development_log.md # 开发日志
-│   └── autoencoder_design.md         # 设计文档
+│   └── ...
 │
 └── models/                             # 保存的模型文件
     └── ae_checkpoints/                # AutoEncoder检查点

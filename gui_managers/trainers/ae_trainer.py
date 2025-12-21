@@ -15,7 +15,9 @@ import os
 from datetime import datetime
 
 from autoencoder.utils.gradient_monitor import GradientMonitor
-from configurable_loss import create_loss_function as create_configurable_loss
+
+from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
+
 
 
 class AETrainer:
@@ -1221,13 +1223,13 @@ class AETrainer:
         stage_config_key = f'{stage}_loss_config'
         if stage_config_key in training_config:
             loss_config = training_config[stage_config_key]
-            from configurable_loss import create_loss_function
+            from autoencoder.utils.configurable_loss import create_loss_function
             return self._wrap_configurable_loss(create_loss_function(loss_config))
 
         # 2. 检查全局自定义配置（Stage 2除外，因为它在latent空间操作）
         if stage != 'stage2' and training_config.get('use_custom_loss', False) and 'custom_loss_config' in training_config:
             loss_config = training_config['custom_loss_config']
-            from configurable_loss import create_loss_function
+            from autoencoder.utils.configurable_loss import create_loss_function
             return self._wrap_configurable_loss(create_loss_function(loss_config))
 
         # 3. 默认MSE（包括Stage 2）
@@ -1260,7 +1262,7 @@ class AETrainer:
         if 'joint_loss_config' in training_config:
             joint_config = training_config['joint_loss_config']
             if loss_name in joint_config:
-                from configurable_loss import create_loss_function
+                from autoencoder.utils.configurable_loss import create_loss_function
                 self.gui.ae_log(f"  使用自定义{loss_name}损失函数")
                 return self._wrap_configurable_loss(create_loss_function(joint_config[loss_name]))
 
@@ -1268,7 +1270,7 @@ class AETrainer:
         # consistency是隐空间的MSE，通常不需要自定义
         if loss_name != 'consistency' and training_config.get('use_custom_loss', False):
             if 'custom_loss_config' in training_config:
-                from configurable_loss import create_loss_function
+                from autoencoder.utils.configurable_loss import create_loss_function
                 self.gui.ae_log(f"  {loss_name}使用全局自定义损失函数")
                 return self._wrap_configurable_loss(create_loss_function(training_config['custom_loss_config']))
 
