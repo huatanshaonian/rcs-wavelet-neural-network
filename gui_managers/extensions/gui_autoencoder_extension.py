@@ -48,6 +48,9 @@ class AutoEncoderExtension:
         # 向后兼容：保留 ae_normalize 变量（从 normalization_method 派生）
         self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
 
+        # RCS物理约束：强制非负
+        self.main_gui.ae_enforce_nonnegative_rcs = tk.BooleanVar(value=True)  # 默认开启RCS非负约束
+
         # 通道注意力设置
         self.main_gui.ae_use_channel_attention = tk.BooleanVar(value=False)  # 默认关闭通道注意力
 
@@ -226,6 +229,12 @@ class AutoEncoderExtension:
                        variable=self.main_gui.ae_db_transform)
         self.db_checkbox.pack(anchor=tk.W)
         ttk.Label(preprocess_frame, text="   • 将线性RCS转换为dB空间 (sign(x)*log10(abs(x)))",
+                 font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
+
+        # RCS非负约束选项（物理约束）
+        ttk.Checkbutton(preprocess_frame, text="✅ 强制RCS非负 (物理约束)",
+                       variable=self.main_gui.ae_enforce_nonnegative_rcs).pack(anchor=tk.W)
+        ttk.Label(preprocess_frame, text="   • 推荐开启：确保最终RCS满足物理约束 (RCS ≥ 0)",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
         # 后处理分贝转换选项（仅用于推理/可视化）
@@ -1127,12 +1136,15 @@ class AutoEncoderExtension:
                     "latent_dim": int(self.main_gui.ae_latent_dim.get()),
                     "dropout_rate": float(self.main_gui.ae_dropout_rate.get()),
                     "wavelet_type": self.main_gui.ae_wavelet_type.get(),
-                    "architecture_type": self.main_gui.ae_architecture_type.get()
+                    "architecture_type": self.main_gui.ae_architecture_type.get(),
+                    "mapper_activation": self.main_gui.ae_mapper_activation.get(),
+                    "mapper_use_adaptive": self.main_gui.ae_mapper_use_adaptive.get()
                 },
                 "preprocessing": {
                     "normalize": self.main_gui.ae_normalize.get(),
                     "normalization_method": self.main_gui.ae_normalization_method.get(),
-                    "db_transform": self.main_gui.ae_db_transform.get()
+                    "db_transform": self.main_gui.ae_db_transform.get(),
+                    "enforce_nonnegative_rcs": self.main_gui.ae_enforce_nonnegative_rcs.get()
                 },
                 "training": {
                     "batch_size": int(self.main_gui.ae_batch_size.get()),
@@ -1216,6 +1228,10 @@ class AutoEncoderExtension:
                 self.main_gui.ae_wavelet_type.set(model_config["wavelet_type"])
             if "architecture_type" in model_config:
                 self.main_gui.ae_architecture_type.set(model_config["architecture_type"])
+            if "mapper_activation" in model_config:
+                self.main_gui.ae_mapper_activation.set(model_config["mapper_activation"])
+            if "mapper_use_adaptive" in model_config:
+                self.main_gui.ae_mapper_use_adaptive.set(model_config["mapper_use_adaptive"])
 
             # 加载预处理配置
             preprocess_config = config_data.get("preprocessing", {})
@@ -1234,6 +1250,10 @@ class AutoEncoderExtension:
                     self.main_gui.ae_normalization_method.set("none")
             if "db_transform" in preprocess_config:
                 self.main_gui.ae_db_transform.set(preprocess_config["db_transform"])
+            if "enforce_nonnegative_rcs" in preprocess_config:
+                self.main_gui.ae_enforce_nonnegative_rcs.set(preprocess_config["enforce_nonnegative_rcs"])
+            else:
+                self.main_gui.ae_enforce_nonnegative_rcs.set(True)  # 旧模型默认开启
 
             # 加载训练配置
             training_config = config_data.get("training", {})
