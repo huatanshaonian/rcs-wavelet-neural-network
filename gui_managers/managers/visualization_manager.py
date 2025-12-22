@@ -2222,8 +2222,15 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                    transform=ax.transAxes, ha='center', va='center')
             target_canvas.draw()
 
-    def _plot_ae_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
-        """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数"""
+    def _plot_ae_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None, reconstruction_mode='auto'):
+        """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数
+
+        Args:
+            reconstruction_mode: 重建模式选项
+                - 'auto': 根据training_mode自动选择（默认）
+                - 'ae_only': 强制使用纯AE重建（RCS → Encoder → Decoder → RCS）
+                - 'end_to_end': 强制从参数重建（参数 → ParameterMapper → Decoder → RCS）
+        """
         import numpy as np
 
         # 参数获取与回退
@@ -2310,22 +2317,44 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 使用统一重建函数重建RCS
             print(f"\n【使用统一重建函数 - 模型{model_id_str}】")
+            print(f"  重建模式: {reconstruction_mode}")
+
+            # 根据 reconstruction_mode 决定 input_type
+            # - 'auto': 使用 'model_ids'，让 reconstruction_manager 根据 training_mode 自动决定
+            # - 'ae_only': 强制使用 'rcs'，从RCS重建
+            # - 'end_to_end': 强制使用 'params'，从参数重建
+            if reconstruction_mode == 'ae_only':
+                # 强制纯AE重建：从RCS数据
+                use_input_type = 'model_ids'
+                force_rcs_input = True
+            elif reconstruction_mode == 'end_to_end':
+                # 强制端到端重建：从参数
+                use_input_type = 'model_ids'
+                force_params_input = True
+            else:  # 'auto'
+                # 自动模式：使用 model_ids，让 reconstruction_manager 根据 training_mode 决定
+                use_input_type = 'model_ids'
+                force_rcs_input = False
+                force_params_input = False
+
             # 这里调用的是 self.gui._reconstruct_rcs，它已经被保留在 gui.py 中并委托给 ReconstructionManager
             # 或者我们可以直接调用 ReconstructionManager
             if hasattr(self.gui, 'reconstruction_manager'):
                 result = self.gui.reconstruction_manager._reconstruct_rcs(
                     input_data=None,
-                    input_type='model_ids',
+                    input_type=use_input_type,
                     model_ids=[model_id_str],
-                    return_latents=False
+                    return_latents=False,
+                    force_reconstruction_mode=reconstruction_mode  # 传递强制模式
                 )
             else:
                 # 回退到 gui 的方法 (虽然可能已被弃用，但在 gui.py 中我们保留了它作为代理)
                 result = self.gui._reconstruct_rcs(
                     input_data=None,
-                    input_type='model_ids',
+                    input_type=use_input_type,
                     model_ids=[model_id_str],
-                    return_latents=False
+                    return_latents=False,
+                    force_reconstruction_mode=reconstruction_mode
                 )
 
             predicted_rcs = result['reconstructed_rcs'][0]  # [91, 91, num_freq]

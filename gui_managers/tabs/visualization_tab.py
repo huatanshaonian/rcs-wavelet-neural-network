@@ -41,6 +41,7 @@ class VisualizationTab(ttk.Frame):
         self.fontsize_scale_var = tk.DoubleVar(value=1.0)
         self.vis_type_var = tk.StringVar(value="2D热图")
         self.color_param_var = tk.StringVar(value="参数1(kw)")  # 隐空间分布着色参数
+        self.ae_reconstruction_mode_var = tk.StringVar(value="auto")  # AutoEncoder重建模式
 
         # Matplotlib图形初始化 (作为属性，以便在各种方法中访问和更新)
         self.vis_fig = Figure(figsize=(12, 8), dpi=80)
@@ -88,6 +89,16 @@ class VisualizationTab(ttk.Frame):
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
 
+        # AE重建模式选择（用于对比图等）
+        ttk.Label(control_frame, text="AE重建模式:").grid(row=1, column=2, sticky=tk.W, padx=5, pady=2)
+        ae_mode_combo = ttk.Combobox(control_frame, textvariable=self.ae_reconstruction_mode_var,
+                                     values=["auto", "ae_only", "end_to_end"],
+                                     state="readonly", width=12)
+        ae_mode_combo.grid(row=1, column=3, padx=5, pady=2)
+        # 添加提示
+        ttk.Label(control_frame, text="(auto: 自动 | ae_only: 纯AE | end_to_end: 参数→RCS)",
+                 font=self.font_small, foreground="gray").grid(row=2, column=2, columnspan=3, sticky=tk.W, padx=5, pady=0)
+
         # 着色参数选择（用于隐空间分布）
         ttk.Label(control_frame, text="着色参数:").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
         param_combo = ttk.Combobox(control_frame, textvariable=self.color_param_var,
@@ -98,7 +109,7 @@ class VisualizationTab(ttk.Frame):
 
         # 生成按钮
         ttk.Button(control_frame, text="生成图表", command=self.generate_visualization,
-                  style="Accent.TButton").grid(row=1, column=3, padx=5, pady=2)
+                  style="Accent.TButton").grid(row=2, column=6, columnspan=2, padx=5, pady=5)
 
         # 辅助样本ID（用于隐空间插值）
         ttk.Label(control_frame, text="辅助样本ID:").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
@@ -343,7 +354,12 @@ class VisualizationTab(ttk.Frame):
     def _plot_ae_comparison(self):
         """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数"""
         if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
-            return self.app.visualization_manager._plot_ae_comparison(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data, self.app.param_data)
+            # 获取用户选择的重建模式
+            reconstruction_mode = self.ae_reconstruction_mode_var.get()
+            return self.app.visualization_manager._plot_ae_comparison(
+                self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message,
+                self.app.rcs_data, self.app.param_data, reconstruction_mode=reconstruction_mode
+            )
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制AutoEncoder对比图。" )
 
