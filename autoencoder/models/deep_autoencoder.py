@@ -18,9 +18,10 @@ from autoencoder.utils.adaptive_layers import (
 )
 from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 
-class DeepWaveletAutoEncoder(nn.Module):
+class DeepWaveletAutoEncoder(BaseAutoEncoder):
     """
     深度CNN-AutoEncoder（小波模式）
     输入: [B, 49, 49, 8] 小波系数 (2频率 × 4频带)
@@ -293,6 +294,9 @@ class DeepWaveletAutoEncoder(nn.Module):
         # 调整维度: [B, 8, 49, 49] → [B, 49, 49, 8]
         x_recon = x.permute(0, 2, 3, 1)
 
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x_recon = self.apply_output_activation(x_recon)
+
         return x_recon
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -353,7 +357,7 @@ class DeepWaveletAutoEncoder(nn.Module):
         }
 
 
-class DeepDirectAutoEncoder(nn.Module):
+class DeepDirectAutoEncoder(BaseAutoEncoder):
     """
     深度CNN-AutoEncoder（Direct模式）
     输入: [B, 91, 91, 2] RCS数据（直接处理，不经小波变换）
@@ -373,7 +377,8 @@ class DeepDirectAutoEncoder(nn.Module):
                  use_attention: bool = True,
                  input_size: int = 91,
                  use_channel_attention: bool = False,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化Deep Direct AutoEncoder
 
@@ -384,8 +389,9 @@ class DeepDirectAutoEncoder(nn.Module):
             use_attention: 是否使用中间层通道注意力 (Deep架构固有特性)
             input_size: RCS数据尺寸 (91)
             use_channel_attention: 是否在输入层使用通道注意力 (用户可配置)
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -574,6 +580,10 @@ class DeepDirectAutoEncoder(nn.Module):
 
         # [B, 2, 91, 91] → [B, 91, 91, 2]
         x_recon = x.permute(0, 2, 3, 1)
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x_recon = self.apply_output_activation(x_recon)
+
         return x_recon
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

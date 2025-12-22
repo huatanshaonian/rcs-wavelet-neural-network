@@ -14,6 +14,7 @@ import numpy as np
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -61,7 +62,7 @@ def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int 
     return dims
 
 
-class WaveletAutoEncoder(nn.Module):
+class WaveletAutoEncoder(BaseAutoEncoder):
     """
     小波增强的CNN-AutoEncoder
     使用张量输入，保持空间结构
@@ -74,7 +75,8 @@ class WaveletAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  input_size: int = 49,
                  use_channel_attention: bool = False,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化AutoEncoder
 
@@ -86,8 +88,9 @@ class WaveletAutoEncoder(nn.Module):
             input_size: 输入小波系数尺寸 (49 for db4小波变换后的尺寸)
             use_channel_attention: 是否使用通道注意力机制 (默认: False)
             activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -290,6 +293,9 @@ class WaveletAutoEncoder(nn.Module):
 
         # 调整维度: [B, num_freq*4, input_size, input_size] → [B, input_size, input_size, num_freq*4]
         x_recon = x_recon.permute(0, 2, 3, 1)
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x_recon = self.apply_output_activation(x_recon)
 
         return x_recon
 

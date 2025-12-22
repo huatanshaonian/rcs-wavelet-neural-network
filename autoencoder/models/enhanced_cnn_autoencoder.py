@@ -21,6 +21,7 @@ from autoencoder.models.channel_attention import (
     get_recommended_reduction
 )
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 
 class MultiScaleBlock(nn.Module):
@@ -249,7 +250,7 @@ class ChannelAttention(nn.Module):
         return x * attention
 
 
-class EnhancedWaveletAutoEncoder(nn.Module):
+class EnhancedWaveletAutoEncoder(BaseAutoEncoder):
     """
     增强感受野的小波CNN-AutoEncoder
 
@@ -273,7 +274,8 @@ class EnhancedWaveletAutoEncoder(nn.Module):
                  dropout_rate: float = 0.2,
                  input_size: int = 49,
                  use_channel_attention: bool = False,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化增强AutoEncoder
 
@@ -286,8 +288,9 @@ class EnhancedWaveletAutoEncoder(nn.Module):
             use_channel_attention: 是否在输入层使用通道注意力 (默认: False)
                                   注意：中间层的通道注意力是Enhanced架构固有的，始终启用
             activation: 激活函数类型（'relu', 'sin', 'gelu', 'swish'等，默认: 'relu'）
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -487,6 +490,9 @@ class EnhancedWaveletAutoEncoder(nn.Module):
         # 维度转换: [B, C, H, W] → [B, H, W, C]
         x = x.permute(0, 2, 3, 1)
 
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x = self.apply_output_activation(x)
+
         return x
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -562,7 +568,7 @@ class EnhancedWaveletAutoEncoder(nn.Module):
         }
 
 
-class EnhancedDirectAutoEncoder(nn.Module):
+class EnhancedDirectAutoEncoder(BaseAutoEncoder):
     """
     增强感受野的直接CNN-AutoEncoder
     直接处理RCS数据，不使用小波变换
@@ -575,8 +581,20 @@ class EnhancedDirectAutoEncoder(nn.Module):
                  num_frequencies: int = 2,
                  dropout_rate: float = 0.2,
                  use_channel_attention: bool = False,
-                 activation: str = 'relu'):
-        super().__init__()
+                 activation: str = 'relu',
+                 output_activation: str = None):
+        """
+        初始化增强直接AutoEncoder
+
+        Args:
+            latent_dim: 隐空间维度
+            num_frequencies: 频率数量 (2 or 3)
+            dropout_rate: Dropout比率
+            use_channel_attention: 是否在输入层使用通道注意力 (默认: False)
+            activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
+        """
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -751,6 +769,10 @@ class EnhancedDirectAutoEncoder(nn.Module):
 
         # [B, C, H, W] → [B, H, W, C]
         x = x.permute(0, 2, 3, 1)
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x = self.apply_output_activation(x)
+
         return x
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

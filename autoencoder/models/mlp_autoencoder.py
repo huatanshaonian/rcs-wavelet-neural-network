@@ -10,6 +10,7 @@ from typing import Tuple, Dict, Any, List
 import numpy as np
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 
 def calculate_mlp_dims(input_dim: int, latent_dim: int, max_ratio: int = 4, min_layers: int = 3) -> List[int]:
@@ -75,7 +76,7 @@ def calculate_mlp_dims(input_dim: int, latent_dim: int, max_ratio: int = 4, min_
     return dims
 
 
-class WaveletMLPAutoEncoder(nn.Module):
+class WaveletMLPAutoEncoder(BaseAutoEncoder):
     """
     小波增强的MLP-AutoEncoder
     使用全连接网络处理小波系数
@@ -90,7 +91,8 @@ class WaveletMLPAutoEncoder(nn.Module):
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
                  input_size: int = 49,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化小波MLP-AutoEncoder
 
@@ -101,8 +103,9 @@ class WaveletMLPAutoEncoder(nn.Module):
             dropout_rate: Dropout比例
             input_size: 输入小波系数尺寸 (49 for db4小波变换后的尺寸)
             activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -218,6 +221,9 @@ class WaveletMLPAutoEncoder(nn.Module):
         # 调整维度: [B, num_freq*4, input_size, input_size] → [B, input_size, input_size, num_freq*4]
         x_recon = x_recon.permute(0, 2, 3, 1)
 
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x_recon = self.apply_output_activation(x_recon)
+
         return x_recon
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -282,7 +288,7 @@ class WaveletMLPAutoEncoder(nn.Module):
         }
 
 
-class DirectMLPAutoEncoder(nn.Module):
+class DirectMLPAutoEncoder(BaseAutoEncoder):
     """
     直接处理RCS数据的MLP-AutoEncoder
     使用全连接网络处理原始RCS数据
@@ -295,7 +301,8 @@ class DirectMLPAutoEncoder(nn.Module):
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
                  dropout_rate: float = 0.2,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化直接MLP-AutoEncoder
 
@@ -304,8 +311,9 @@ class DirectMLPAutoEncoder(nn.Module):
             num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
             dropout_rate: Dropout比例
             activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -418,6 +426,9 @@ class DirectMLPAutoEncoder(nn.Module):
 
         # 调整维度: [B, num_freq, 91, 91] → [B, 91, 91, num_freq]
         x_recon = x_recon.permute(0, 2, 3, 1)
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x_recon = self.apply_output_activation(x_recon)
 
         return x_recon
 
