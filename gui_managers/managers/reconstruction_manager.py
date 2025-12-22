@@ -188,21 +188,10 @@ class ReconstructionManager:
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
 
-                    # ✅ RCS物理约束：强制非负（如果启用）
-                    if hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and self.gui.ae_enforce_nonnegative_rcs.get():
-                        # 使用Softplus而非ReLU，避免dying ReLU问题
-                        # Softplus(x) = log(1 + exp(x)) ≈ max(0, x) 但处处可导
-                        reconstructed_rcs = torch.nn.functional.softplus(reconstructed_rcs, beta=1)
-
                 elif mode == 'differentiable_wavelet':
                     # Differentiable小波模式：decoder输出已经是RCS，但需要获取小波系数
                     reconstructed_rcs = decoder_output  # 已经是RCS
 
-                    # ✅ RCS物理约束：强制非负（如果启用）
-                    if hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and self.gui.ae_enforce_nonnegative_rcs.get():
-                        # 使用Softplus而非ReLU，避免dying ReLU问题
-                        # Softplus(x) = log(1 + exp(x)) ≈ max(0, x) 但处处可导
-                        reconstructed_rcs = torch.nn.functional.softplus(reconstructed_rcs, beta=1)
 
                     # 如果需要小波系数，从AutoEncoder内部提取
                     if return_wavelet_coeffs:
@@ -238,11 +227,6 @@ class ReconstructionManager:
                     else:
                         reconstructed_rcs = decoder_output
 
-                    # ✅ RCS物理约束：强制非负（如果启用）
-                    if hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and self.gui.ae_enforce_nonnegative_rcs.get():
-                        # 使用Softplus而非ReLU，避免dying ReLU问题
-                        # Softplus(x) = log(1 + exp(x)) ≈ max(0, x) 但处处可导
-                        reconstructed_rcs = torch.nn.functional.softplus(reconstructed_rcs, beta=1)
 
             elif input_type == 'rcs':
                 # ========== Stage1-Only模式：从RCS重建 ==========
@@ -308,21 +292,10 @@ class ReconstructionManager:
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs)
 
-                    # ✅ RCS物理约束：强制非负（如果启用）
-                    if hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and self.gui.ae_enforce_nonnegative_rcs.get():
-                        # 使用Softplus而非ReLU，避免dying ReLU问题
-                        # Softplus(x) = log(1 + exp(x)) ≈ max(0, x) 但处处可导
-                        reconstructed_rcs = torch.nn.functional.softplus(reconstructed_rcs, beta=1)
-
                 elif mode == 'differentiable_wavelet':
                     # Differentiable小波模式：输出已经是RCS
                     reconstructed_rcs = reconstructed_output
 
-                    # ✅ RCS物理约束：强制非负（如果启用）
-                    if hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and self.gui.ae_enforce_nonnegative_rcs.get():
-                        # 使用Softplus而非ReLU，避免dying ReLU问题
-                        # Softplus(x) = log(1 + exp(x)) ≈ max(0, x) 但处处可导
-                        reconstructed_rcs = torch.nn.functional.softplus(reconstructed_rcs, beta=1)
 
                     # 如果需要小波系数，从AutoEncoder内部提取
                     if return_wavelet_coeffs:
@@ -336,11 +309,6 @@ class ReconstructionManager:
                     else:
                         reconstructed_rcs = reconstructed_output
 
-                    # ✅ RCS物理约束：强制非负（如果启用）
-                    if hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and self.gui.ae_enforce_nonnegative_rcs.get():
-                        # 使用Softplus而非ReLU，避免dying ReLU问题
-                        # Softplus(x) = log(1 + exp(x)) ≈ max(0, x) 但处处可导
-                        reconstructed_rcs = torch.nn.functional.softplus(reconstructed_rcs, beta=1)
             else:
                 raise ValueError(f"不支持的input_type: {input_type}")
 
