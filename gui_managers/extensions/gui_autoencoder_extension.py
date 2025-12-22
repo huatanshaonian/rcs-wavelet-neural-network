@@ -49,7 +49,7 @@ class AutoEncoderExtension:
         self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
 
         # RCS物理约束：强制非负
-        self.main_gui.ae_enforce_nonnegative_rcs = tk.BooleanVar(value=False)  # 默认关闭RCS非负约束
+        self.main_gui.ae_enforce_nonnegative_rcs = tk.BooleanVar(value=True)  # 默认开启RCS非负约束
 
         # 通道注意力设置
         self.main_gui.ae_use_channel_attention = tk.BooleanVar(value=False)  # 默认关闭通道注意力
@@ -905,7 +905,6 @@ class AutoEncoderExtension:
             learnable_weights = self.main_gui.ae_learnable_weights.get()
             alpha_high = float(self.main_gui.ae_alpha_high.get())
             alpha_smooth = float(self.main_gui.ae_alpha_smooth.get())
-            enforce_nonnegative_rcs = self.main_gui.ae_enforce_nonnegative_rcs.get()
 
             # 创建系统（使用frequency_config的扩展参数）
             self.main_gui.ae_system = create_autoencoder_system(
@@ -928,9 +927,7 @@ class AutoEncoderExtension:
                 activation_smooth=activation_smooth,
                 learnable_weights=learnable_weights,
                 alpha_high=alpha_high,
-                alpha_smooth=alpha_smooth,
-                # RCS物理约束
-                enforce_nonnegative_rcs=enforce_nonnegative_rcs
+                alpha_smooth=alpha_smooth
             )
 
             # 添加数据
