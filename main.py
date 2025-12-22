@@ -206,7 +206,8 @@ class RCSWaveletApp:
 
             # 设置窗口属性
             root.title("RCS小波神经网络 - 增强版 (双模式AutoEncoder + 小波分析)")
-            root.geometry("1400x900")
+            root.geometry("1700x950")  # 增加宽度以容纳更多控制选项
+            root.minsize(1400, 900)    # 设置最小尺寸
 
             # 创建主GUI实例
             app = RCSWaveletGUI(root)

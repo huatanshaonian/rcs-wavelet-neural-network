@@ -89,15 +89,16 @@ class VisualizationTab(ttk.Frame):
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
 
+        # 辅助样本ID（用于隐空间插值）
+        ttk.Label(control_frame, text="辅助样本ID:").grid(row=1, column=2, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(control_frame, textvariable=self.vis_aux_model_var, width=10).grid(row=1, column=3, padx=5, pady=2)
+
         # AE重建模式选择（用于对比图等）
-        ttk.Label(control_frame, text="AE重建模式:").grid(row=1, column=2, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(control_frame, text="AE重建模式:").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
         ae_mode_combo = ttk.Combobox(control_frame, textvariable=self.ae_reconstruction_mode_var,
                                      values=["auto", "ae_only", "end_to_end"],
                                      state="readonly", width=12)
-        ae_mode_combo.grid(row=1, column=3, padx=5, pady=2)
-        # 添加提示
-        ttk.Label(control_frame, text="(auto: 自动 | ae_only: 纯AE | end_to_end: 参数→RCS)",
-                 font=self.font_small, foreground="gray").grid(row=2, column=2, columnspan=3, sticky=tk.W, padx=5, pady=0)
+        ae_mode_combo.grid(row=1, column=5, padx=5, pady=2)
 
         # 着色参数选择（用于隐空间分布）
         ttk.Label(control_frame, text="着色参数:").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
@@ -107,13 +108,14 @@ class VisualizationTab(ttk.Frame):
                                    state="readonly", width=12)
         param_combo.grid(row=1, column=7, padx=5, pady=2)
 
-        # 生成按钮
+        # 第三行：生成按钮和提示
+        # 生成按钮（左下角）
         ttk.Button(control_frame, text="生成图表", command=self.generate_visualization,
-                  style="Accent.TButton").grid(row=2, column=6, columnspan=2, padx=5, pady=5)
+                  style="Accent.TButton").grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky=tk.W)
 
-        # 辅助样本ID（用于隐空间插值）
-        ttk.Label(control_frame, text="辅助样本ID:").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
-        ttk.Entry(control_frame, textvariable=self.vis_aux_model_var, width=10).grid(row=1, column=5, padx=5, pady=2)
+        # AE重建模式提示
+        ttk.Label(control_frame, text="AE重建模式说明: auto(自动) | ae_only(纯AE重建) | end_to_end(参数→RCS)",
+                 font=self.font_small, foreground="gray").grid(row=2, column=2, columnspan=6, sticky=tk.W, padx=5, pady=0)
 
         # 图表显示区域
         chart_group = ttk.LabelFrame(main_frame, text="图表显示")
