@@ -232,7 +232,8 @@ def save_model_config_json(
         'data_preprocessing': {
             'wavelet_type': config.get('wavelet', 'N/A'),
             'normalize': config.get('normalize', False),
-            'db_transform': config.get('db_transform', False)
+            'db_transform': config.get('db_transform', False),
+            'enforce_nonnegative_rcs': config.get('enforce_nonnegative_rcs', False)
         },
         'training_info': {
             'training_mode': model_state.get('training_mode', 'N/A'),

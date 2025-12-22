@@ -254,7 +254,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                             activation_smooth: str = None,
                             learnable_weights: bool = False,
                             alpha_high: float = 0.5,
-                            alpha_smooth: float = 0.5) -> Dict[str, Any]:
+                            alpha_smooth: float = 0.5,
+                            enforce_nonnegative_rcs: bool = False) -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -657,7 +658,8 @@ def create_autoencoder_system(config_name: str = '2freq',
         'normalize': normalize,
         'db_transform': db_transform,
         'normalization_method': normalization_method,
-        'use_channel_attention': use_channel_attention
+        'use_channel_attention': use_channel_attention,
+        'enforce_nonnegative_rcs': enforce_nonnegative_rcs
     })
 
     system = {
