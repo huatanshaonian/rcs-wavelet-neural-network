@@ -676,7 +676,12 @@ def plot_ae_training_progress(
         cols = 2 if num_stages > 1 else 1
 
     stage_colors = ['blue', 'green', 'red', 'orange']
-    stage_names = ['阶段1(AE预训练)', '阶段2(参数映射)', '阶段3(端到端)', '完整训练']
+    # 默认阶段名称（三阶段训练）
+    default_stage_names = ['阶段1(AE预训练)', '阶段2(参数映射)', '阶段3(端到端)', '完整训练']
+
+    # ✅ 检测训练模式，用于区分三阶段训练和联合训练
+    training_mode = ae_training_history.get('training_mode', 'three_stage')
+    is_joint_training = (training_mode == 'joint_training')
 
     for i, (stage_name, stage_data) in enumerate(stage_histories.items()):
         if 'train_losses' not in stage_data or 'val_losses' not in stage_data:
@@ -704,10 +709,17 @@ def plot_ae_training_progress(
         ax_loss.plot(epochs, stage_data['val_losses'], color=color, linestyle='--',
                     label='验证损失', linewidth=2)
 
+        # ✅ 优先使用自定义名称（联合训练）或默认名称（三阶段训练）
+        if 'name' in stage_data:
+            # 联合训练：使用自定义名称
+            display_name = stage_data['name']
+        else:
+            # 三阶段训练：使用默认名称
+            display_name = default_stage_names[i] if i < len(default_stage_names) else stage_name
+
         ax_loss.set_xlabel('训练轮数', fontsize=int(16*fontsize_scale), fontweight='bold')
         ax_loss.set_ylabel('损失值', fontsize=int(16*fontsize_scale), fontweight='bold')
-        ax_loss.set_title(f'{stage_names[i] if i < len(stage_names) else stage_name}',
-                         fontsize=int(18*fontsize_scale), fontweight='bold')
+        ax_loss.set_title(f'{display_name}', fontsize=int(18*fontsize_scale), fontweight='bold')
         ax_loss.legend(fontsize=int(12*fontsize_scale), loc='best')
         ax_loss.grid(True, alpha=0.3)
 
@@ -747,19 +759,29 @@ def plot_ae_training_progress(
 
                 ax_grad.set_xlabel('训练轮数', fontsize=int(16*fontsize_scale), fontweight='bold')
                 ax_grad.set_ylabel('梯度范数', fontsize=int(16*fontsize_scale), fontweight='bold')
-                ax_grad.set_title(f'{stage_names[i]} - 梯度监控',
+                # ✅ 梯度图标题也使用自定义名称
+                ax_grad.set_title(f'{display_name} - 梯度监控',
                                  fontsize=int(18*fontsize_scale), fontweight='bold')
                 ax_grad.legend(fontsize=int(10*fontsize_scale), loc='best')
                 ax_grad.grid(True, alpha=0.3)
                 ax_grad.set_yscale('log')  # 梯度范数通常需要对数坐标
                 ax_grad.tick_params(axis='both', labelsize=int(14*fontsize_scale))
 
-    if show_gradient and has_gradient:
-        fig.suptitle('AutoEncoder训练进度 + 梯度监控',
-                     fontsize=int(24*fontsize_scale), fontweight='bold', y=0.98)
+    # ✅ 根据训练模式设置总标题
+    if is_joint_training:
+        # 联合训练模式
+        if show_gradient and has_gradient:
+            main_title = '联合训练进度 (三损失主题) + 梯度监控'
+        else:
+            main_title = '联合训练进度 (RCS重建 + 隐空间一致性 + 参数重建)'
     else:
-        fig.suptitle('AutoEncoder训练进度',
-                     fontsize=int(24*fontsize_scale), fontweight='bold')
+        # 三阶段训练模式
+        if show_gradient and has_gradient:
+            main_title = 'AutoEncoder训练进度 + 梯度监控'
+        else:
+            main_title = 'AutoEncoder训练进度'
+
+    fig.suptitle(main_title, fontsize=int(24*fontsize_scale), fontweight='bold', y=0.98 if (show_gradient and has_gradient) else None)
 
     fig.tight_layout()
 

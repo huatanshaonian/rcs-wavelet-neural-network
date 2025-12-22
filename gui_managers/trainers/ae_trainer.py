@@ -414,12 +414,34 @@ class AETrainer:
             # 执行联合训练
             history = self.train_joint_mode(rcs_data, param_data, training_config, epochs, alpha, beta, gamma)
 
-            # 保存训练历史
+            # 保存训练历史（原始格式，用于后续分析）
             if not hasattr(self.gui, 'ae_training_history'):
                 self.gui.ae_training_history = {'stage_histories': {}}
             self.gui.ae_training_history['joint'] = history
             self.gui.ae_training_history['training_mode'] = 'joint_training'
             self.gui.ae_system['training_mode'] = 'joint_training'
+
+            # ✅ 将联合训练的三个损失主题映射到stage_histories，复用绘图函数
+            # stage1: RCS重建损失（α权重）
+            # stage2: 隐空间一致性损失（β权重）
+            # stage3: 参数重建损失（γ权重，最重要）
+            self.gui.ae_training_history['stage_histories'] = {
+                'stage1': {
+                    'train_losses': history['train_loss_recon'],
+                    'val_losses': history['val_loss_recon'],
+                    'name': 'RCS重建'
+                },
+                'stage2': {
+                    'train_losses': history['train_loss_consistency'],
+                    'val_losses': history['val_loss_consistency'],
+                    'name': '隐空间一致性'
+                },
+                'stage3': {
+                    'train_losses': history['train_loss_param_recon'],
+                    'val_losses': history['val_loss_param_recon'],
+                    'name': '参数重建'
+                }
+            }
 
             self.gui.ae_log("🎉 联合训练完成!")
 
