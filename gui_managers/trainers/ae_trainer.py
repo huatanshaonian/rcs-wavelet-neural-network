@@ -1558,12 +1558,6 @@ class AETrainer:
             from autoencoder.utils.data_adapters import RCS_DataAdapter
             data_adapter = RCS_DataAdapter(normalize=True, mode=mode)
 
-        # 检查是否启用RCS非负约束
-        enforce_rcs_constraint = (hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and
-                                 self.gui.ae_enforce_nonnegative_rcs.get())
-        if enforce_rcs_constraint:
-            self.gui.ae_log("✅ RCS非负约束已启用（训练时在RCS空间计算损失）")
-
         self.gui.ae_log(f"🔧 数据预处理: 标准化={data_adapter.normalize}, dB变换={data_adapter.db_transform}")
 
         # RCS数据预处理
@@ -1586,13 +1580,7 @@ class AETrainer:
         # 创建数据集
         input_tensor = torch.FloatTensor(input_data)
         param_tensor = torch.FloatTensor(param_normalized)
-
-        # ✅ 如果启用RCS约束，需要同时保存原始RCS作为target
-        if enforce_rcs_constraint:
-            rcs_tensor = torch.FloatTensor(rcs_data)
-            dataset = TensorDataset(input_tensor, param_tensor, rcs_tensor)
-        else:
-            dataset = TensorDataset(input_tensor, param_tensor)
+        dataset = TensorDataset(input_tensor, param_tensor)
 
         # 数据划分
         train_size = int(len(dataset) * 0.8)
@@ -1664,19 +1652,9 @@ class AETrainer:
             train_loss_param_recon = 0.0
             train_samples = 0
 
-            for batch_data in train_loader:
-                # ✅ 根据是否启用约束，解包不同的数据
-                if enforce_rcs_constraint:
-                    rcs_batch, param_batch, rcs_target_batch = batch_data
-                    rcs_batch = rcs_batch.to(device)
-                    param_batch = param_batch.to(device)
-                    rcs_target_batch = rcs_target_batch.to(device)
-                else:
-                    rcs_batch, param_batch = batch_data
-                    rcs_batch = rcs_batch.to(device)
-                    param_batch = param_batch.to(device)
-                    rcs_target_batch = None
-
+            for rcs_batch, param_batch in train_loader:
+                rcs_batch = rcs_batch.to(device)
+                param_batch = param_batch.to(device)
                 batch_size_actual = rcs_batch.size(0)
 
                 optimizer.zero_grad()
@@ -1692,27 +1670,9 @@ class AETrainer:
                 recon_from_params = autoencoder.decode(latent_from_params)
 
                 # ========== 损失计算 ==========
-                # ✅ 如果启用约束，在RCS空间计算损失
-                if enforce_rcs_constraint:
-                    # L_recon_rcs: 在RCS空间计算
-                    rcs_recon_transformed = self._apply_rcs_constraint_if_needed(
-                        recon_rcs, mode, data_adapter, wavelet_transform, device
-                    )
-                    L_recon_rcs = criterion_recon(rcs_recon_transformed, rcs_target_batch)  # α
-
-                    # L_consistency: 在隐空间计算（保持不变）
-                    L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)  # β
-
-                    # L_param_recon: 在RCS空间计算
-                    rcs_param_recon_transformed = self._apply_rcs_constraint_if_needed(
-                        recon_from_params, mode, data_adapter, wavelet_transform, device
-                    )
-                    L_param_recon = criterion_param_recon(rcs_param_recon_transformed, rcs_target_batch)  # γ
-                else:
-                    # 原有逻辑：在标准化空间计算
-                    L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)          # α
-                    L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)  # β
-                    L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)  # γ
+                L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)          # α
+                L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)  # β
+                L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)  # γ
 
                 # 总损失（加权）
                 total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
@@ -1748,19 +1708,9 @@ class AETrainer:
             val_samples = 0
 
             with torch.no_grad():
-                for batch_data in val_loader:
-                    # ✅ 根据是否启用约束，解包不同的数据
-                    if enforce_rcs_constraint:
-                        rcs_batch, param_batch, rcs_target_batch = batch_data
-                        rcs_batch = rcs_batch.to(device)
-                        param_batch = param_batch.to(device)
-                        rcs_target_batch = rcs_target_batch.to(device)
-                    else:
-                        rcs_batch, param_batch = batch_data
-                        rcs_batch = rcs_batch.to(device)
-                        param_batch = param_batch.to(device)
-                        rcs_target_batch = None
-
+                for rcs_batch, param_batch in val_loader:
+                    rcs_batch = rcs_batch.to(device)
+                    param_batch = param_batch.to(device)
                     batch_size_actual = rcs_batch.size(0)
 
                     # 前向传播
@@ -1769,28 +1719,9 @@ class AETrainer:
                     recon_from_params = autoencoder.decode(latent_from_params)
 
                     # 损失计算
-                    # ✅ 如果启用约束，在RCS空间计算损失
-                    if enforce_rcs_constraint:
-                        # L_recon_rcs: 在RCS空间计算
-                        rcs_recon_transformed = self._apply_rcs_constraint_if_needed(
-                            recon_rcs, mode, data_adapter, wavelet_transform, device
-                        )
-                        L_recon_rcs = criterion_recon(rcs_recon_transformed, rcs_target_batch)
-
-                        # L_consistency: 在隐空间计算（保持不变）
-                        L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)
-
-                        # L_param_recon: 在RCS空间计算
-                        rcs_param_recon_transformed = self._apply_rcs_constraint_if_needed(
-                            recon_from_params, mode, data_adapter, wavelet_transform, device
-                        )
-                        L_param_recon = criterion_param_recon(rcs_param_recon_transformed, rcs_target_batch)
-                    else:
-                        # 原有逻辑：在标准化空间计算
-                        L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)
-                        L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)
-                        L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)
-
+                    L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)
+                    L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)
+                    L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)
                     total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
 
                     # 应用损失归一化（与训练保持一致）
