@@ -1358,7 +1358,7 @@ class AutoEncoderExtension:
             if "enforce_nonnegative_rcs" in preprocess_config:
                 self.main_gui.ae_enforce_nonnegative_rcs.set(preprocess_config["enforce_nonnegative_rcs"])
             else:
-                self.main_gui.ae_enforce_nonnegative_rcs.set(False)  # 旧模型默认关闭（保持训练时行为）
+                self.main_gui.ae_enforce_nonnegative_rcs.set(True)  # 旧模型默认开启
 
             # 加载训练配置
             training_config = config_data.get("training", {})
