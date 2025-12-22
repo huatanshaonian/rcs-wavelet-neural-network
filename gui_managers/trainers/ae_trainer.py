@@ -457,124 +457,6 @@ class AETrainer:
                 messagebox.showerror("错误", error_msg)
             raise
 
-    def _apply_rcs_constraint_if_needed(self, decoder_output, mode, data_adapter, wavelet_transform, device):
-        """
-        如果启用RCS非负约束，将decoder输出逆变换到RCS空间并应用Softplus
-
-        ⚠️ 重要：保持梯度流动！不能使用detach()
-
-        Args:
-            decoder_output: Decoder输出（标准化空间，tensor with grad）
-            mode: 'wavelet', 'direct', 'differentiable_wavelet'
-            data_adapter: 数据适配器
-            wavelet_transform: 小波变换器（wavelet模式需要）
-            device: 设备
-
-        Returns:
-            rcs_output: RCS空间的输出（可能应用了softplus约束，保持梯度）
-        """
-        # 检查是否启用约束
-        enforce_constraint = (hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and
-                            self.gui.ae_enforce_nonnegative_rcs.get())
-
-        # 定义逆标准化辅助函数（可微分 + 健壮性增强）
-        def inverse_normalize(tensor, adapter):
-            """
-            可微分逆标准化，支持zscore和minmax方法
-
-            防御性检查：
-            - 检查adapter是否有data_stats属性
-            - 检查data_stats是否包含必需的统计信息
-            - 处理None值情况
-            """
-            if adapter is None:
-                return tensor
-
-            # 获取统计信息
-            if not hasattr(adapter, 'data_stats') or not adapter.data_stats:
-                # 回退：尝试使用旧版mean_/std_属性（向后兼容）
-                if hasattr(adapter, 'mean_') and hasattr(adapter, 'std_'):
-                    mean = torch.FloatTensor(adapter.mean_).to(device)
-                    std = torch.FloatTensor(adapter.std_).to(device)
-                    return tensor * std + mean
-                return tensor
-
-            stats = adapter.data_stats
-            method = stats.get('method', 'zscore')
-
-            # Z-score逆标准化
-            if method == 'zscore':
-                if 'mean' in stats and 'std' in stats:
-                    mean = torch.FloatTensor(stats['mean']).to(device)
-                    std = torch.FloatTensor(stats['std']).to(device)
-                    return tensor * std + mean
-
-            # Min-Max逆标准化
-            elif method == 'minmax':
-                if 'min' in stats and 'range' in stats:
-                    d_min = torch.FloatTensor(stats['min']).to(device)
-                    d_range = torch.FloatTensor(stats['range']).to(device)
-                    return tensor * d_range + d_min
-
-            # 无标准化或缺少必要信息
-            return tensor
-
-        # 定义逆dB变换辅助函数（可微分）
-        def inverse_db(tensor, adapter):
-            """
-            可微分逆dB变换
-
-            公式：x_linear = sign(x_db) * 10^(abs(x_db)/10)
-            """
-            if adapter is None:
-                return tensor
-
-            # 检查是否需要逆dB变换
-            db_transform = False
-            if hasattr(adapter, 'data_stats') and adapter.data_stats:
-                db_transform = adapter.data_stats.get('db_transform', False)
-            elif hasattr(adapter, 'db_transform'):
-                db_transform = adapter.db_transform
-
-            if db_transform:
-                # 逆dB: x_linear = sign(x_db) * 10^(abs(x_db)/10)
-                return torch.sign(tensor) * torch.pow(10, torch.abs(tensor) / 10.0)
-
-            return tensor
-
-        # 逆变换到RCS空间（⚠️ 必须保持可微分）
-        if mode == 'wavelet':
-            # Wavelet: 标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
-            if data_adapter:
-                # ✅ 使用可微分的逆标准化
-                coeffs_tensor = inverse_normalize(decoder_output, data_adapter)
-                # 如果有dB逆变换
-                coeffs_tensor = inverse_db(coeffs_tensor, data_adapter)
-            else:
-                coeffs_tensor = decoder_output
-
-            # 逆小波变换（已经是可微分的）
-            rcs_output = wavelet_transform.inverse_transform(coeffs_tensor)
-
-        elif mode == 'differentiable_wavelet':
-            # Differentiable Wavelet: decoder输出已经是RCS
-            rcs_output = decoder_output
-
-        else:  # direct
-            # Direct: 标准化RCS → 逆标准化 → RCS
-            if data_adapter:
-                # ✅ 可微分逆标准化
-                rcs_output = inverse_normalize(decoder_output, data_adapter)
-                # 逆dB变换
-                rcs_output = inverse_db(rcs_output, data_adapter)
-            else:
-                rcs_output = decoder_output
-
-        # 应用非负约束（如果启用）
-        if enforce_constraint:
-            rcs_output = torch.nn.functional.softplus(rcs_output, beta=1)
-
-        return rcs_output
 
     def train_stage1(self, rcs_data, training_config):
         """阶段1: AutoEncoder预训练"""
@@ -587,12 +469,6 @@ class AETrainer:
             mode = self.gui.ae_system.get('mode', 'wavelet')
             # 获取Loss归一化系数（如果存在）
             loss_normalization_factor = self.gui.ae_system.get('loss_normalization_factor', 1.0)
-
-            # 检查是否启用RCS非负约束
-            enforce_rcs_constraint = (hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and
-                                     self.gui.ae_enforce_nonnegative_rcs.get())
-            if enforce_rcs_constraint:
-                self.gui.ae_log("✅ RCS非负约束已启用（训练时在RCS空间计算损失）")
 
             # 设置设备
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -633,15 +509,7 @@ class AETrainer:
                 self.gui.ae_log(f"📊 预处理后RCS数据范围: [{input_data.min():.4f}, {input_data.max():.4f}]")
 
             # 数据划分: 80%训练，20%验证
-            # ✅ 如果启用RCS约束，需要同时保存原始RCS作为target
-            if enforce_rcs_constraint:
-                # 创建包含输入数据和原始RCS的数据集
-                rcs_tensor = torch.FloatTensor(rcs_data)
-                dataset = TensorDataset(torch.FloatTensor(input_data), rcs_tensor)
-            else:
-                # 正常流程：只有输入数据
-                dataset = TensorDataset(torch.FloatTensor(input_data))
-
+            dataset = TensorDataset(input_data)
             torch.manual_seed(42)
             train_size = int(len(dataset) * 0.8)
             val_size = len(dataset) - train_size
@@ -720,38 +588,16 @@ class AETrainer:
                 train_loss = 0.0
                 train_samples = 0
 
-                for batch_idx, batch_data in enumerate(train_loader):
-                    # ✅ 根据是否启用约束，解包不同的数据
-                    if enforce_rcs_constraint:
-                        batch_input, batch_rcs_target = batch_data
-                        batch_input = batch_input.to(device)
-                        batch_rcs_target = batch_rcs_target.to(device)
-                    else:
-                        batch_coeffs, = batch_data
-                        batch_input = batch_coeffs.to(device)
-                        batch_rcs_target = None
-
+                for batch_idx, (batch_coeffs,) in enumerate(train_loader):
                     # 使用适配的训练方法
                     if is_lbfgs:
-                        # L-BFGS暂不支持RCS约束（需要闭包支持）
-                        if enforce_rcs_constraint:
-                            raise NotImplementedError("L-BFGS暂不支持RCS非负约束训练")
                         loss_value = self._train_batch_with_lbfgs(
-                            optimizer, autoencoder, batch_input, batch_input, criterion, device
+                            optimizer, autoencoder, batch_coeffs, batch_coeffs, criterion, device
                         )
                     else:
-                        reconstructed, latent = autoencoder(batch_input)
-
-                        # ✅ 根据是否启用约束，计算不同的损失
-                        if enforce_rcs_constraint:
-                            # 在RCS空间计算损失
-                            rcs_recon = self._apply_rcs_constraint_if_needed(
-                                reconstructed, mode, data_adapter, wavelet_transform, device
-                            )
-                            loss = criterion(rcs_recon, batch_rcs_target)
-                        else:
-                            # 在标准化空间计算损失（原有逻辑）
-                            loss = criterion(reconstructed, batch_input)
+                        batch_coeffs = batch_coeffs.to(device)
+                        reconstructed, latent = autoencoder(batch_coeffs)
+                        loss = criterion(reconstructed, batch_coeffs)
 
                         # ⭐ 在backward前应用归一化（真正影响梯度和训练）
                         if loss_normalization_factor != 1.0:
@@ -773,7 +619,7 @@ class AETrainer:
                         optimizer.step()
                         loss_value = loss.item()
 
-                    batch_size = batch_input.size(0) if not is_lbfgs else len(batch_input)
+                    batch_size = batch_coeffs.size(0) if not is_lbfgs else len(batch_coeffs)
                     train_loss += loss_value * batch_size  # loss已经是归一化后的
                     train_samples += batch_size
 
@@ -785,35 +631,16 @@ class AETrainer:
                 val_samples = 0
 
                 with torch.no_grad():
-                    for batch_data in val_loader:
-                        # ✅ 根据是否启用约束，解包不同的数据
-                        if enforce_rcs_constraint:
-                            batch_input, batch_rcs_target = batch_data
-                            batch_input = batch_input.to(device)
-                            batch_rcs_target = batch_rcs_target.to(device)
-                        else:
-                            batch_coeffs, = batch_data
-                            batch_input = batch_coeffs.to(device)
-                            batch_rcs_target = None
-
-                        reconstructed, latent = autoencoder(batch_input)
-
-                        # ✅ 根据是否启用约束，计算不同的损失
-                        if enforce_rcs_constraint:
-                            # 在RCS空间计算损失
-                            rcs_recon = self._apply_rcs_constraint_if_needed(
-                                reconstructed, mode, data_adapter, wavelet_transform, device
-                            )
-                            loss = criterion(rcs_recon, batch_rcs_target)
-                        else:
-                            # 在标准化空间计算损失（原有逻辑）
-                            loss = criterion(reconstructed, batch_input)
+                    for batch_coeffs, in val_loader:
+                        batch_coeffs = batch_coeffs.to(device)
+                        reconstructed, latent = autoencoder(batch_coeffs)
+                        loss = criterion(reconstructed, batch_coeffs)
 
                         # ⭐ 应用归一化（验证时只需要计算，不需要backward）
                         if loss_normalization_factor != 1.0:
                             loss = loss * loss_normalization_factor
 
-                        batch_size = batch_input.size(0)
+                        batch_size = batch_coeffs.size(0)
                         val_loss += loss.item() * batch_size
                         val_samples += batch_size
 
