@@ -455,20 +455,79 @@ class AETrainer:
         enforce_constraint = (hasattr(self.gui, 'ae_enforce_nonnegative_rcs') and
                             self.gui.ae_enforce_nonnegative_rcs.get())
 
+        # 定义逆标准化辅助函数（可微分 + 健壮性增强）
+        def inverse_normalize(tensor, adapter):
+            """
+            可微分逆标准化，支持zscore和minmax方法
+
+            防御性检查：
+            - 检查adapter是否有data_stats属性
+            - 检查data_stats是否包含必需的统计信息
+            - 处理None值情况
+            """
+            if adapter is None:
+                return tensor
+
+            # 获取统计信息
+            if not hasattr(adapter, 'data_stats') or not adapter.data_stats:
+                # 回退：尝试使用旧版mean_/std_属性（向后兼容）
+                if hasattr(adapter, 'mean_') and hasattr(adapter, 'std_'):
+                    mean = torch.FloatTensor(adapter.mean_).to(device)
+                    std = torch.FloatTensor(adapter.std_).to(device)
+                    return tensor * std + mean
+                return tensor
+
+            stats = adapter.data_stats
+            method = stats.get('method', 'zscore')
+
+            # Z-score逆标准化
+            if method == 'zscore':
+                if 'mean' in stats and 'std' in stats:
+                    mean = torch.FloatTensor(stats['mean']).to(device)
+                    std = torch.FloatTensor(stats['std']).to(device)
+                    return tensor * std + mean
+
+            # Min-Max逆标准化
+            elif method == 'minmax':
+                if 'min' in stats and 'range' in stats:
+                    d_min = torch.FloatTensor(stats['min']).to(device)
+                    d_range = torch.FloatTensor(stats['range']).to(device)
+                    return tensor * d_range + d_min
+
+            # 无标准化或缺少必要信息
+            return tensor
+
+        # 定义逆dB变换辅助函数（可微分）
+        def inverse_db(tensor, adapter):
+            """
+            可微分逆dB变换
+
+            公式：x_linear = sign(x_db) * 10^(abs(x_db)/10)
+            """
+            if adapter is None:
+                return tensor
+
+            # 检查是否需要逆dB变换
+            db_transform = False
+            if hasattr(adapter, 'data_stats') and adapter.data_stats:
+                db_transform = adapter.data_stats.get('db_transform', False)
+            elif hasattr(adapter, 'db_transform'):
+                db_transform = adapter.db_transform
+
+            if db_transform:
+                # 逆dB: x_linear = sign(x_db) * 10^(abs(x_db)/10)
+                return torch.sign(tensor) * torch.pow(10, torch.abs(tensor) / 10.0)
+
+            return tensor
+
         # 逆变换到RCS空间（⚠️ 必须保持可微分）
         if mode == 'wavelet':
             # Wavelet: 标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
             if data_adapter:
-                # ✅ 使用可微分的逆标准化（基于data_adapter的mean/std）
-                # 逆Z-score: x_orig = x_normalized * std + mean
-                mean = torch.FloatTensor(data_adapter.mean_).to(device)
-                std = torch.FloatTensor(data_adapter.std_).to(device)
-                coeffs_tensor = decoder_output * std + mean
-
-                # 如果有dB逆变换，也需要可微分实现
-                if data_adapter.db_transform:
-                    # 逆dB: x_linear = sign(x_db) * 10^(abs(x_db)/10)
-                    coeffs_tensor = torch.sign(coeffs_tensor) * torch.pow(10, torch.abs(coeffs_tensor) / 10.0)
+                # ✅ 使用可微分的逆标准化
+                coeffs_tensor = inverse_normalize(decoder_output, data_adapter)
+                # 如果有dB逆变换
+                coeffs_tensor = inverse_db(coeffs_tensor, data_adapter)
             else:
                 coeffs_tensor = decoder_output
 
@@ -483,13 +542,9 @@ class AETrainer:
             # Direct: 标准化RCS → 逆标准化 → RCS
             if data_adapter:
                 # ✅ 可微分逆标准化
-                mean = torch.FloatTensor(data_adapter.mean_).to(device)
-                std = torch.FloatTensor(data_adapter.std_).to(device)
-                rcs_output = decoder_output * std + mean
-
-                # 如果有dB逆变换
-                if data_adapter.db_transform:
-                    rcs_output = torch.sign(rcs_output) * torch.pow(10, torch.abs(rcs_output) / 10.0)
+                rcs_output = inverse_normalize(decoder_output, data_adapter)
+                # 逆dB变换
+                rcs_output = inverse_db(rcs_output, data_adapter)
             else:
                 rcs_output = decoder_output
 
@@ -1774,6 +1829,12 @@ class AETrainer:
                     f"ParamRecon={avg_train_param_recon:.6f}, "
                     f"LR={current_lr:.2e}"
                 )
+
+            # 检查用户停止请求
+            if getattr(self.gui, 'stop_training_flag', False) or getattr(self.gui.training_manager, 'stop_training_flag', False):
+                self.gui.ae_log(f"  ⏹️ 用户停止训练 (Epoch {epoch+1}/{epochs})")
+                self.gui.ae_log(f"     当前验证损失: {avg_val_loss:.6f}, 最佳: {best_val_loss:.6f}")
+                break
 
             # 早停（支持patience驱动的多阶段调度器）
             current_patience = patience

@@ -1022,7 +1022,7 @@ class AutoEncoderExtension:
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
             # 创建损失函数（使用Stage 1的配置）
-            criterion = self.main_gui._create_stage_loss_function(training_config, stage='stage1')
+            criterion = self.main_gui.training_manager.ae_trainer._create_stage_loss_function(training_config, stage='stage1')
 
             # 将模型移到设备
             autoencoder.to(device)
@@ -1153,9 +1153,10 @@ class AutoEncoderExtension:
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
         # 创建三个损失函数
-        criterion_recon = self.main_gui._create_joint_loss_function(training_config, 'recon_rcs')
-        criterion_consistency = self.main_gui._create_joint_loss_function(training_config, 'consistency')
-        criterion_param_recon = self.main_gui._create_joint_loss_function(training_config, 'param_recon')
+        ae_trainer = self.main_gui.training_manager.ae_trainer
+        criterion_recon = ae_trainer._create_joint_loss_function(training_config, 'recon_rcs')
+        criterion_consistency = ae_trainer._create_joint_loss_function(training_config, 'consistency')
+        criterion_param_recon = ae_trainer._create_joint_loss_function(training_config, 'param_recon')
 
         self.main_gui.ae_log(f"  L_recon_rcs: {type(criterion_recon).__name__}")
         self.main_gui.ae_log(f"  L_consistency: {type(criterion_consistency).__name__}")
