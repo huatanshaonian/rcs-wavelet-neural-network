@@ -25,8 +25,8 @@ from .dual_branch_differentiable_autoencoder_v2 import (
     DualBranchDifferentiableWaveletMLPAutoEncoderV2
 )
 from .additive_dual_branch_autoencoder import (
-    AdditiveDualBranchWaveletAutoEncoder,
-    AdditiveDualBranchDirectAutoEncoder
+    AdditiveDualBranchWaveletCNN,
+    AdditiveDualBranchDirectCNN
 )
 from .additive_dual_branch_mlp import (
     AdditiveDualBranchWaveletMLPAutoEncoder,
@@ -57,8 +57,8 @@ __all__ = [
     'DualBranchDifferentiableWaveletAutoEncoderV2',
     'DualBranchDifferentiableWaveletMLPAutoEncoderV2',
     # 叠加型双分支模式 (输出叠加：高频+低频)
-    'AdditiveDualBranchWaveletAutoEncoder',
-    'AdditiveDualBranchDirectAutoEncoder',
+    'AdditiveDualBranchWaveletCNN',
+    'AdditiveDualBranchDirectCNN',
     'AdditiveDualBranchWaveletMLPAutoEncoder',
     'AdditiveDualBranchDirectMLPAutoEncoder'
 ]

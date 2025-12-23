@@ -46,8 +46,8 @@ from models.dual_branch_differentiable_autoencoder_v2 import (
     DualBranchDifferentiableWaveletMLPAutoEncoderV2
 )
 from models.additive_dual_branch_autoencoder import (
-    AdditiveDualBranchWaveletAutoEncoder,
-    AdditiveDualBranchDirectAutoEncoder
+    AdditiveDualBranchWaveletCNN,
+    AdditiveDualBranchDirectCNN
 )
 from models.additive_dual_branch_mlp import (
     AdditiveDualBranchWaveletMLPAutoEncoder,
@@ -254,7 +254,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                             activation_smooth: str = None,
                             learnable_weights: bool = False,
                             alpha_high: float = 0.5,
-                            alpha_smooth: float = 0.5) -> Dict[str, Any]:
+                            alpha_smooth: float = 0.5,
+                            enforce_nonnegative_rcs: bool = False) -> Dict[str, Any]:
     """
     一键创建完整的AutoEncoder系统
 
@@ -287,6 +288,11 @@ def create_autoencoder_system(config_name: str = '2freq',
     arch_desc = architecture.upper()
     print(f"=== 创建{config_name}配置的AutoEncoder系统 ({mode_desc}模式, {arch_desc}架构) ===")
 
+    # 确定输出激活函数（物理约束）
+    output_activation = 'softplus' if enforce_nonnegative_rcs else None
+    if output_activation:
+        print(f"⚠️ 启用RCS非负物理约束 (output_activation={output_activation})")
+
     # 创建配置
     freq_config = FrequencyConfig(config_name)
 
@@ -307,7 +313,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_bands=freq_config.config['wavelet_bands'],
                 dropout_rate=dropout_rate,
                 input_size=wavelet_size,  # 自适应小波尺寸
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             print(f"使用 WaveletMLPAutoEncoder (激活函数: {activation})")
         elif architecture.lower() == 'enhanced_cnn':
@@ -319,7 +326,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 dropout_rate=dropout_rate,
                 input_size=wavelet_size,  # 自适应小波尺寸
                 use_channel_attention=use_channel_attention,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             attention_status = "启用输入层注意力" if use_channel_attention else "仅中间层注意力"
             print(f"使用 EnhancedWaveletAutoEncoder (增强感受野CNN, {attention_status}, 激活函数: {activation})")
@@ -333,7 +341,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 use_attention=True,
                 input_size=wavelet_size,  # 自适应小波尺寸
                 use_channel_attention=use_channel_attention,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             attention_status = "输入层+中间层双注意力" if use_channel_attention else "仅中间层注意力"
             print(f"使用 DeepWaveletAutoEncoder (深度CNN, {attention_status}, 激活函数: {activation})")
@@ -367,7 +376,7 @@ def create_autoencoder_system(config_name: str = '2freq',
             _activation_high = activation_high if activation_high else 'sin'
             _activation_smooth = activation_smooth if activation_smooth else 'tanh'
 
-            autoencoder = AdditiveDualBranchWaveletAutoEncoder(
+            autoencoder = AdditiveDualBranchWaveletCNN(
                 latent_dim=latent_dim,
                 num_frequencies=freq_config.config['num_frequencies'],
                 wavelet_bands=freq_config.config['wavelet_bands'],
@@ -378,10 +387,11 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation_smooth=_activation_smooth,
                 learnable_weights=learnable_weights,
                 alpha_high=alpha_high,
-                alpha_smooth=alpha_smooth
+                alpha_smooth=alpha_smooth,
+                output_activation=output_activation
             )
             weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
-            print(f"使用 AdditiveDualBranchWaveletAutoEncoder (叠加型双分支CNN, {weight_mode})")
+            print(f"使用 AdditiveDualBranchWaveletCNN (叠加型双分支CNN, {weight_mode})")
             print(f"  Encoder激活: {_activation_encoder}, 高频Decoder: {_activation_high}, 低频Decoder: {_activation_smooth}")
         elif architecture.lower() == 'additive_dual_branch_mlp':
             # 小波 + 叠加型双分支MLP
@@ -400,7 +410,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation_smooth=_activation_smooth,
                 learnable_weights=learnable_weights,
                 alpha_high=alpha_high,
-                alpha_smooth=alpha_smooth
+                alpha_smooth=alpha_smooth,
+                output_activation=output_activation
             )
             weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
             print(f"使用 AdditiveDualBranchWaveletMLPAutoEncoder (叠加型双分支MLP, {weight_mode})")
@@ -428,7 +439,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 latent_dim=latent_dim,
                 num_frequencies=freq_config.config['num_frequencies'],
                 dropout_rate=dropout_rate,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             print(f"使用 DirectMLPAutoEncoder (激活函数: {activation})")
         elif architecture.lower() == 'enhanced_cnn':
@@ -438,7 +450,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 dropout_rate=dropout_rate,
                 use_channel_attention=use_channel_attention,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             attention_status = "启用输入层注意力" if use_channel_attention else "仅中间层注意力"
             print(f"使用 EnhancedDirectAutoEncoder (增强感受野CNN, {attention_status}, 激活函数: {activation})")
@@ -451,7 +464,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 use_attention=True,
                 input_size=91,
                 use_channel_attention=use_channel_attention,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             attention_status = "输入层+中间层双注意力" if use_channel_attention else "仅中间层注意力"
             print(f"使用 DeepDirectAutoEncoder (深度CNN, {attention_status}, 激活函数: {activation})")
@@ -461,7 +475,7 @@ def create_autoencoder_system(config_name: str = '2freq',
             _activation_high = activation_high if activation_high else 'sin'
             _activation_smooth = activation_smooth if activation_smooth else 'tanh'
 
-            autoencoder = AdditiveDualBranchDirectAutoEncoder(
+            autoencoder = AdditiveDualBranchDirectCNN(
                 latent_dim=latent_dim,
                 num_frequencies=freq_config.config['num_frequencies'],
                 dropout_rate=dropout_rate,
@@ -471,10 +485,11 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation_smooth=_activation_smooth,
                 learnable_weights=learnable_weights,
                 alpha_high=alpha_high,
-                alpha_smooth=alpha_smooth
+                alpha_smooth=alpha_smooth,
+                output_activation=output_activation
             )
             weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
-            print(f"使用 AdditiveDualBranchDirectAutoEncoder (叠加型双分支CNN, {weight_mode})")
+            print(f"使用 AdditiveDualBranchDirectCNN (叠加型双分支CNN, {weight_mode})")
             print(f"  Encoder激活: {_activation_encoder}, 高频Decoder: {_activation_high}, 低频Decoder: {_activation_smooth}")
         elif architecture.lower() == 'additive_dual_branch_mlp':
             # 直接 + 叠加型双分支MLP
@@ -492,7 +507,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 activation_smooth=_activation_smooth,
                 learnable_weights=learnable_weights,
                 alpha_high=alpha_high,
-                alpha_smooth=alpha_smooth
+                alpha_smooth=alpha_smooth,
+                output_activation=output_activation
             )
             weight_mode = "可学习权重" if learnable_weights else f"固定权重(α={alpha_high},β={alpha_smooth})"
             print(f"使用 AdditiveDualBranchDirectMLPAutoEncoder (叠加型双分支MLP, {weight_mode})")
@@ -504,7 +520,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 num_frequencies=freq_config.config['num_frequencies'],
                 dropout_rate=dropout_rate,
                 use_channel_attention=use_channel_attention,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             attention_status = "启用输入层通道注意力" if use_channel_attention else "关闭输入层通道注意力"
             print(f"使用 DirectAutoEncoder (标准CNN, {attention_status}, 激活函数: {activation})")
@@ -541,7 +558,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_type=wavelet,
                 input_size=wavelet_size,
                 ll_ratio=0.7,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             print(f"使用 DualBranchDifferentiableWaveletAutoEncoderV2 (双分支CNN V2 + 可微分小波, 正确对称架构, 激活函数: {activation})")
         elif architecture.lower() == 'dual_branch_mlp':
@@ -553,7 +571,8 @@ def create_autoencoder_system(config_name: str = '2freq',
                 wavelet_type=wavelet,
                 input_size=wavelet_size,
                 ll_ratio=0.7,
-                activation=activation
+                activation=activation,
+                output_activation=output_activation
             )
             print(f"使用 DualBranchDifferentiableWaveletMLPAutoEncoderV2 (双分支MLP V2 + 可微分小波, 正确对称架构, 激活函数: {activation})")
         elif architecture.lower() in ('dual_branch_cnn_v1', 'dual_branch_v1'):
@@ -657,7 +676,8 @@ def create_autoencoder_system(config_name: str = '2freq',
         'normalize': normalize,
         'db_transform': db_transform,
         'normalization_method': normalization_method,
-        'use_channel_attention': use_channel_attention
+        'use_channel_attention': use_channel_attention,
+        'enforce_nonnegative_rcs': enforce_nonnegative_rcs
     })
 
     system = {

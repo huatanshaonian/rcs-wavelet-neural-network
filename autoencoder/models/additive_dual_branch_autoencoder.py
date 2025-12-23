@@ -29,11 +29,12 @@ import numpy as np
 
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
 from autoencoder.models.cnn_autoencoder import calculate_intermediate_dims
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 
-class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
+class AdditiveDualBranchWaveletCNN(BaseAutoEncoder):
     """
-    叠加型双分支小波AutoEncoder (Wavelet模式)
+    叠加型双分支小波CNN (Wavelet模式)
     """
 
     def __init__(self,
@@ -47,7 +48,8 @@ class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
                  activation_smooth: str = 'tanh',
                  learnable_weights: bool = False,
                  alpha_high: float = 0.5,
-                 alpha_smooth: float = 0.5):
+                 alpha_smooth: float = 0.5,
+                 output_activation: str = None):
         """
         初始化叠加型双分支AutoEncoder
 
@@ -63,8 +65,9 @@ class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
             learnable_weights: 是否学习叠加权重 (默认False - 固定权重)
             alpha_high: 高频分支权重 (learnable_weights=False时使用)
             alpha_smooth: 低频分支权重 (learnable_weights=False时使用)
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -280,6 +283,9 @@ class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
         # 转换回空间优先: [B, C, H, W] → [B, H, W, C]
         recon = recon.permute(0, 2, 3, 1)
 
+        # ✅ 应用输出激活（如果启用了物理约束）
+        recon = self.apply_output_activation(recon)
+
         return recon
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -332,7 +338,7 @@ class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
     def get_model_info(self) -> dict:
         """返回模型信息"""
         return {
-            'type': 'AdditiveDualBranchWaveletAutoEncoder',
+            'type': 'AdditiveDualBranchWaveletCNN',
             'latent_dim': self.latent_dim,
             'input_channels': self.input_channels,
             'input_size': self.input_size,
@@ -347,9 +353,9 @@ class AdditiveDualBranchWaveletAutoEncoder(nn.Module):
         }
 
 
-class AdditiveDualBranchDirectAutoEncoder(nn.Module):
+class AdditiveDualBranchDirectCNN(BaseAutoEncoder):
     """
-    叠加型双分支Direct AutoEncoder (Direct模式 - 无小波变换)
+    叠加型双分支Direct CNN (Direct模式 - 无小波变换)
     """
 
     def __init__(self,
@@ -362,7 +368,8 @@ class AdditiveDualBranchDirectAutoEncoder(nn.Module):
                  activation_smooth: str = 'tanh',
                  learnable_weights: bool = False,
                  alpha_high: float = 0.5,
-                 alpha_smooth: float = 0.5):
+                 alpha_smooth: float = 0.5,
+                 output_activation: str = None):
         """
         初始化Direct模式叠加型双分支AutoEncoder
 
@@ -377,8 +384,9 @@ class AdditiveDualBranchDirectAutoEncoder(nn.Module):
             learnable_weights: 是否学习叠加权重
             alpha_high: 高频分支权重
             alpha_smooth: 低频分支权重
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -570,6 +578,10 @@ class AdditiveDualBranchDirectAutoEncoder(nn.Module):
                              mode='bilinear', align_corners=False)
 
         recon = recon.permute(0, 2, 3, 1)  # [B, C, H, W] → [B, H, W, C]
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        recon = self.apply_output_activation(recon)
+
         return recon
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -613,7 +625,7 @@ class AdditiveDualBranchDirectAutoEncoder(nn.Module):
     def get_model_info(self) -> dict:
         """返回模型信息"""
         return {
-            'type': 'AdditiveDualBranchDirectAutoEncoder',
+            'type': 'AdditiveDualBranchDirectCNN',
             'latent_dim': self.latent_dim,
             'input_channels': self.input_channels,
             'input_size': self.input_size,
