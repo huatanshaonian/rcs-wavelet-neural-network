@@ -542,6 +542,10 @@ class AutoEncoderExtension:
         gradient_frame = ttk.Frame(gradient_group)
         gradient_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        # 梯度监控开关
+        ttk.Checkbutton(gradient_frame, text="启用实时梯度监控 (影响性能)",
+                       variable=self.main_gui.ae_gradient_monitoring).pack(anchor=tk.W, pady=(0, 5))
+
         # 梯度监控按钮
         ttk.Button(gradient_frame, text="📊 查看梯度历史曲线",
                   command=lambda: self.main_gui.visualization_manager._plot_gradient_history()).pack(fill=tk.X, pady=(0, 3))

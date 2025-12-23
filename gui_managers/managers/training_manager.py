@@ -208,6 +208,8 @@ class TrainingManager:
 
     def _on_ae_training_completed(self):
         self.gui.ae_log("✅ 训练流程全部完成!")
+        # 更新状态显示以反映最新的训练模式和结果
+        self.gui.update_ae_status()
         if not self.batch_experiment_mode:
             messagebox.showinfo("成功", "AutoEncoder训练完成!")
 
@@ -373,7 +375,8 @@ class TrainingManager:
                 'lr_scheduler': self.gui.ae_lr_scheduler.get(),
                 'min_lr': float(self.gui.ae_min_lr.get()),
                 'restart_period': int(self.gui.ae_restart_period.get()),
-                'use_custom_loss': self.gui.ae_use_custom_loss.get()
+                'use_custom_loss': self.gui.ae_use_custom_loss.get(),
+                'gradient_monitoring': self.gui.ae_gradient_monitoring.get()
             }
 
             config['epochs'] = {

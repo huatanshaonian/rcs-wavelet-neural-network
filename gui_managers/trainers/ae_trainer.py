@@ -444,6 +444,7 @@ class AETrainer:
             }
 
             self.gui.ae_log("🎉 联合训练完成!")
+            self.gui.status_var.set("AE联合训练完成")
 
             # 批量实验模式下不弹窗
             if not getattr(self.gui, 'batch_experiment_mode', False):
@@ -565,12 +566,17 @@ class AETrainer:
             }
 
             # 创建梯度监控器
-            gradient_monitor = GradientMonitor(
-                log_interval=10,           # 每10步记录一次
-                warn_threshold_high=10.0,  # 梯度范数>10警告
-                warn_threshold_low=1e-5    # 梯度范数<1e-5警告
-            )
-            self.gui.ae_log("梯度监控已启用 (阈值: 1e-5 < grad_norm < 10.0)")
+            use_gradient_monitoring = training_config.get('gradient_monitoring', True)
+            gradient_monitor = None
+            if use_gradient_monitoring:
+                gradient_monitor = GradientMonitor(
+                    log_interval=10,           # 每10步记录一次
+                    warn_threshold_high=10.0,  # 梯度范数>10警告
+                    warn_threshold_low=1e-5    # 梯度范数<1e-5警告
+                )
+                self.gui.ae_log("梯度监控已启用 (阈值: 1e-5 < grad_norm < 10.0)")
+            else:
+                self.gui.ae_log("梯度监控已禁用")
 
             # 梯度历史记录
             gradient_history = {
@@ -606,8 +612,8 @@ class AETrainer:
                         optimizer.zero_grad()
                         loss.backward()
 
-                        # 梯度监控（仅标准优化器）
-                        if batch_idx == 0 and (epoch + 1) % 10 == 0:
+                        # 梯度监控（仅标准优化器且启用时）
+                        if use_gradient_monitoring and gradient_monitor and batch_idx == 0 and (epoch + 1) % 10 == 0:
                             stats, status = gradient_monitor.check_gradients(autoencoder, step=epoch, verbose=False)
                             gradient_history['epochs'].append(epoch)
                             gradient_history['grad_norm'].append(stats['grad_norm'])

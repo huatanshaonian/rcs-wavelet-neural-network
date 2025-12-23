@@ -313,6 +313,9 @@ class RCSWaveletGUI:
         # 损失函数配置复用
         self.ae_use_custom_loss = tk.BooleanVar(value=False)  # 是否使用自定义损失函数
 
+        # 梯度监控配置 (新增)
+        self.ae_gradient_monitoring = tk.BooleanVar(value=False)  # 是否启用梯度监控 (默认关闭以提高性能)
+
     def setup_logging(self):
         """设置日志系统和输出重定向"""
         from datetime import datetime
@@ -663,7 +666,13 @@ class RCSWaveletGUI:
 
                 # 训练模式
                 training_mode = self.ae_system.get('training_mode', 'N/A')
-                mode_display = {'stage1_only': 'Stage1', 'three_stage': '3Stage'}.get(training_mode, training_mode)
+                mode_display = {
+                    'stage1_only': '仅Stage1', 
+                    'three_stage': '3阶段',
+                    'joint_training': '联合',
+                    'stage2_only': '仅Stage2',
+                    'end_to_end': '端到端'
+                }.get(training_mode, training_mode)
                 trained_status = "已训练" if self.ae_trained else "未训练"
 
                 # 第1行：网络架构（紧凑格式）
@@ -836,14 +845,25 @@ class RCSWaveletGUI:
             else:
                 params_str = f"{total_params}"
 
+            # 获取训练模式显示
+            training_mode = self.ae_system.get('training_mode', 'N/A')
+            mode_map = {
+                'stage1_only': '仅Stage1',
+                'three_stage': '3阶段',
+                'joint_training': '联合',
+                'stage2_only': '仅Stage2',
+                'end_to_end': '端到端'
+            }
+            mode_display = mode_map.get(training_mode, training_mode)
+
             # 构建状态栏信息
             status_text = (
                 f"网络: {mode.upper()}-{architecture.upper()} | "
+                f"模式: {mode_display} | "
                 f"激活: {activation} | "
                 f"隐空间: {latent_dim}D | "
                 f"频率: {num_freq}freq | "
                 f"小波: {wavelet} | "
-                f"Dropout: {dropout} | "
                 f"参数量: {params_str}"
             )
 
@@ -1443,7 +1463,8 @@ class RCSWaveletGUI:
                 training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
                 training_mode_display = {
                     'stage1_only': 'Stage 1 Only (仅重建)',
-                    'three_stage': '完整三阶段'
+                    'three_stage': '完整三阶段',
+                    'joint_training': '联合训练'
                 }.get(training_mode, training_mode)
 
                 # 重置会话时间戳（加载模型算作新会话）
