@@ -1,207 +1,297 @@
 # AutoEncoder模型清单
 
-## 📋 正在使用的模型（6个核心网络）
+> **最后更新**: 2025-12-23
+> **维护者**: Claude Code
 
-### 1. 标准CNN系列
+## 📋 模型架构体系
 
-#### WaveletAutoEncoder (cnn_autoencoder.py)
-- **命名规范**: ✅ 符合
-- **模式**: Wavelet模式（小波增强）
+### 1. 基础架构（8个核心模型）
+
+#### 1.1 标准CNN系列
+
+**WaveletAutoEncoder** (`cnn_autoencoder.py`)
+- **模式**: Wavelet（小波增强）
 - **架构**: 标准CNN（4层encoder + 4层decoder）
 - **输入**: [B, 49, 49, 8] 小波系数（2freq×4bands）
-- **隐空间**: 256维（默认）
+- **隐空间**: 256维（默认，可配置）
 - **调用方式**: `create_autoencoder_system(mode='wavelet', architecture='cnn')`
-- **用途**: 标准的小波增强CNN，平衡性能和速度
+- **用途**: 标准的小波增强CNN，平衡性能和速度（推荐默认）
+- **参数量**: ~1.5M
 
-#### DirectAutoEncoder (direct_autoencoder.py)
-- **命名规范**: ✅ 符合
-- **模式**: Direct模式（直接处理）
+**DirectAutoEncoder** (`direct_autoencoder.py`)
+- **模式**: Direct（直接处理）
 - **架构**: 标准CNN（4层encoder + 4层decoder）
 - **输入**: [B, 91, 91, 2] RCS数据（不经小波变换）
-- **隐空间**: 256维（默认）
+- **隐空间**: 256维（默认，可配置）
 - **调用方式**: `create_autoencoder_system(mode='direct', architecture='cnn')`
 - **用途**: 直接处理RCS数据，无小波变换开销
+- **参数量**: ~2.5M
 
-### 2. MLP系列
+#### 1.2 MLP系列
 
-#### WaveletMLPAutoEncoder (mlp_autoencoder.py)
-- **命名规范**: ✅ 符合
-- **模式**: Wavelet模式
+**WaveletMLPAutoEncoder** (`mlp_autoencoder.py`)
+- **模式**: Wavelet
 - **架构**: 深层MLP（5层encoder + 5层decoder）
-- **输入**: [B, 49, 49, 8] 小波系数
-- **隐空间**: 256维（默认）
+- **输入**: [B, 49, 49, 8] 小波系数（展平为向量）
+- **隐空间**: 256维（默认，可配置）
 - **调用方式**: `create_autoencoder_system(mode='wavelet', architecture='mlp')`
 - **用途**: 全连接架构，适合参数敏感性分析
+- **参数量**: ~3M
 
-#### DirectMLPAutoEncoder (mlp_autoencoder.py)
-- **命名规范**: ✅ 符合
-- **模式**: Direct模式
+**DirectMLPAutoEncoder** (`mlp_autoencoder.py`)
+- **模式**: Direct
 - **架构**: 深层MLP（5层encoder + 5层decoder）
-- **输入**: [B, 91, 91, 2] RCS数据
-- **隐空间**: 256维（默认）
+- **输入**: [B, 91, 91, 2] RCS数据（展平为向量）
+- **隐空间**: 256维（默认，可配置）
 - **调用方式**: `create_autoencoder_system(mode='direct', architecture='mlp')`
 - **用途**: 直接MLP处理，无空间偏好
+- **参数量**: ~5M
 
-### 3. 增强CNN系列
+#### 1.3 Enhanced CNN系列
 
-#### EnhancedWaveletAutoEncoder (enhanced_cnn_autoencoder.py)
-- **命名规范**: ✅ 符合
-- **模式**: Wavelet模式
-- **架构**: 增强感受野CNN（多尺度卷积 + 更大感受野）
+**EnhancedWaveletAutoEncoder** (`enhanced_cnn_autoencoder.py`)
+- **模式**: Wavelet
+- **架构**: 增强感受野CNN（多尺度卷积 + 空洞残差 + 通道注意力）
 - **输入**: [B, 49, 49, 8] 小波系数
-- **隐空间**: 256维（默认）
+- **隐空间**: 256维（默认，可配置）
 - **调用方式**: `create_autoencoder_system(mode='wavelet', architecture='enhanced_cnn')`
 - **用途**: 更好的全局特征捕捉，适合复杂模式
+- **参数量**: ~11M
 
-#### EnhancedDirectAutoEncoder (enhanced_cnn_autoencoder.py)
-- **命名规范**: ✅ 符合
-- **模式**: Direct模式
+**EnhancedDirectAutoEncoder** (`enhanced_cnn_autoencoder.py`)
+- **模式**: Direct
 - **架构**: 增强感受野CNN
 - **输入**: [B, 91, 91, 2] RCS数据
-- **隐空间**: 256维（默认）
+- **隐空间**: 256维（默认，可配置）
 - **调用方式**: `create_autoencoder_system(mode='direct', architecture='enhanced_cnn')`
 - **用途**: 直接处理 + 增强感受野
+- **参数量**: ~25M
+
+#### 1.4 Deep CNN系列
+
+**DeepWaveletAutoEncoder** (`deep_autoencoder.py`)
+- **模式**: Wavelet
+- **架构**: 深度CNN（4层深度卷积 + 双卷积块 + 通道注意力）
+- **输入**: [B, 49, 49, 8] 小波系数
+- **隐空间**: 256维（默认，可配置）
+- **调用方式**: `create_autoencoder_system(mode='wavelet', architecture='deep_cnn')`
+- **用途**: Wavelet模式最强表达力，复杂模式学习
+- **参数量**: ~29M
+
+**DeepDirectAutoEncoder** (`deep_autoencoder.py`)
+- **模式**: Direct
+- **架构**: 深度CNN（4层深度卷积 + 双卷积块 + 通道注意力）
+- **输入**: [B, 91, 91, 2] RCS数据
+- **隐空间**: 256维（默认，可配置）
+- **调用方式**: `create_autoencoder_system(mode='direct', architecture='deep_cnn')`
+- **用途**: Direct模式最强表达力，计算密集
+- **参数量**: ~79M
 
 ---
 
-## 🧪 实验性/废弃模型（4个，未使用）
+### 2. 可微分小波模式（Differentiable Wavelet）
 
-### CorrectCNNAutoEncoder (correct_cnn_autoencoder.py)
-- **状态**: ⚠️ 废弃（早期版本）
-- **问题**: 输入尺寸假设错误（46×46 vs 实际49×49）
-- **原因**: 早期对小波变换尺寸的错误理解
-- **是否调用**: ❌ 否（未在__init__.py中导出）
-- **建议**: 删除或移至archive/
+**核心特点**: 小波变换集成为nn.Module，损失在RCS空间计算，梯度可微分回传
 
-### DeepCNNAutoEncoder (deep_cnn_autoencoder.py)
-- **状态**: ⚠️ 实验性
-- **特点**: 5层深度CNN，对比MLP vs CNN性能
-- **是否调用**: ❌ 否
-- **建议**: 如需使用，需重命名为 DeepWaveletAutoEncoder 并添加Direct版本
+**DifferentiableWaveletAutoEncoder** (`differentiable_wavelet_autoencoder.py`)
+- **模式**: Differentiable Wavelet
+- **架构**: CNN
+- **调用方式**: `create_autoencoder_system(mode='differentiable_wavelet', architecture='cnn')`
+- **优势**: 端到端训练，适合物理约束（如RCS非负）的直接应用
+- **参数量**: ~1.5M
 
-### EfficientCNNAutoEncoder (efficient_cnn_autoencoder.py)
-- **状态**: ⚠️ 实验性
-- **特点**: 轻量3层CNN，针对49×49优化
-- **是否调用**: ❌ 否
-- **建议**: 重命名为 LightweightWaveletAutoEncoder
-
-### MicroLatentAutoEncoder (micro_latent_autoencoder.py)
-- **状态**: ⚠️ 实验性
-- **特点**: 支持极小隐空间（10-64维）
-- **是否调用**: ❌ 否
-- **建议**: 重命名为 MicroLatentWaveletAutoEncoder
+**DifferentiableWaveletMLPAutoEncoder** (`differentiable_wavelet_autoencoder.py`)
+- **模式**: Differentiable Wavelet
+- **架构**: MLP
+- **调用方式**: `create_autoencoder_system(mode='differentiable_wavelet', architecture='mlp')`
+- **参数量**: ~3M
 
 ---
 
-## 📌 辅助模块
+### 3. 双分支架构（Dual-Branch）
 
-### ParameterMapper (cnn_autoencoder.py + parameter_mapper.py)
-- **作用**: 9维参数 → 隐空间映射
-- **位置**: 两处定义（重复）
-- **调用**: ParameterMapperFactory.create_mapper()
-- **建议**: 统一使用 parameter_mapper.py 中的版本
+#### 3.1 分离型双分支（V2推荐）
+
+**用途**: 分别处理LL通道（90%+能量）和HF通道（<10%能量）
+
+**DualBranchDifferentiableWaveletAutoEncoderV2** (`dual_branch_differentiable_autoencoder_v2.py`)
+- **架构**: 双分支CNN V2
+- **调用方式**: `create_autoencoder_system(mode='differentiable_wavelet', architecture='dual_branch_cnn')`
+- **特点**: 正确对称架构，ll_decoder + hf_decoder
+- **状态**: ✅ 推荐使用
+- **参数量**: ~2.2M
+
+**DualBranchDifferentiableWaveletMLPAutoEncoderV2** (`dual_branch_differentiable_autoencoder_v2.py`)
+- **架构**: 双分支MLP V2
+- **调用方式**: `create_autoencoder_system(mode='differentiable_wavelet', architecture='dual_branch_mlp')`
+- **特点**: 正确对称架构
+- **状态**: ✅ 推荐使用
+- **参数量**: ~20.2M
+
+**DualBranchDifferentiableWaveletAutoEncoder** (`dual_branch_differentiable_autoencoder.py`)
+- **架构**: 双分支CNN V1
+- **调用方式**: `create_autoencoder_system(mode='differentiable_wavelet', architecture='dual_branch_cnn_v1')`
+- **状态**: ⚠️ 旧版（架构缺陷，仅向后兼容）
+
+**DualBranchDifferentiableWaveletMLPAutoEncoder** (`dual_branch_differentiable_autoencoder.py`)
+- **架构**: 双分支MLP V1
+- **调用方式**: `create_autoencoder_system(mode='differentiable_wavelet', architecture='dual_branch_mlp_v1')`
+- **状态**: ⚠️ 旧版（架构缺陷，仅向后兼容）
+
+#### 3.2 叠加型双分支（Additive Dual-Branch，新架构⭐）
+
+**核心思想**: 双Decoder分别学习高频和低频特征，输出加权叠加
+
+**AdditiveDualBranchWaveletAutoEncoder** (`additive_dual_branch_autoencoder.py`)
+- **模式**: Wavelet
+- **架构**: Additive Dual-Branch CNN
+- **调用方式**: `create_autoencoder_system(mode='wavelet', architecture='additive_dual_branch_cnn')`
+- **优势**: Sin激活学习高频，Tanh/Swish学习低频，输出叠加兼顾两者
+- **可配置参数**:
+  - `activation_encoder`: Encoder激活函数（默认'relu'）
+  - `activation_high`: 高频分支激活函数（默认'sin'）
+  - `activation_smooth`: 低频分支激活函数（默认'tanh'）
+  - `learnable_weights`: 是否学习权重（默认False）
+  - `alpha_high`, `alpha_smooth`: 固定权重（默认0.5）
+
+**AdditiveDualBranchWaveletMLPAutoEncoder** (`additive_dual_branch_mlp.py`)
+- **模式**: Wavelet
+- **架构**: Additive Dual-Branch MLP
+- **调用方式**: `create_autoencoder_system(mode='wavelet', architecture='additive_dual_branch_mlp')`
+
+**AdditiveDualBranchDirectAutoEncoder** (`additive_dual_branch_autoencoder.py`)
+- **模式**: Direct
+- **架构**: Additive Dual-Branch CNN
+- **调用方式**: `create_autoencoder_system(mode='direct', architecture='additive_dual_branch_cnn')`
+
+**AdditiveDualBranchDirectMLPAutoEncoder** (`additive_dual_branch_mlp.py`)
+- **模式**: Direct
+- **架构**: Additive Dual-Branch MLP
+- **调用方式**: `create_autoencoder_system(mode='direct', architecture='additive_dual_branch_mlp')`
 
 ---
 
-## 🎯 命名规范建议
+### 4. 辅助模块
 
-### 当前规范（正在使用的6个）
-```
-<Mode><Architecture>AutoEncoder
+**BaseAutoEncoder** (`base_autoencoder.py`)
+- **类型**: 抽象基类
+- **作用**: 提供统一的接口和共享方法
+- **方法**: `get_parameter_count()`, `get_model_info()`, `_apply_output_activation()`
 
-Mode:
-- Wavelet: 小波增强模式
-- Direct: 直接处理模式
+**ChannelAttention** (`channel_attention.py`)
+- **类型**: 模块
+- **作用**: 通道注意力机制，可选集成到输入层
+- **使用**: `use_channel_attention=True`
 
-Architecture:
-- (空): 标准CNN
-- MLP: 全连接网络
-- Enhanced: 增强感受野CNN
-```
+**ParameterMapper系列** (`parameter_mapper.py`)
+- `MLPMapper`: 标准MLP映射器（默认）
+- `RandomForestMapper`: 随机森林映射器（实验性）
+- `ParameterMapperFactory`: 工厂类
 
-### 示例
-- ✅ WaveletAutoEncoder
-- ✅ DirectAutoEncoder
-- ✅ WaveletMLPAutoEncoder
-- ✅ DirectMLPAutoEncoder
-- ✅ EnhancedWaveletAutoEncoder
-- ✅ EnhancedDirectAutoEncoder
-- ✅ SinWaveletAutoEncoder
-- ✅ SinDirectAutoEncoder
-- ✅ SinWaveletMLPAutoEncoder
-- ✅ SinDirectMLPAutoEncoder
+---
 
-### 不规范的命名（实验性模型）
-- ❌ CorrectCNNAutoEncoder → 应为 WaveletAutoEncoder (已被替代)
-- ❌ DeepCNNAutoEncoder → 应为 DeepWaveletAutoEncoder + DeepDirectAutoEncoder
-- ❌ EfficientCNNAutoEncoder → 应为 LightweightWaveletAutoEncoder + LightweightDirectAutoEncoder
-- ❌ MicroLatentAutoEncoder → 应为 MicroLatentWaveletAutoEncoder + MicroLatentDirectAutoEncoder
+## 📊 架构对比
+
+| 架构类型 | Wavelet模式 | Direct模式 | 参数量 | 适用场景 |
+|---------|------------|-----------|--------|----------|
+| **标准CNN** | WaveletAutoEncoder | DirectAutoEncoder | 小 | 通用，平衡性能（推荐） |
+| **MLP** | WaveletMLPAutoEncoder | DirectMLPAutoEncoder | 中 | 参数敏感性分析 |
+| **Enhanced CNN** | EnhancedWaveletAutoEncoder | EnhancedDirectAutoEncoder | 大 | 复杂模式，大感受野 |
+| **Deep CNN** | DeepWaveletAutoEncoder | DeepDirectAutoEncoder | 极大 | 最强表达力，计算密集 |
+| **Dual-Branch V2** | - | - | 中 | LL/HF分离处理（仅Diff Wavelet） |
+| **Additive Dual-Branch** | AdditiveDualBranchWaveletAutoEncoder | AdditiveDualBranchDirectAutoEncoder | 中 | 高频+低频叠加重建 |
+
+---
+
+## 🎯 选择指南
+
+### 按性能需求
+
+- **快速原型**: 标准CNN（WaveletAutoEncoder/DirectAutoEncoder）
+- **最佳性能**: Deep CNN（DeepWaveletAutoEncoder/DeepDirectAutoEncoder）
+- **平衡选择**: Enhanced CNN（EnhancedWaveletAutoEncoder/EnhancedDirectAutoEncoder）
+
+### 按特征类型
+
+- **全局特征**: MLP系列
+- **局部特征**: CNN系列
+- **多尺度特征**: Enhanced CNN系列
+- **高频+低频**: Additive Dual-Branch系列
+
+### 按模式选择
+
+- **小波增强**: Wavelet模式（所有架构）
+- **直接处理**: Direct模式（所有架构）
+- **端到端训练**: Differentiable Wavelet模式
+- **物理约束**: Differentiable Wavelet + RCS非负约束
 
 ---
 
 ## 🔄 调用流程
 
 ```python
-# GUI创建系统时
 from autoencoder.utils.frequency_config import create_autoencoder_system
 
-# 自动根据mode和architecture选择正确的网络
+# 基础架构
 system = create_autoencoder_system(
     config_name='2freq',
-    mode='wavelet',        # 'wavelet' 或 'direct'
-    architecture='cnn',    # 'cnn', 'mlp', 'enhanced_cnn', 'sine_cnn', 或 'sine_mlp'
-    latent_dim=256
+    mode='wavelet',        # 'wavelet', 'direct', 'differentiable_wavelet'
+    architecture='cnn',    # 'cnn', 'mlp', 'enhanced_cnn', 'deep_cnn'
+    latent_dim=256,
+    activation='relu'      # 'relu', 'sin', 'gelu', 'swish', 'tanh', 'mish'
 )
 
-# frequency_config.py 内部逻辑:
-if mode == 'wavelet':
-    if architecture == 'mlp':
-        autoencoder = WaveletMLPAutoEncoder(...)
-    elif architecture in ('sine_cnn', 'sine'):
-        autoencoder = SinWaveletAutoEncoder(...)
-    elif architecture in ('sine_mlp', 'sine-mlp'):
-        autoencoder = SinWaveletMLPAutoEncoder(...)
-    elif architecture == 'enhanced_cnn':
-        autoencoder = EnhancedWaveletAutoEncoder(...)
-    else:  # 'cnn'
-        autoencoder = WaveletAutoEncoder(...)
-else:  # mode == 'direct'
-    if architecture == 'mlp':
-        autoencoder = DirectMLPAutoEncoder(...)
-    elif architecture in ('sine_cnn', 'sine'):
-        autoencoder = SinDirectAutoEncoder(...)
-    elif architecture in ('sine_mlp', 'sine-mlp'):
-        autoencoder = SinDirectMLPAutoEncoder(...)
-    elif architecture == 'enhanced_cnn':
-        autoencoder = EnhancedDirectAutoEncoder(...)
-    else:  # 'cnn'
-        autoencoder = DirectAutoEncoder(...)
+# 双分支架构
+system = create_autoencoder_system(
+    config_name='2freq',
+    mode='differentiable_wavelet',
+    architecture='dual_branch_mlp',  # 或 'dual_branch_cnn'
+    latent_dim=32
+)
+
+# 叠加型双分支
+system = create_autoencoder_system(
+    config_name='2freq',
+    mode='wavelet',
+    architecture='additive_dual_branch_cnn',
+    latent_dim=256,
+    activation_encoder='relu',
+    activation_high='sin',
+    activation_smooth='tanh',
+    learnable_weights=False,
+    alpha_high=0.5,
+    alpha_smooth=0.5
+)
 ```
 
 ---
 
-## 📊 模型对比
+## 📈 性能参考
 
-| 模型 | 参数量 | 感受野 | 速度 | 适用场景 |
-|------|--------|--------|------|---------|
-| WaveletAutoEncoder | 适中 | 标准 | 快 | 通用，平衡性能 |
-| DirectAutoEncoder | 较大 | 标准 | 中等 | 无小波开销 |
-| WaveletMLPAutoEncoder | 大 | 全局 | 慢 | 参数分析 |
-| DirectMLPAutoEncoder | 极大 | 全局 | 很慢 | 实验性 |
-| EnhancedWaveletAutoEncoder | 大 | 大 | 中等 | 复杂模式 |
-| EnhancedDirectAutoEncoder | 极大 | 大 | 慢 | 最强表达力 |
-
----
-
-## ✅ 建议操作
-
-1. **保持当前6个核心网络不变**
-2. **将4个实验性网络移至 `autoencoder/models/experimental/` 文件夹**
-3. **如需使用实验性网络，重命名并创建对应的Direct版本**
-4. **统一ParameterMapper到 parameter_mapper.py**
-5. **更新文档说明每个网络的用途和性能特点**
+| 模型 | 训练速度 | 推理速度 | 参数量 | 重建精度 |
+|------|---------|---------|--------|---------|
+| WaveletAutoEncoder | ★★★★☆ | ★★★★★ | ~1.5M | ★★★☆☆ |
+| DirectAutoEncoder | ★★★☆☆ | ★★★★☆ | ~2.5M | ★★★☆☆ |
+| EnhancedWaveletAutoEncoder | ★★★☆☆ | ★★★☆☆ | ~11M | ★★★★☆ |
+| DeepWaveletAutoEncoder | ★★☆☆☆ | ★★☆☆☆ | ~29M | ★★★★★ |
+| AdditiveDualBranchWaveletAutoEncoder | ★★★☆☆ | ★★★☆☆ | ~3M | ★★★★☆ |
 
 ---
 
-生成时间: 2025-01-14
+## ✅ 最佳实践
+
+1. **初次使用**: 从标准CNN开始（`WaveletAutoEncoder`）
+2. **需要更好性能**: 尝试Enhanced CNN或Deep CNN
+3. **特殊需求**:
+   - 高频细节：Additive Dual-Branch + Sin激活
+   - LL/HF分离：Dual-Branch V2
+   - 物理约束：Differentiable Wavelet模式
+4. **参数调优**:
+   - latent_dim: 32-256（越大越精确，但越慢）
+   - dropout_rate: 0.2-0.3（防止过拟合）
+   - activation: relu（稳定）, sin（高频）, gelu（平滑）
+
+---
+
+生成时间: 2025-12-23
 维护者: Claude Code

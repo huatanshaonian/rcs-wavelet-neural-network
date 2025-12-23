@@ -1,6 +1,6 @@
 # Claude项目上下文文档
 
-> **最后更新**: 2025-01-18
+> **最后更新**: 2025-12-23
 > **项目**: RCS预测AutoEncoder系统
 > **核心技术**: PyTorch + 小波变换 + AutoEncoder
 
@@ -16,20 +16,22 @@
 
 ## 📋 核心架构
 
-### 1. AutoEncoder网络（8个核心网络）
+### 1. AutoEncoder网络架构体系
 
 **命名规范**: `<Mode><Architecture>AutoEncoder`
 
-| 模式 (Mode) | 架构 (Architecture) | 类名 | 文件 |
-|------------|---------------------|------|------|
-| Wavelet | 标准CNN (默认) | `WaveletAutoEncoder` | `cnn_autoencoder.py` |
-| Wavelet | MLP | `WaveletMLPAutoEncoder` | `mlp_autoencoder.py` |
-| Wavelet | Enhanced CNN | `EnhancedWaveletAutoEncoder` | `enhanced_cnn_autoencoder.py` |
-| Wavelet | Deep CNN | `DeepWaveletAutoEncoder` | `deep_autoencoder.py` |
-| Direct | 标准CNN (默认) | `DirectAutoEncoder` | `direct_autoencoder.py` |
-| Direct | MLP | `DirectMLPAutoEncoder` | `mlp_autoencoder.py` |
-| Direct | Enhanced CNN | `EnhancedDirectAutoEncoder` | `enhanced_cnn_autoencoder.py` |
-| Direct | Deep CNN | `DeepDirectAutoEncoder` | `deep_autoencoder.py` |
+#### 1.1 基础架构（Wavelet/Direct双模式）
+
+| 模式 (Mode) | 架构 (Architecture) | 类名 | 文件 | GUI选项 |
+|------------|---------------------|------|------|---------|
+| Wavelet | 标准CNN (默认) | `WaveletAutoEncoder` | `cnn_autoencoder.py` | `cnn` |
+| Wavelet | MLP | `WaveletMLPAutoEncoder` | `mlp_autoencoder.py` | `mlp` |
+| Wavelet | Enhanced CNN | `EnhancedWaveletAutoEncoder` | `enhanced_cnn_autoencoder.py` | `enhanced_cnn` |
+| Wavelet | Deep CNN | `DeepWaveletAutoEncoder` | `deep_autoencoder.py` | `deep_cnn` |
+| Direct | 标准CNN (默认) | `DirectAutoEncoder` | `direct_autoencoder.py` | `cnn` |
+| Direct | MLP | `DirectMLPAutoEncoder` | `mlp_autoencoder.py` | `mlp` |
+| Direct | Enhanced CNN | `EnhancedDirectAutoEncoder` | `enhanced_cnn_autoencoder.py` | `enhanced_cnn` |
+| Direct | Deep CNN | `DeepDirectAutoEncoder` | `deep_autoencoder.py` | `deep_cnn` |
 
 **模式说明**:
 - **Wavelet模式**: RCS → 小波变换 → [49×49×8] 小波系数 → AutoEncoder
@@ -41,21 +43,29 @@
 - **Enhanced CNN**: 多尺度卷积 + 空洞残差 + 通道注意力，更大感受野
 - **Deep CNN**: 4层深度卷积 + 双卷积块 + 通道注意力，最强表达力
 
-**特殊模式**:
-- **Differentiable Wavelet**: 小波变换集成为nn.Module，损失在RCS空间计算，梯度可微分回传
-  - 支持端到端训练，无需单独的小波/逆小波步骤
-  - 支持双分支架构（LL分支 + HF分支）
+#### 1.2 可微分小波模式（Differentiable Wavelet）
 
-### 1.1. Dual-Branch Differentiable AutoEncoder (V2 推荐)
+**核心特点**: 小波变换集成为nn.Module，损失在RCS空间计算，梯度可微分回传
+- ✅ 端到端训练，无需单独的小波/逆小波步骤
+- ✅ 适合物理约束（如RCS非负）的直接应用
 
-**用途**: LL通道（90%+能量）和HF通道（<10%能量）分离处理
+| 架构 | 类名 | 文件 | GUI选项 |
+|------|------|------|---------|
+| 可微分CNN | `DifferentiableWaveletAutoEncoder` | `differentiable_wavelet_autoencoder.py` | `cnn` (mode=differentiable_wavelet) |
+| 可微分MLP | `DifferentiableWaveletMLPAutoEncoder` | `differentiable_wavelet_autoencoder.py` | `mlp` (mode=differentiable_wavelet) |
 
-| 架构 | 类名 | 文件 | 说明 |
-|------|------|------|------|
-| Dual-Branch CNN V2 | `DualBranchDifferentiableWaveletAutoEncoderV2` | `dual_branch_differentiable_autoencoder_v2.py` | **✅ 推荐**：正确对称架构 |
-| Dual-Branch MLP V2 | `DualBranchDifferentiableWaveletMLPAutoEncoderV2` | `dual_branch_differentiable_autoencoder_v2.py` | **✅ 推荐**：正确对称架构 |
-| Dual-Branch CNN V1 | `DualBranchDifferentiableWaveletAutoEncoder` | `dual_branch_differentiable_autoencoder.py` | ⚠️ 旧版（架构缺陷，仅向后兼容） |
-| Dual-Branch MLP V1 | `DualBranchDifferentiableWaveletMLPAutoEncoder` | `dual_branch_differentiable_autoencoder.py` | ⚠️ 旧版（架构缺陷，仅向后兼容） |
+#### 1.3 双分支架构（Dual-Branch）
+
+**用途**: 分别处理LL通道（90%+能量）和HF通道（<10%能量），实现更精细的特征解耦
+
+##### 1.3.1 分离型双分支（Differentiable Wavelet模式，V2推荐）
+
+| 架构 | 类名 | 文件 | GUI选项 | 说明 |
+|------|------|------|---------|------|
+| Dual-Branch CNN V2 | `DualBranchDifferentiableWaveletAutoEncoderV2` | `dual_branch_differentiable_autoencoder_v2.py` | `dual_branch_cnn` | **✅ 推荐**：正确对称架构 |
+| Dual-Branch MLP V2 | `DualBranchDifferentiableWaveletMLPAutoEncoderV2` | `dual_branch_differentiable_autoencoder_v2.py` | `dual_branch_mlp` | **✅ 推荐**：正确对称架构 |
+| Dual-Branch CNN V1 | `DualBranchDifferentiableWaveletAutoEncoder` | `dual_branch_differentiable_autoencoder.py` | `dual_branch_cnn_v1` | ⚠️ 旧版（架构缺陷，仅向后兼容） |
+| Dual-Branch MLP V1 | `DualBranchDifferentiableWaveletMLPAutoEncoder` | `dual_branch_differentiable_autoencoder.py` | `dual_branch_mlp_v1` | ⚠️ 旧版（架构缺陷，仅向后兼容） |
 
 **V2 vs V1 关键区别**:
 - ✅ V2: Decoder也是双分支（ll_decoder + hf_decoder），架构对称
@@ -72,13 +82,61 @@ from autoencoder.utils.frequency_config import create_autoencoder_system
 system = create_autoencoder_system(
     config_name='2freq',
     mode='differentiable_wavelet',
-    architecture='dual_branch_mlp_v2',  # ← V2后缀
+    architecture='dual_branch_mlp',  # V2为默认
     latent_dim=32,
     activation='sin'
 )
 
 # ll_ratio控制LL/HF隐空间分配
 # latent_dim=32, ll_ratio=0.7 → ll_latent=22, hf_latent=10
+```
+
+##### 1.3.2 叠加型双分支（Additive Dual-Branch，新架构⭐）
+
+**核心思想**: 双Decoder分别学习高频和低频特征，输出加权叠加
+
+```
+输入 → Encoder → Latent
+                    ↓
+        ┌───────────┴───────────┐
+        ↓                       ↓
+Decoder_HighFreq          Decoder_Smooth
+(Sin激活)                 (Tanh/Swish激活)
+        ↓                       ↓
+  高频特征重建             低频趋势重建
+        └───────────┬───────────┘
+                    ↓
+          输出 = α·高频 + β·低频
+```
+
+| 模式 | 架构 | 类名 | 文件 | GUI选项 |
+|------|------|------|------|---------|
+| Wavelet | Additive CNN | `AdditiveDualBranchWaveletAutoEncoder` | `additive_dual_branch_autoencoder.py` | `additive_dual_branch_cnn` |
+| Wavelet | Additive MLP | `AdditiveDualBranchWaveletMLPAutoEncoder` | `additive_dual_branch_mlp.py` | `additive_dual_branch_mlp` |
+| Direct | Additive CNN | `AdditiveDualBranchDirectAutoEncoder` | `additive_dual_branch_autoencoder.py` | `additive_dual_branch_cnn` |
+| Direct | Additive MLP | `AdditiveDualBranchDirectMLPAutoEncoder` | `additive_dual_branch_mlp.py` | `additive_dual_branch_mlp` |
+
+**优势**:
+- ✅ **Sin激活**：学习高频振荡、细节特征
+- ✅ **Smooth激活**（Tanh/Swish）：学习低频趋势、整体统计特性
+- ✅ **输出叠加**：兼顾高频和低频，提升重建质量
+- ✅ **可学习权重**：支持固定权重或可学习权重（`learnable_weights=True`）
+
+**使用示例**:
+```python
+# 创建叠加型双分支CNN
+system = create_autoencoder_system(
+    config_name='2freq',
+    mode='wavelet',
+    architecture='additive_dual_branch_cnn',
+    latent_dim=256,
+    activation_encoder='relu',     # Encoder激活
+    activation_high='sin',          # 高频分支激活
+    activation_smooth='tanh',       # 低频分支激活
+    learnable_weights=False,        # 是否学习权重
+    alpha_high=0.5,                 # 高频权重（固定）
+    alpha_smooth=0.5                # 低频权重（固定）
+)
 ```
 
 ### 2. 频率配置
