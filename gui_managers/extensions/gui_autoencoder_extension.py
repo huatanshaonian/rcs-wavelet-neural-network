@@ -48,6 +48,9 @@ class AutoEncoderExtension:
         # 向后兼容：保留 ae_normalize 变量（从 normalization_method 派生）
         self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
 
+        # RCS物理约束：强制非负
+        self.main_gui.ae_enforce_nonnegative_rcs = tk.BooleanVar(value=False)  # 默认关闭RCS非负约束
+
         # 通道注意力设置
         self.main_gui.ae_use_channel_attention = tk.BooleanVar(value=False)  # 默认关闭通道注意力
 
@@ -154,7 +157,7 @@ class AutoEncoderExtension:
         # 第二行：架构类型
         # CNN: 标准4层卷积，平衡速度与性能 | Enhanced_CNN: 多尺度+注意力，大感受野 | Deep_CNN: 双卷积块，最强表达 | MLP: 全连接，参数敏感性分析
         # Dual_Branch_CNN: 双分支CNN V2，正确对称架构（推荐） | Dual_Branch_MLP: 双分支MLP V2，正确对称架构（推荐）
-        # Additive_Dual_Branch: 叠加式双分支，高频/低频分离
+        # Additive_Dual_Branch: 叠加式双分支CNN，高频Sin+低频Tanh | Additive_Dual_Branch_MLP: 叠加式双分支MLP
         ttk.Label(model_frame, text="架构类型:").grid(row=1, column=0, sticky="w", pady=(5, 0))
         architecture_combo = ttk.Combobox(model_frame, textvariable=self.main_gui.ae_architecture_type,
                                          values=["CNN", "Enhanced_CNN", "Deep_CNN", "MLP",
@@ -287,6 +290,12 @@ class AutoEncoderExtension:
                        variable=self.main_gui.ae_db_transform)
         self.db_checkbox.pack(anchor=tk.W)
         ttk.Label(preprocess_frame, text="   • 将线性RCS转换为dB空间 (sign(x)*log10(abs(x)))",
+                 font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
+
+        # RCS非负约束选项（物理约束）
+        ttk.Checkbutton(preprocess_frame, text="🛡️ 强制RCS非负 (物理约束)",
+                       variable=self.main_gui.ae_enforce_nonnegative_rcs).pack(anchor=tk.W)
+        ttk.Label(preprocess_frame, text="   • 推荐开启：确保模型输出满足物理规律 (RCS >= 0)",
                  font=self.main_gui.font_small, foreground="gray").pack(anchor=tk.W, pady=(0, 5))
 
         # 后处理分贝转换选项（仅用于推理/可视化）
@@ -879,6 +888,7 @@ class AutoEncoderExtension:
             use_channel_attention = self.main_gui.ae_use_channel_attention.get()  # 通道注意力开关
             db_transform = self.main_gui.ae_db_transform.get()  # 从GUI读取dB变换开关（手动控制）
             activation = self.main_gui.ae_activation.get()  # 从GUI读取激活函数
+            enforce_nonnegative_rcs = self.main_gui.ae_enforce_nonnegative_rcs.get()  # RCS非负约束
 
             # 参数映射器配置
             mapper_activation = self.main_gui.ae_mapper_activation.get()
@@ -918,7 +928,9 @@ class AutoEncoderExtension:
                 activation_smooth=activation_smooth,
                 learnable_weights=learnable_weights,
                 alpha_high=alpha_high,
-                alpha_smooth=alpha_smooth
+                alpha_smooth=alpha_smooth,
+                # RCS物理约束
+                enforce_nonnegative_rcs=enforce_nonnegative_rcs
             )
 
             # 添加数据
@@ -1237,7 +1249,8 @@ class AutoEncoderExtension:
                 "preprocessing": {
                     "normalize": self.main_gui.ae_normalize.get(),
                     "normalization_method": self.main_gui.ae_normalization_method.get(),
-                    "db_transform": self.main_gui.ae_db_transform.get()
+                    "db_transform": self.main_gui.ae_db_transform.get(),
+                    "enforce_nonnegative_rcs": self.main_gui.ae_enforce_nonnegative_rcs.get()
                 },
                 "training": {
                     "batch_size": int(self.main_gui.ae_batch_size.get()),
@@ -1339,6 +1352,10 @@ class AutoEncoderExtension:
                     self.main_gui.ae_normalization_method.set("none")
             if "db_transform" in preprocess_config:
                 self.main_gui.ae_db_transform.set(preprocess_config["db_transform"])
+            if "enforce_nonnegative_rcs" in preprocess_config:
+                self.main_gui.ae_enforce_nonnegative_rcs.set(preprocess_config["enforce_nonnegative_rcs"])
+            else:
+                self.main_gui.ae_enforce_nonnegative_rcs.set(False)  # 默认关闭（保持兼容性）
 
             # 加载训练配置
             training_config = config_data.get("training", {})
