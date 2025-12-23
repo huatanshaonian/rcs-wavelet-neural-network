@@ -303,6 +303,59 @@ class AdditiveDualBranchWaveletCNN(BaseAutoEncoder):
         recon = self.decode(latent)
         return recon, latent
 
+    def forward_with_branches(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        前向传播（返回分支输出，用于可视化和频域分析）
+
+        Args:
+            x: [B, input_size, input_size, num_freq*4] 小波系数
+
+        Returns:
+            recon: [B, input_size, input_size, num_freq*4] 叠加后的重建
+            latent: [B, latent_dim] 隐空间表示
+            recon_high: [B, input_size, input_size, num_freq*4] 高频分支重建
+            recon_smooth: [B, input_size, input_size, num_freq*4] 低频分支重建
+        """
+        # Encode
+        latent = self.encode(x)
+
+        # ===== 分支1: 高频Decoder =====
+        feat_high = self.decoder_high_fc(latent)
+        feat_high = self.decoder_high_conv(feat_high)
+        recon_high = self.final_conv_high(feat_high)
+
+        # ===== 分支2: 低频Decoder =====
+        feat_smooth = self.decoder_smooth_fc(latent)
+        feat_smooth = self.decoder_smooth_conv(feat_smooth)
+        recon_smooth = self.final_conv_smooth(feat_smooth)
+
+        # ===== 上采样到目标尺寸 =====
+        recon_high = F.interpolate(recon_high, size=(self.input_size, self.input_size),
+                                   mode='bilinear', align_corners=False)
+        recon_smooth = F.interpolate(recon_smooth, size=(self.input_size, self.input_size),
+                                     mode='bilinear', align_corners=False)
+
+        # ===== 转换格式 [B, C, H, W] → [B, H, W, C] =====
+        recon_high = recon_high.permute(0, 2, 3, 1)
+        recon_smooth = recon_smooth.permute(0, 2, 3, 1)
+
+        # ===== 叠加 =====
+        if self.learnable_weights:
+            alpha_high_norm = self.alpha_high
+            alpha_smooth_norm = self.alpha_smooth
+        else:
+            alpha_high_norm = self.alpha_high
+            alpha_smooth_norm = self.alpha_smooth
+
+        recon = alpha_high_norm * recon_high + alpha_smooth_norm * recon_smooth
+
+        # ===== 应用输出激活 =====
+        recon = self.apply_output_activation(recon)
+        recon_high = self.apply_output_activation(recon_high)
+        recon_smooth = self.apply_output_activation(recon_smooth)
+
+        return recon, latent, recon_high, recon_smooth
+
     def get_parameter_count(self) -> Dict[str, int]:
         """获取参数统计"""
         # Encoder参数
@@ -589,6 +642,59 @@ class AdditiveDualBranchDirectCNN(BaseAutoEncoder):
         latent = self.encode(x)
         recon = self.decode(latent)
         return recon, latent
+
+    def forward_with_branches(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        前向传播（返回分支输出，用于可视化和频域分析）
+
+        Args:
+            x: [B, input_size, input_size, num_freq] RCS数据
+
+        Returns:
+            recon: [B, input_size, input_size, num_freq] 叠加后的重建
+            latent: [B, latent_dim] 隐空间表示
+            recon_high: [B, input_size, input_size, num_freq] 高频分支重建
+            recon_smooth: [B, input_size, input_size, num_freq] 低频分支重建
+        """
+        # Encode
+        latent = self.encode(x)
+
+        # ===== 分支1: 高频Decoder =====
+        feat_high = self.decoder_high_fc(latent)
+        feat_high = self.decoder_high_conv(feat_high)
+        recon_high = self.final_conv_high(feat_high)
+
+        # ===== 分支2: 低频Decoder =====
+        feat_smooth = self.decoder_smooth_fc(latent)
+        feat_smooth = self.decoder_smooth_conv(feat_smooth)
+        recon_smooth = self.final_conv_smooth(feat_smooth)
+
+        # ===== 上采样到目标尺寸: [64, 64] → [91, 91] =====
+        recon_high = F.interpolate(recon_high, size=(self.input_size, self.input_size),
+                                   mode='bilinear', align_corners=False)
+        recon_smooth = F.interpolate(recon_smooth, size=(self.input_size, self.input_size),
+                                     mode='bilinear', align_corners=False)
+
+        # ===== 转换格式 [B, C, H, W] → [B, H, W, C] =====
+        recon_high = recon_high.permute(0, 2, 3, 1)
+        recon_smooth = recon_smooth.permute(0, 2, 3, 1)
+
+        # ===== 叠加 =====
+        if self.learnable_weights:
+            alpha_high_norm = self.alpha_high
+            alpha_smooth_norm = self.alpha_smooth
+        else:
+            alpha_high_norm = self.alpha_high
+            alpha_smooth_norm = self.alpha_smooth
+
+        recon = alpha_high_norm * recon_high + alpha_smooth_norm * recon_smooth
+
+        # ===== 应用输出激活 =====
+        recon = self.apply_output_activation(recon)
+        recon_high = self.apply_output_activation(recon_high)
+        recon_smooth = self.apply_output_activation(recon_smooth)
+
+        return recon, latent, recon_high, recon_smooth
 
     def get_parameter_count(self) -> Dict[str, int]:
         """获取参数统计"""

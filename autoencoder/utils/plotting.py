@@ -789,3 +789,204 @@ def plot_ae_training_progress(
         fig.savefig(save_path, dpi=150, bbox_inches='tight')
 
     return fig
+
+
+def plot_additive_branch_comparison(
+    original_rcs: np.ndarray,
+    recon_high: np.ndarray,
+    recon_smooth: np.ndarray,
+    recon_combined: np.ndarray,
+    freq_label: str = "Unknown",
+    sample_id: str = "Unknown",
+    phi_range: Tuple[float, float] = (-45, 45),
+    theta_range: Tuple[float, float] = (45, 135),
+    freq_idx: int = 0,
+    alpha_high: float = 1.0,
+    alpha_smooth: float = 1.0,
+    figsize: Tuple[int, int] = (20, 10),
+    fontsize_scale: float = 1.0,
+    save_path: Optional[str] = None,
+    fig: Optional[Figure] = None
+) -> Figure:
+    """
+    绘制Additive Dual-Branch AutoEncoder分支对比图（包含频域分析）
+
+    Args:
+        original_rcs: 原始RCS数据 [H, W, num_freq]，线性值
+        recon_high: 高频分支重建 [H, W, num_freq]，线性值
+        recon_smooth: 低频分支重建 [H, W, num_freq]，线性值
+        recon_combined: 叠加后的重建 [H, W, num_freq]，线性值
+        freq_label: 频率标签（如 "1.5 GHz"）
+        sample_id: 样本ID（如 "001"）
+        phi_range: 方位角范围 (min, max)
+        theta_range: 俯仰角范围 (min, max)
+        freq_idx: 要显示的频率索引
+        alpha_high: 高频分支权重
+        alpha_smooth: 低频分支权重
+        figsize: 图像尺寸
+        fontsize_scale: 字号缩放因子
+        save_path: 保存路径（None表示不保存）
+        fig: 复用的Figure对象（None表示创建新的）
+
+    Returns:
+        matplotlib.figure.Figure对象
+    """
+    from autoencoder.utils.frequency_analysis import analyze_branch_frequencies
+
+    # 创建或复用figure
+    if fig is None:
+        fig = plt.figure(figsize=figsize)
+    else:
+        fig.clear()
+
+    # 提取指定频率通道
+    orig_2d = original_rcs[:, :, freq_idx]
+    high_2d = recon_high[:, :, freq_idx]
+    smooth_2d = recon_smooth[:, :, freq_idx]
+    combined_2d = recon_combined[:, :, freq_idx]
+
+    # 转换为dB
+    orig_db = 10 * np.log10(orig_2d + 1e-10)
+    high_db = 10 * np.log10(high_2d + 1e-10)
+    smooth_db = 10 * np.log10(smooth_2d + 1e-10)
+    combined_db = 10 * np.log10(combined_2d + 1e-10)
+
+    # 设置extent
+    extent = [phi_range[0], phi_range[1], theta_range[1], theta_range[0]]
+
+    # 获取统一的colorbar范围
+    vmin = min(orig_db.min(), high_db.min(), smooth_db.min(), combined_db.min())
+    vmax = max(orig_db.max(), high_db.max(), smooth_db.max(), combined_db.max())
+
+    # ===== 上半部分：RCS空间对比（2行4列的上半部分） =====
+    ax1 = fig.add_subplot(2, 4, 1)
+    im1 = ax1.imshow(orig_db, cmap='jet', aspect='equal', extent=extent, vmin=vmin, vmax=vmax)
+    ax1.set_title(f'原始RCS\n样本{sample_id} @ {freq_label}',
+                  fontsize=int(16*fontsize_scale), fontweight='bold')
+    ax1.set_xlabel('φ (°)', fontsize=int(14*fontsize_scale))
+    ax1.set_ylabel('θ (°)', fontsize=int(14*fontsize_scale))
+    ax1.tick_params(axis='both', labelsize=int(12*fontsize_scale))
+    divider1 = make_axes_locatable(ax1)
+    cax1 = divider1.append_axes("right", size="5%", pad=0.05)
+    cbar1 = fig.colorbar(im1, cax=cax1)
+    cbar1.set_label('RCS (dB)', fontsize=int(14*fontsize_scale))
+
+    ax2 = fig.add_subplot(2, 4, 2)
+    im2 = ax2.imshow(high_db, cmap='jet', aspect='equal', extent=extent, vmin=vmin, vmax=vmax)
+    ax2.set_title(f'高频分支\n权重α={alpha_high:.3f}',
+                  fontsize=int(16*fontsize_scale), fontweight='bold', color='blue')
+    ax2.set_xlabel('φ (°)', fontsize=int(14*fontsize_scale))
+    ax2.set_ylabel('θ (°)', fontsize=int(14*fontsize_scale))
+    ax2.tick_params(axis='both', labelsize=int(12*fontsize_scale))
+    divider2 = make_axes_locatable(ax2)
+    cax2 = divider2.append_axes("right", size="5%", pad=0.05)
+    cbar2 = fig.colorbar(im2, cax=cax2)
+    cbar2.set_label('RCS (dB)', fontsize=int(14*fontsize_scale))
+
+    ax3 = fig.add_subplot(2, 4, 3)
+    im3 = ax3.imshow(smooth_db, cmap='jet', aspect='equal', extent=extent, vmin=vmin, vmax=vmax)
+    ax3.set_title(f'低频分支\n权重β={alpha_smooth:.3f}',
+                  fontsize=int(16*fontsize_scale), fontweight='bold', color='green')
+    ax3.set_xlabel('φ (°)', fontsize=int(14*fontsize_scale))
+    ax3.set_ylabel('θ (°)', fontsize=int(14*fontsize_scale))
+    ax3.tick_params(axis='both', labelsize=int(12*fontsize_scale))
+    divider3 = make_axes_locatable(ax3)
+    cax3 = divider3.append_axes("right", size="5%", pad=0.05)
+    cbar3 = fig.colorbar(im3, cax=cax3)
+    cbar3.set_label('RCS (dB)', fontsize=int(14*fontsize_scale))
+
+    ax4 = fig.add_subplot(2, 4, 4)
+    im4 = ax4.imshow(combined_db, cmap='jet', aspect='equal', extent=extent, vmin=vmin, vmax=vmax)
+    residual_db = orig_db - combined_db
+    residual_finite = residual_db[np.isfinite(residual_db)]
+    mae_db = np.mean(np.abs(residual_finite)) if len(residual_finite) > 0 else 0
+    ax4.set_title(f'叠加重建\nMAE={mae_db:.2f} dB',
+                  fontsize=int(16*fontsize_scale), fontweight='bold', color='red')
+    ax4.set_xlabel('φ (°)', fontsize=int(14*fontsize_scale))
+    ax4.set_ylabel('θ (°)', fontsize=int(14*fontsize_scale))
+    ax4.tick_params(axis='both', labelsize=int(12*fontsize_scale))
+    divider4 = make_axes_locatable(ax4)
+    cax4 = divider4.append_axes("right", size="5%", pad=0.05)
+    cbar4 = fig.colorbar(im4, cax=cax4)
+    cbar4.set_label('RCS (dB)', fontsize=int(14*fontsize_scale))
+
+    # ===== 下半部分：频域分析 =====
+    # 分析高频和低频分支的频率特征
+    high_analysis = analyze_branch_frequencies(recon_high, freq_idx=freq_idx, cutoff_ratio=0.3)
+    smooth_analysis = analyze_branch_frequencies(recon_smooth, freq_idx=freq_idx, cutoff_ratio=0.3)
+
+    # 频谱幅度图 (对数尺度)
+    ax5 = fig.add_subplot(2, 4, 5)
+    high_freq_log = np.log10(high_analysis['freq_magnitude'] + 1e-10)
+    im5 = ax5.imshow(high_freq_log, cmap='viridis', aspect='equal')
+    ax5.set_title(f'高频分支频谱\n高频占比={high_analysis["energy_ratio"]["high_freq_energy"]*100:.1f}%',
+                  fontsize=int(16*fontsize_scale), fontweight='bold', color='blue')
+    ax5.set_xlabel('频率x', fontsize=int(14*fontsize_scale))
+    ax5.set_ylabel('频率y', fontsize=int(14*fontsize_scale))
+    ax5.tick_params(axis='both', labelsize=int(12*fontsize_scale))
+    divider5 = make_axes_locatable(ax5)
+    cax5 = divider5.append_axes("right", size="5%", pad=0.05)
+    cbar5 = fig.colorbar(im5, cax=cax5)
+    cbar5.set_label('log(幅度)', fontsize=int(14*fontsize_scale))
+
+    ax6 = fig.add_subplot(2, 4, 6)
+    smooth_freq_log = np.log10(smooth_analysis['freq_magnitude'] + 1e-10)
+    im6 = ax6.imshow(smooth_freq_log, cmap='viridis', aspect='equal')
+    ax6.set_title(f'低频分支频谱\n低频占比={smooth_analysis["energy_ratio"]["low_freq_energy"]*100:.1f}%',
+                  fontsize=int(16*fontsize_scale), fontweight='bold', color='green')
+    ax6.set_xlabel('频率x', fontsize=int(14*fontsize_scale))
+    ax6.set_ylabel('频率y', fontsize=int(14*fontsize_scale))
+    ax6.tick_params(axis='both', labelsize=int(12*fontsize_scale))
+    divider6 = make_axes_locatable(ax6)
+    cax6 = divider6.append_axes("right", size="5%", pad=0.05)
+    cbar6 = fig.colorbar(im6, cax=cax6)
+    cbar6.set_label('log(幅度)', fontsize=int(14*fontsize_scale))
+
+    # 径向频谱对比
+    ax7 = fig.add_subplot(2, 4, 7)
+    ax7.plot(high_analysis['radial_distances'], high_analysis['radial_spectrum'],
+             label='高频分支', color='blue', linewidth=2)
+    ax7.plot(smooth_analysis['radial_distances'], smooth_analysis['radial_spectrum'],
+             label='低频分支', color='green', linewidth=2)
+    ax7.set_xlabel('径向距离（像素）', fontsize=int(14*fontsize_scale))
+    ax7.set_ylabel('平均频谱幅度', fontsize=int(14*fontsize_scale))
+    ax7.set_title('径向频谱分布', fontsize=int(16*fontsize_scale), fontweight='bold')
+    ax7.legend(fontsize=int(12*fontsize_scale))
+    ax7.grid(True, alpha=0.3)
+    ax7.tick_params(axis='both', labelsize=int(12*fontsize_scale))
+    ax7.set_yscale('log')
+
+    # 能量比例对比条形图
+    ax8 = fig.add_subplot(2, 4, 8)
+    categories = ['高频分支\n高频能量', '高频分支\n低频能量', '低频分支\n高频能量', '低频分支\n低频能量']
+    values = [
+        high_analysis['energy_ratio']['high_freq_energy'] * 100,
+        high_analysis['energy_ratio']['low_freq_energy'] * 100,
+        smooth_analysis['energy_ratio']['high_freq_energy'] * 100,
+        smooth_analysis['energy_ratio']['low_freq_energy'] * 100
+    ]
+    colors = ['blue', 'lightblue', 'lightgreen', 'green']
+    bars = ax8.bar(range(len(categories)), values, color=colors, alpha=0.7)
+    ax8.set_xticks(range(len(categories)))
+    ax8.set_xticklabels(categories, fontsize=int(12*fontsize_scale), rotation=15, ha='right')
+    ax8.set_ylabel('能量占比 (%)', fontsize=int(14*fontsize_scale))
+    ax8.set_title('频率能量分布', fontsize=int(16*fontsize_scale), fontweight='bold')
+    ax8.grid(True, alpha=0.3, axis='y')
+    ax8.tick_params(axis='y', labelsize=int(12*fontsize_scale))
+
+    # 在柱子上显示数值
+    for bar, value in zip(bars, values):
+        height = bar.get_height()
+        ax8.text(bar.get_x() + bar.get_width()/2., height,
+                f'{value:.1f}%',
+                ha='center', va='bottom', fontsize=int(10*fontsize_scale))
+
+    fig.suptitle(f'Additive Dual-Branch 分支对比分析 - 样本{sample_id} @ {freq_label}',
+                 fontsize=int(20*fontsize_scale), fontweight='bold', y=0.98)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+
+    return fig

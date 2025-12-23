@@ -84,7 +84,7 @@ class VisualizationTab(ttk.Frame):
         # 可视化类型选择
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         type_combo = ttk.Combobox(control_frame, textvariable=self.vis_type_var,
-                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "差值分析", "相关性分析",
+                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "AE分支对比", "差值分析", "相关性分析",
                                         "训练历史", "统计对比", "AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"],
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
@@ -196,6 +196,11 @@ class VisualizationTab(ttk.Frame):
                         self._plot_wavelet_coefficients_comparison()
                     else:
                         messagebox.showwarning("警告", "小波系数对比功能需要AutoEncoder模型")
+                elif chart_type == "AE分支对比":
+                    if has_ae_model:
+                        self._plot_ae_branch_comparison()
+                    else:
+                        messagebox.showwarning("警告", "分支对比功能需要Additive Dual-Branch AutoEncoder模型")
                 elif chart_type == "差值分析":
                     self._plot_difference_analysis(model_id)
                 elif chart_type == "相关性分析":
@@ -495,6 +500,20 @@ class VisualizationTab(ttk.Frame):
             return self.app.visualization_manager._plot_wavelet_coefficients_comparison(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data, self.app.param_data)
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制小波系数对比图。" )
+
+    def _plot_ae_branch_comparison(self):
+        """绘制Additive Dual-Branch分支对比图：高频分支、低频分支、叠加重建、频域分析"""
+        if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
+            return self.app.visualization_manager._plot_ae_branch_comparison(
+                self.app.ae_system,
+                self.vis_fig,
+                self.vis_canvas,
+                self.app.log_message,
+                self.vis_model_var.get(),
+                self.vis_freq_var.get()
+            )
+        else:
+            self.app.log_message("警告: VisualizationManager未初始化，无法绘制分支对比图。")
 
     def save_current_visualization(self):
         """保存当前显示的可视化图表到results文件夹"""

@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import os
 from datetime import datetime
+import tkinter as tk
 from tkinter import messagebox
 import rcs_visual as rv
 from mpl_toolkits.mplot3d import Axes3D
@@ -2799,3 +2800,197 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             messagebox.showerror("生成失败", error_msg)
             import traceback
             traceback.print_exc()
+
+    def _plot_ae_branch_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, model_id=None, freq_str=None):
+        """
+        绘制Additive Dual-Branch AutoEncoder分支对比图
+        包含：原始RCS、高频分支、低频分支、叠加重建、频域分析
+
+        Args:
+            ae_system: AutoEncoder系统
+            fig: matplotlib figure
+            canvas: matplotlib canvas
+            log_callback: 日志回调函数
+            model_id: 模型ID
+            freq_str: 频率字符串（如 "1.5G"）
+        """
+        import numpy as np
+        import torch
+        from autoencoder.utils.plotting import plot_additive_branch_comparison
+        from autoencoder.utils.rcs_visualization import get_rcs_matrix
+
+        # 参数获取
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
+        # 检查模型是否是Additive Dual-Branch架构
+        autoencoder = sys.get('autoencoder', None)
+        if autoencoder is None:
+            log_msg("错误: AutoEncoder模型未加载")
+            return
+
+        # 检查是否有forward_with_branches方法
+        if not hasattr(autoencoder, 'forward_with_branches'):
+            log_msg("错误: 当前模型不是Additive Dual-Branch架构，无法分离分支输出")
+            messagebox.showwarning("架构不匹配", "分支对比功能仅支持Additive Dual-Branch架构的模型")
+            return
+
+        # 获取频率配置
+        mode = sys.get('mode', 'unknown')
+        wavelet_transform = sys.get('wavelet_transform', None)
+        data_adapter = sys.get('data_adapter', None)
+        config_info = sys.get('config_info', {})
+        frequency_labels = config_info.get('frequency_labels', [])
+
+        # 获取模型ID和频率
+        if model_id is None:
+            model_id = getattr(self.gui.visualization_tab, 'vis_model_var', tk.StringVar(value="001")).get()
+        if freq_str is None:
+            freq_str = getattr(self.gui.visualization_tab, 'vis_freq_var', tk.StringVar(value="1.5G")).get()
+
+        log_msg(f"\n开始生成分支对比图: 模型{model_id} @ {freq_str}")
+
+        try:
+            # 从文件读取原始RCS数据
+            data = get_rcs_matrix(model_id, freq_str, self.gui.data_config['rcs_data_dir'])
+            original_rcs_linear = data['rcs_linear']  # [91, 91] or [49, 49]
+            phi_values = data['phi_values']
+            theta_values = data['theta_values']
+            freq_label = freq_str
+
+            # 根据mode处理输入数据
+            device = next(autoencoder.parameters()).device
+
+            if mode == 'wavelet':
+                # Wavelet模式: RCS → 小波变换 → 标准化 → [49, 49, num_freq*4]
+                log_msg("  模式: Wavelet (小波变换)")
+
+                # 准备多频率数据
+                rcs_data_multifreq = []
+                for fl in frequency_labels:
+                    data_freq = get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                    rcs_data_multifreq.append(data_freq['rcs_linear'])
+                rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
+
+                # 小波变换
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_data_multifreq)  # [49, 49, num_freq*4]
+
+                # 标准化
+                if data_adapter:
+                    wavelet_input = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                else:
+                    wavelet_input = wavelet_coeffs
+
+                # 转换为tensor并增加batch维度
+                input_tensor = torch.FloatTensor(wavelet_input).unsqueeze(0).to(device)  # [1, 49, 49, num_freq*4]
+
+            else:
+                # Direct模式: RCS → 标准化 → [91, 91, num_freq*2]
+                log_msg("  模式: Direct (直接RCS)")
+
+                # 准备多频率数据
+                rcs_data_multifreq = []
+                for fl in frequency_labels:
+                    data_freq = get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                    rcs_data_multifreq.append(data_freq['rcs_linear'])
+                rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
+
+                # 标准化
+                if data_adapter:
+                    rcs_input = data_adapter.adapt_rcs_data(rcs_data_multifreq)
+                else:
+                    rcs_input = rcs_data_multifreq
+
+                # 转换为tensor并增加batch维度
+                input_tensor = torch.FloatTensor(rcs_input).unsqueeze(0).to(device)  # [1, 91, 91, num_freq*2]
+
+            # 使用forward_with_branches获取分支输出
+            log_msg("  正在分离高频和低频分支输出...")
+            with torch.no_grad():
+                recon, latent, recon_high, recon_smooth = autoencoder.forward_with_branches(input_tensor)
+
+            # 转换回numpy
+            recon = recon[0].cpu().numpy()  # [H, W, C]
+            recon_high = recon_high[0].cpu().numpy()
+            recon_smooth = recon_smooth[0].cpu().numpy()
+
+            # 逆变换到RCS空间
+            if mode == 'wavelet':
+                # Wavelet: 逆标准化 → 逆小波变换 → RCS
+                if data_adapter:
+                    recon = data_adapter.inverse_adapt(recon)
+                    recon_high = data_adapter.inverse_adapt(recon_high)
+                    recon_smooth = data_adapter.inverse_adapt(recon_smooth)
+
+                recon = wavelet_transform.inverse_transform(torch.FloatTensor(recon).unsqueeze(0).to(device))[0].cpu().numpy()
+                recon_high = wavelet_transform.inverse_transform(torch.FloatTensor(recon_high).unsqueeze(0).to(device))[0].cpu().numpy()
+                recon_smooth = wavelet_transform.inverse_transform(torch.FloatTensor(recon_smooth).unsqueeze(0).to(device))[0].cpu().numpy()
+            else:
+                # Direct: 逆标准化 → RCS
+                if data_adapter:
+                    recon = data_adapter.inverse_adapt(recon)
+                    recon_high = data_adapter.inverse_adapt(recon_high)
+                    recon_smooth = data_adapter.inverse_adapt(recon_smooth)
+
+            # 找到当前频率的索引
+            try:
+                freq_idx = frequency_labels.index(freq_str)
+            except ValueError:
+                freq_idx = 0
+                log_msg(f"  警告: 频率{freq_str}不在标签列表中，使用第一个频率")
+
+            # 获取权重
+            alpha_high = autoencoder.alpha_high.item() if hasattr(autoencoder, 'alpha_high') else 1.0
+            alpha_smooth = autoencoder.alpha_smooth.item() if hasattr(autoencoder, 'alpha_smooth') else 1.0
+
+            log_msg(f"  分支权重: α(高频)={alpha_high:.3f}, β(低频)={alpha_smooth:.3f}")
+
+            # 绘制分支对比图
+            log_msg("  正在绘制分支对比图...")
+
+            # 准备原始RCS (多频率)
+            rcs_data_multifreq = []
+            for fl in frequency_labels:
+                data_freq = get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                rcs_data_multifreq.append(data_freq['rcs_linear'])
+            original_rcs_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [H, W, num_freq]
+
+            # 调用绘图函数
+            plot_additive_branch_comparison(
+                original_rcs=original_rcs_multifreq,
+                recon_high=recon_high,
+                recon_smooth=recon_smooth,
+                recon_combined=recon,
+                freq_label=freq_label,
+                sample_id=model_id,
+                phi_range=(phi_values.min(), phi_values.max()),
+                theta_range=(theta_values.min(), theta_values.max()),
+                freq_idx=freq_idx,
+                alpha_high=alpha_high,
+                alpha_smooth=alpha_smooth,
+                figsize=(20, 10),
+                fontsize_scale=1.0,
+                fig=target_fig
+            )
+
+            target_canvas.draw()
+            log_msg("✅ 分支对比图绘制完成！")
+            log_msg(f"   - 高频分支权重: {alpha_high:.3f}")
+            log_msg(f"   - 低频分支权重: {alpha_smooth:.3f}")
+            log_msg(f"   - 已自动分析频域特征\n")
+
+        except Exception as e:
+            error_msg = f"绘制分支对比图失败: {str(e)}"
+            log_msg(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("绘制失败", error_msg)
