@@ -1311,7 +1311,30 @@ class AETrainer:
             scheduler.step()
 
     def _log_progress(self, epoch, total_epochs, train_loss, val_loss, lr, stage):
+        """
+        记录训练进度日志
+
+        对于Additive Dual-Branch架构，额外打印分支权重（如果启用learnable_weights）
+        """
+        # 基本日志
         self.gui.ae_log(f"  {stage} Epoch {epoch+1}/{total_epochs}: Train={train_loss:.6f}, Val={val_loss:.6f}, LR={lr:.2e}")
+
+        # 检查是否是Additive Dual-Branch架构且启用可学习权重
+        autoencoder = self.gui.ae_system.get('autoencoder', None)
+        if autoencoder is not None:
+            model_type = type(autoencoder).__name__
+            if 'AdditiveDualBranch' in model_type and hasattr(autoencoder, 'learnable_weights'):
+                if autoencoder.learnable_weights:
+                    # 打印分支权重
+                    alpha_high = autoencoder.alpha_high.item()
+                    alpha_smooth = autoencoder.alpha_smooth.item()
+                    total = alpha_high + alpha_smooth
+                    # 计算归一化权重（相对占比）
+                    high_ratio = (alpha_high / total * 100) if total > 0 else 50.0
+                    smooth_ratio = (alpha_smooth / total * 100) if total > 0 else 50.0
+
+                    self.gui.ae_log(f"    🎚️ 分支权重: 高频={alpha_high:.4f} ({high_ratio:.1f}%), 低频={alpha_smooth:.4f} ({smooth_ratio:.1f}%)")
+
         self.gui.root.update_idletasks()
 
     def _record_attention_weights(self, autoencoder, sample_data, attention_history, epoch):
