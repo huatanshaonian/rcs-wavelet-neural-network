@@ -43,7 +43,8 @@ class DeepWaveletAutoEncoder(BaseAutoEncoder):
                  use_attention: bool = True,
                  input_size: int = 49,
                  use_channel_attention: bool = False,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化Deep Wavelet AutoEncoder
 
@@ -55,8 +56,10 @@ class DeepWaveletAutoEncoder(BaseAutoEncoder):
             use_attention: 是否使用中间层通道注意力 (Deep架构固有特性)
             input_size: 小波系数尺寸 (49)
             use_channel_attention: 是否在输入层使用通道注意力 (用户可配置)
+            activation: 激活函数类型
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
