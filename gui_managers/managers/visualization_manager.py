@@ -2870,6 +2870,17 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 根据mode处理输入数据
             device = next(autoencoder.parameters()).device
 
+            # 频率标签格式转换（"1.5GHz" → "1.5G", "3.0GHz" → "3G"）
+            def normalize_freq_label(label):
+                """将频率标签转换为文件名格式"""
+                label = label.replace('GHz', 'G').replace('MHz', 'M')
+                # 移除小数点后多余的0 (3.0G → 3G)
+                if '.' in label:
+                    parts = label.split('.')
+                    if len(parts) == 2 and parts[1].startswith('0'):
+                        label = parts[0] + parts[1][1:]  # 3.0G → 3G
+                return label
+
             if mode == 'wavelet':
                 # Wavelet模式: RCS → 小波变换 → 标准化 → [49, 49, num_freq*4]
                 log_msg("  模式: Wavelet (小波变换)")
@@ -2877,7 +2888,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 # 准备多频率数据
                 rcs_data_multifreq = []
                 for fl in frequency_labels:
-                    data_freq = rv.get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                    fl_normalized = normalize_freq_label(fl)
+                    data_freq = rv.get_rcs_matrix(model_id, fl_normalized, self.gui.data_config['rcs_data_dir'])
                     rcs_data_multifreq.append(data_freq['rcs_linear'])
                 rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
 
@@ -2900,7 +2912,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 # 准备多频率数据
                 rcs_data_multifreq = []
                 for fl in frequency_labels:
-                    data_freq = rv.get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                    fl_normalized = normalize_freq_label(fl)
+                    data_freq = rv.get_rcs_matrix(model_id, fl_normalized, self.gui.data_config['rcs_data_dir'])
                     rcs_data_multifreq.append(data_freq['rcs_linear'])
                 rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
 
@@ -2941,9 +2954,11 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                     recon_high = data_adapter.inverse_adapt(recon_high)
                     recon_smooth = data_adapter.inverse_adapt(recon_smooth)
 
-            # 找到当前频率的索引
+            # 找到当前频率的索引（需要匹配标准化后的标签）
             try:
-                freq_idx = frequency_labels.index(freq_str)
+                # 将frequency_labels中的标签标准化后再匹配
+                normalized_labels = [normalize_freq_label(fl) for fl in frequency_labels]
+                freq_idx = normalized_labels.index(freq_str)
             except ValueError:
                 freq_idx = 0
                 log_msg(f"  警告: 频率{freq_str}不在标签列表中，使用第一个频率")
@@ -2960,7 +2975,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 准备原始RCS (多频率)
             rcs_data_multifreq = []
             for fl in frequency_labels:
-                data_freq = rv.get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                fl_normalized = normalize_freq_label(fl)
+                data_freq = rv.get_rcs_matrix(model_id, fl_normalized, self.gui.data_config['rcs_data_dir'])
                 rcs_data_multifreq.append(data_freq['rcs_linear'])
             original_rcs_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [H, W, num_freq]
 

@@ -32,7 +32,7 @@ def create_autoencoder_system(
     use_channel_attention: bool = False,
     activation: str = 'relu',
     db_transform: bool = False,              # ⚠️ 注意：是db_transform，不是log_transform
-    normalization_method: str = 'zscore'
+    normalization_method: str = 'none'
 ) -> Dict[str, Any]
 ```
 

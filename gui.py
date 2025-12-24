@@ -984,7 +984,7 @@ class RCSWaveletGUI:
                     'wavelet': self.ae_wavelet_type.get(),
                     'normalize': self.ae_normalize.get(),
                     'db_transform': self.ae_db_transform.get(),
-                    'normalization_method': self.ae_normalization_method.get() if hasattr(self, 'ae_normalization_method') else 'zscore',
+                    'normalization_method': self.ae_normalization_method.get() if hasattr(self, 'ae_normalization_method') else 'none',
                     'mode': self.ae_system.get('mode', 'wavelet'),
                     'architecture': self.ae_system.get('architecture', 'cnn'),
                     'activation': activation

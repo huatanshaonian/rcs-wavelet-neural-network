@@ -20,7 +20,7 @@ class RCS_DataAdapter:
                  mode: str = 'direct',
                  expected_frequencies: int = 2,
                  db_transform: bool = False,
-                 normalization_method: str = 'zscore'):
+                 normalization_method: str = 'none'):
         """
         初始化数据适配器
 

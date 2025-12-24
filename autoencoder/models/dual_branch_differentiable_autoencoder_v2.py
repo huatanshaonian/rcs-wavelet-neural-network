@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 from differentiable_wavelet_transform import DifferentiableWaveletTransform
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 # 从dual_branch_autoencoder导入工具函数
 try:
@@ -74,7 +75,7 @@ def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int 
 # 双分支可微分MLP AutoEncoder V2 (正确实现)
 # ============================================================================
 
-class DualBranchDifferentiableWaveletMLPAutoEncoderV2(nn.Module):
+class DualBranchDifferentiableWaveletMLPAutoEncoderV2(BaseAutoEncoder):
     """
     双分支可微分小波MLP AutoEncoder V2 (正确实现)
 
@@ -105,7 +106,8 @@ class DualBranchDifferentiableWaveletMLPAutoEncoderV2(nn.Module):
                  wavelet_type: str = 'db4',
                  input_size: int = 49,
                  ll_ratio: float = 0.7,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化双分支可微分Wavelet MLP AutoEncoder V2
 
@@ -117,8 +119,9 @@ class DualBranchDifferentiableWaveletMLPAutoEncoderV2(nn.Module):
             input_size: 小波系数空间尺寸（默认49）
             ll_ratio: LL分支latent占比（默认0.7，即LL占70%）
             activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -337,6 +340,9 @@ class DualBranchDifferentiableWaveletMLPAutoEncoderV2(nn.Module):
         # Step 5: 逆小波变换
         rcs_data = self.wavelet_transform.inverse_transform(wavelet_coeffs)  # [B, 91, 91, 2]
 
+        # ✅ 应用输出激活（如果启用了物理约束）
+        rcs_data = self.apply_output_activation(rcs_data)
+
         return rcs_data
 
     def forward(self, rcs_data: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -415,7 +421,7 @@ class DualBranchDifferentiableWaveletMLPAutoEncoderV2(nn.Module):
 # 双分支可微分CNN AutoEncoder V2 (正确实现)
 # ============================================================================
 
-class DualBranchDifferentiableWaveletAutoEncoderV2(nn.Module):
+class DualBranchDifferentiableWaveletAutoEncoderV2(BaseAutoEncoder):
     """
     双分支可微分小波CNN AutoEncoder V2 (正确实现)
 
@@ -442,9 +448,10 @@ class DualBranchDifferentiableWaveletAutoEncoderV2(nn.Module):
                  wavelet_type: str = 'db4',
                  input_size: int = 49,
                  ll_ratio: float = 0.7,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """初始化双分支可微分Wavelet CNN AutoEncoder V2"""
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -772,6 +779,9 @@ class DualBranchDifferentiableWaveletAutoEncoderV2(nn.Module):
 
         # Step 7: 逆小波变换
         rcs_data = self.wavelet_transform.inverse_transform(wavelet_coeffs)  # [B, 91, 91, 2]
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        rcs_data = self.apply_output_activation(rcs_data)
 
         return rcs_data
 

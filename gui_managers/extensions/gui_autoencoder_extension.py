@@ -42,11 +42,11 @@ class AutoEncoderExtension:
         self.main_gui.ae_mode = tk.StringVar(value="wavelet")
 
         # 数据预处理设置
-        self.main_gui.ae_normalization_method = tk.StringVar(value="zscore")  # 标准化方法：none, zscore, minmax
+        self.main_gui.ae_normalization_method = tk.StringVar(value="none")  # 标准化方法：none, zscore, minmax
         self.main_gui.ae_db_transform = tk.BooleanVar(value=False)  # 默认关闭dB变换
 
         # 向后兼容：保留 ae_normalize 变量（从 normalization_method 派生）
-        self.main_gui.ae_normalize = tk.BooleanVar(value=True)  # 默认开启标准化
+        self.main_gui.ae_normalize = tk.BooleanVar(value=False)  # 默认关闭标准化（与none对应）
 
         # RCS物理约束：强制非负
         self.main_gui.ae_enforce_nonnegative_rcs = tk.BooleanVar(value=False)  # 默认关闭RCS非负约束

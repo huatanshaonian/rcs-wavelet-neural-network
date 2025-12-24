@@ -160,7 +160,7 @@ class FrequencyConfig:
                           normalize: bool = True,
                           mode: str = 'direct',
                           db_transform: bool = False,
-                          normalization_method: str = 'zscore') -> RCS_DataAdapter:
+                          normalization_method: str = 'none') -> RCS_DataAdapter:
         """
         创建对应配置的数据适配器
 
@@ -244,7 +244,7 @@ def create_autoencoder_system(config_name: str = '2freq',
                             use_channel_attention: bool = False,
                             activation: str = 'relu',
                             db_transform: bool = False,
-                            normalization_method: str = 'zscore',
+                            normalization_method: str = 'none',
                             mapper_activation: str = None,
                             mapper_use_adaptive: bool = False,
                             mapper_hidden_dims: list = None,
