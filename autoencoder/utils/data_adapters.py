@@ -141,12 +141,17 @@ class RCS_DataAdapter:
         执行顺序：逆标准化 → 逆dB变换
 
         Args:
-            adapted_data: [N, H, W, C] 处理后的数据
+            adapted_data: [N, H, W, C] 处理后的数据（Tensor或numpy数组）
 
         Returns:
-            original_data: [N, H, W, C] 线性域数据
+            original_data: [N, H, W, C] 线性域数据（numpy数组）
         """
-        data = adapted_data.detach().cpu().numpy()
+        # 兼容Tensor和numpy数组输入
+        import torch
+        if isinstance(adapted_data, torch.Tensor):
+            data = adapted_data.detach().cpu().numpy()
+        else:
+            data = adapted_data.copy()  # numpy数组直接复制
 
         # Step 1: 逆标准化（根据方法）
         if 'method' in self.data_stats:
