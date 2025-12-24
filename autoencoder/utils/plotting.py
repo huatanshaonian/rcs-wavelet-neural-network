@@ -803,6 +803,8 @@ def plot_additive_branch_comparison(
     freq_idx: int = 0,
     alpha_high: float = 1.0,
     alpha_smooth: float = 1.0,
+    activation_high_name: str = "SIN",
+    activation_smooth_name: str = "TANH",
     figsize: Tuple[int, int] = (20, 10),
     fontsize_scale: float = 1.0,
     save_path: Optional[str] = None,
@@ -813,16 +815,18 @@ def plot_additive_branch_comparison(
 
     Args:
         original_rcs: 原始RCS数据 [H, W, num_freq]，线性值
-        recon_high: 高频分支重建 [H, W, num_freq]，线性值
-        recon_smooth: 低频分支重建 [H, W, num_freq]，线性值
+        recon_high: 第一分支重建 [H, W, num_freq]，线性值
+        recon_smooth: 第二分支重建 [H, W, num_freq]，线性值
         recon_combined: 叠加后的重建 [H, W, num_freq]，线性值
         freq_label: 频率标签（如 "1.5 GHz"）
         sample_id: 样本ID（如 "001"）
         phi_range: 方位角范围 (min, max)
         theta_range: 俯仰角范围 (min, max)
         freq_idx: 要显示的频率索引
-        alpha_high: 高频分支权重
-        alpha_smooth: 低频分支权重
+        alpha_high: 第一分支权重
+        alpha_smooth: 第二分支权重
+        activation_high_name: 第一分支激活函数名称（如 "SIN", "RELU"）
+        activation_smooth_name: 第二分支激活函数名称（如 "TANH", "SWISH"）
         figsize: 图像尺寸
         fontsize_scale: 字号缩放因子
         save_path: 保存路径（None表示不保存）
@@ -873,7 +877,7 @@ def plot_additive_branch_comparison(
 
     ax2 = fig.add_subplot(2, 4, 2)
     im2 = ax2.imshow(high_db, cmap='jet', aspect='equal', extent=extent, vmin=vmin, vmax=vmax)
-    ax2.set_title(f'高频分支\n权重α={alpha_high:.3f}',
+    ax2.set_title(f'{activation_high_name}分支\n权重α={alpha_high:.3f}',
                   fontsize=int(16*fontsize_scale), fontweight='bold', color='blue')
     ax2.set_xlabel('φ (°)', fontsize=int(14*fontsize_scale))
     ax2.set_ylabel('θ (°)', fontsize=int(14*fontsize_scale))
@@ -885,7 +889,7 @@ def plot_additive_branch_comparison(
 
     ax3 = fig.add_subplot(2, 4, 3)
     im3 = ax3.imshow(smooth_db, cmap='jet', aspect='equal', extent=extent, vmin=vmin, vmax=vmax)
-    ax3.set_title(f'低频分支\n权重β={alpha_smooth:.3f}',
+    ax3.set_title(f'{activation_smooth_name}分支\n权重β={alpha_smooth:.3f}',
                   fontsize=int(16*fontsize_scale), fontweight='bold', color='green')
     ax3.set_xlabel('φ (°)', fontsize=int(14*fontsize_scale))
     ax3.set_ylabel('θ (°)', fontsize=int(14*fontsize_scale))
@@ -919,7 +923,7 @@ def plot_additive_branch_comparison(
     ax5 = fig.add_subplot(2, 4, 5)
     high_freq_log = np.log10(high_analysis['freq_magnitude'] + 1e-10)
     im5 = ax5.imshow(high_freq_log, cmap='viridis', aspect='equal')
-    ax5.set_title(f'高频分支频谱\n高频占比={high_analysis["energy_ratio"]["high_freq_energy"]*100:.1f}%',
+    ax5.set_title(f'{activation_high_name}分支频谱\n高频占比={high_analysis["energy_ratio"]["high_freq_energy"]*100:.1f}%',
                   fontsize=int(16*fontsize_scale), fontweight='bold', color='blue')
     ax5.set_xlabel('频率x', fontsize=int(14*fontsize_scale))
     ax5.set_ylabel('频率y', fontsize=int(14*fontsize_scale))
@@ -932,7 +936,7 @@ def plot_additive_branch_comparison(
     ax6 = fig.add_subplot(2, 4, 6)
     smooth_freq_log = np.log10(smooth_analysis['freq_magnitude'] + 1e-10)
     im6 = ax6.imshow(smooth_freq_log, cmap='viridis', aspect='equal')
-    ax6.set_title(f'低频分支频谱\n低频占比={smooth_analysis["energy_ratio"]["low_freq_energy"]*100:.1f}%',
+    ax6.set_title(f'{activation_smooth_name}分支频谱\n低频占比={smooth_analysis["energy_ratio"]["low_freq_energy"]*100:.1f}%',
                   fontsize=int(16*fontsize_scale), fontweight='bold', color='green')
     ax6.set_xlabel('频率x', fontsize=int(14*fontsize_scale))
     ax6.set_ylabel('频率y', fontsize=int(14*fontsize_scale))
@@ -945,9 +949,9 @@ def plot_additive_branch_comparison(
     # 径向频谱对比
     ax7 = fig.add_subplot(2, 4, 7)
     ax7.plot(high_analysis['radial_distances'], high_analysis['radial_spectrum'],
-             label='高频分支', color='blue', linewidth=2)
+             label=f'{activation_high_name}分支', color='blue', linewidth=2)
     ax7.plot(smooth_analysis['radial_distances'], smooth_analysis['radial_spectrum'],
-             label='低频分支', color='green', linewidth=2)
+             label=f'{activation_smooth_name}分支', color='green', linewidth=2)
     ax7.set_xlabel('径向距离（像素）', fontsize=int(14*fontsize_scale))
     ax7.set_ylabel('平均频谱幅度', fontsize=int(14*fontsize_scale))
     ax7.set_title('径向频谱分布', fontsize=int(16*fontsize_scale), fontweight='bold')
@@ -958,7 +962,8 @@ def plot_additive_branch_comparison(
 
     # 能量比例对比条形图
     ax8 = fig.add_subplot(2, 4, 8)
-    categories = ['高频分支\n高频能量', '高频分支\n低频能量', '低频分支\n高频能量', '低频分支\n低频能量']
+    categories = [f'{activation_high_name}分支\n高频能量', f'{activation_high_name}分支\n低频能量', 
+                 f'{activation_smooth_name}分支\n高频能量', f'{activation_smooth_name}分支\n低频能量']
     values = [
         high_analysis['energy_ratio']['high_freq_energy'] * 100,
         high_analysis['energy_ratio']['low_freq_energy'] * 100,

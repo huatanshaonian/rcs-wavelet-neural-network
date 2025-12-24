@@ -2971,11 +2971,15 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 freq_idx = 0
                 log_msg(f"  警告: 频率{freq_str}不在标签列表中，使用第一个频率")
 
-            # 获取权重
+            # 获取权重和激活函数名称
             alpha_high = autoencoder.alpha_high.item() if hasattr(autoencoder, 'alpha_high') else 1.0
             alpha_smooth = autoencoder.alpha_smooth.item() if hasattr(autoencoder, 'alpha_smooth') else 1.0
 
-            log_msg(f"  分支权重: α(高频)={alpha_high:.3f}, β(低频)={alpha_smooth:.3f}")
+            # 获取激活函数类型
+            activation_high = getattr(autoencoder, 'activation_high_type', 'sin').upper()
+            activation_smooth = getattr(autoencoder, 'activation_smooth_type', 'tanh').upper()
+
+            log_msg(f"  分支权重: α({activation_high})={alpha_high:.3f}, β({activation_smooth})={alpha_smooth:.3f}")
 
             # 绘制分支对比图
             log_msg("  正在绘制分支对比图...")
@@ -3001,6 +3005,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 freq_idx=freq_idx,
                 alpha_high=alpha_high,
                 alpha_smooth=alpha_smooth,
+                activation_high_name=activation_high,
+                activation_smooth_name=activation_smooth,
                 figsize=(20, 10),
                 fontsize_scale=1.0,
                 fig=target_fig
@@ -3008,8 +3014,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             target_canvas.draw()
             log_msg("✅ 分支对比图绘制完成！")
-            log_msg(f"   - 高频分支权重: {alpha_high:.3f}")
-            log_msg(f"   - 低频分支权重: {alpha_smooth:.3f}")
+            log_msg(f"   - {activation_high}分支权重: {alpha_high:.3f}")
+            log_msg(f"   - {activation_smooth}分支权重: {alpha_smooth:.3f}")
             log_msg(f"   - 已自动分析频域特征\n")
 
         except Exception as e:
