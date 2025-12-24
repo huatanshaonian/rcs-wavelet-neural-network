@@ -923,7 +923,10 @@ def plot_additive_branch_comparison(
     ax5 = fig.add_subplot(2, 4, 5)
     high_freq_log = np.log10(high_analysis['freq_magnitude'] + 1e-10)
     im5 = ax5.imshow(high_freq_log, cmap='viridis', aspect='equal')
-    ax5.set_title(f'{activation_high_name}分支频谱\n高频占比={high_analysis["energy_ratio"]["high_freq_energy"]*100:.1f}%',
+    # 计算两种能量占比（显示完整分布，避免硬编码假设）
+    high_freq_ratio = high_analysis["energy_ratio"]["high_freq_energy"] * 100
+    low_freq_ratio = high_analysis["energy_ratio"]["low_freq_energy"] * 100
+    ax5.set_title(f'{activation_high_name}分支频谱\n高频:{high_freq_ratio:.1f}% | 低频:{low_freq_ratio:.1f}%',
                   fontsize=int(16*fontsize_scale), fontweight='bold', color='blue')
     ax5.set_xlabel('频率x', fontsize=int(14*fontsize_scale))
     ax5.set_ylabel('频率y', fontsize=int(14*fontsize_scale))
@@ -936,7 +939,10 @@ def plot_additive_branch_comparison(
     ax6 = fig.add_subplot(2, 4, 6)
     smooth_freq_log = np.log10(smooth_analysis['freq_magnitude'] + 1e-10)
     im6 = ax6.imshow(smooth_freq_log, cmap='viridis', aspect='equal')
-    ax6.set_title(f'{activation_smooth_name}分支频谱\n低频占比={smooth_analysis["energy_ratio"]["low_freq_energy"]*100:.1f}%',
+    # 计算两种能量占比（显示完整分布，避免硬编码假设）
+    high_freq_ratio_smooth = smooth_analysis["energy_ratio"]["high_freq_energy"] * 100
+    low_freq_ratio_smooth = smooth_analysis["energy_ratio"]["low_freq_energy"] * 100
+    ax6.set_title(f'{activation_smooth_name}分支频谱\n高频:{high_freq_ratio_smooth:.1f}% | 低频:{low_freq_ratio_smooth:.1f}%',
                   fontsize=int(16*fontsize_scale), fontweight='bold', color='green')
     ax6.set_xlabel('频率x', fontsize=int(14*fontsize_scale))
     ax6.set_ylabel('频率y', fontsize=int(14*fontsize_scale))
