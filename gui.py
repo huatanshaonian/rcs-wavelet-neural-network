@@ -1212,6 +1212,11 @@ class RCSWaveletGUI:
                 self.ae_system['autoencoder'].load_state_dict(checkpoint['autoencoder'])
                 self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
 
+                # ✅ 识别并存储训练模式（必须在ae_log之前设置，因为extension会读取此值）
+                training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
+                self.ae_system['training_mode'] = training_mode
+                self.ae_trained = True
+
                 # 恢复data_adapter统计信息（使用统一函数）
                 if 'adapter_stats' in checkpoint and checkpoint['adapter_stats']:
                     data_adapter = self.ae_system.get('data_adapter', None)
@@ -1488,8 +1493,7 @@ class RCSWaveletGUI:
                 else:
                     self.ae_training_history = None
 
-                # 识别训练模式
-                training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
+                # 准备训练模式显示文本（training_mode已在前面设置）
                 training_mode_display = {
                     'stage1_only': 'Stage 1 Only (仅重建)',
                     'three_stage': '完整三阶段',
@@ -1499,8 +1503,6 @@ class RCSWaveletGUI:
                 # 重置会话时间戳（加载模型算作新会话）
                 self.ae_session_timestamp = None
                 session_ts = self.get_ae_session_timestamp()
-
-                self.ae_trained = True
 
                 # 验证频率配置匹配性
                 model_num_freq = self.ae_system['config_info'].get('num_frequencies', 'unknown')
@@ -1519,9 +1521,6 @@ class RCSWaveletGUI:
                     self.ae_log(f"  💡 可使用'继续训练'完成Stage 2/3，或'开始训练'选择其他模式")
                 else:
                     self.ae_log(f"  评估方式: 从参数预测RCS")
-
-                # 存储training_mode到系统中供评估使用
-                self.ae_system['training_mode'] = training_mode
 
                 # 检查是否已加载数据
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:

@@ -2896,9 +2896,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 # 小波变换
                 wavelet_coeffs = wavelet_transform.forward_transform(rcs_data_multifreq)  # [49, 49, num_freq*4]
 
-                # 标准化
+                # 标准化（需要batch维度）
                 if data_adapter:
-                    wavelet_input = data_adapter.adapt_rcs_data(wavelet_coeffs)
+                    # 增加batch维度: [49, 49, C] → [1, 49, 49, C]
+                    wavelet_coeffs_batch = np.expand_dims(wavelet_coeffs, axis=0)
+                    wavelet_input_batch = data_adapter.adapt_rcs_data(wavelet_coeffs_batch)
+                    # 去除batch维度: [1, 49, 49, C] → [49, 49, C]
+                    wavelet_input = wavelet_input_batch[0]
                 else:
                     wavelet_input = wavelet_coeffs
 
@@ -2917,9 +2921,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                     rcs_data_multifreq.append(data_freq['rcs_linear'])
                 rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
 
-                # 标准化
+                # 标准化（需要batch维度）
                 if data_adapter:
-                    rcs_input = data_adapter.adapt_rcs_data(rcs_data_multifreq)
+                    # 增加batch维度: [91, 91, C] → [1, 91, 91, C]
+                    rcs_data_batch = np.expand_dims(rcs_data_multifreq, axis=0)
+                    rcs_input_batch = data_adapter.adapt_rcs_data(rcs_data_batch)
+                    # 去除batch维度: [1, 91, 91, C] → [91, 91, C]
+                    rcs_input = rcs_input_batch[0]
                 else:
                     rcs_input = rcs_data_multifreq
 
