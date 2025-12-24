@@ -2817,7 +2817,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         import numpy as np
         import torch
         from autoencoder.utils.plotting import plot_additive_branch_comparison
-        from autoencoder.utils.rcs_visualization import get_rcs_matrix
+        # rv (rcs_visual) is already imported at module level
 
         # 参数获取
         sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
@@ -2861,7 +2861,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
         try:
             # 从文件读取原始RCS数据
-            data = get_rcs_matrix(model_id, freq_str, self.gui.data_config['rcs_data_dir'])
+            data = rv.get_rcs_matrix(model_id, freq_str, self.gui.data_config['rcs_data_dir'])
             original_rcs_linear = data['rcs_linear']  # [91, 91] or [49, 49]
             phi_values = data['phi_values']
             theta_values = data['theta_values']
@@ -2877,7 +2877,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 # 准备多频率数据
                 rcs_data_multifreq = []
                 for fl in frequency_labels:
-                    data_freq = get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                    data_freq = rv.get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
                     rcs_data_multifreq.append(data_freq['rcs_linear'])
                 rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
 
@@ -2900,7 +2900,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 # 准备多频率数据
                 rcs_data_multifreq = []
                 for fl in frequency_labels:
-                    data_freq = get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                    data_freq = rv.get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
                     rcs_data_multifreq.append(data_freq['rcs_linear'])
                 rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
 
@@ -2960,7 +2960,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             # 准备原始RCS (多频率)
             rcs_data_multifreq = []
             for fl in frequency_labels:
-                data_freq = get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
+                data_freq = rv.get_rcs_matrix(model_id, fl, self.gui.data_config['rcs_data_dir'])
                 rcs_data_multifreq.append(data_freq['rcs_linear'])
             original_rcs_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [H, W, num_freq]
 
