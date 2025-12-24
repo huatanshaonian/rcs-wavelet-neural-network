@@ -1164,6 +1164,25 @@ class RCSWaveletGUI:
                     mapper_use_adaptive = False
                     mapper_hidden_dims = None
 
+                # 读取Additive Dual-Branch特有参数（如果存在）
+                learnable_weights = config.get('learnable_weights', False)
+                alpha_high = config.get('alpha_high', 0.5)
+                alpha_smooth = config.get('alpha_smooth', 0.5)
+                activation_encoder = config.get('activation_encoder', None)
+                activation_high = config.get('activation_high', None)
+                activation_smooth = config.get('activation_smooth', None)
+                enforce_nonnegative_rcs = config.get('enforce_nonnegative_rcs', False)
+                use_channel_attention = config.get('use_channel_attention', False)
+
+                if 'additive_dual_branch' in architecture:
+                    self.ae_log(f"  检测到Additive Dual-Branch架构配置:")
+                    self.ae_log(f"    - learnable_weights: {learnable_weights}")
+                    self.ae_log(f"    - alpha_high: {alpha_high}")
+                    self.ae_log(f"    - alpha_smooth: {alpha_smooth}")
+                    self.ae_log(f"    - activation_encoder: {activation_encoder}")
+                    self.ae_log(f"    - activation_high: {activation_high}")
+                    self.ae_log(f"    - activation_smooth: {activation_smooth}")
+
                 self.ae_system = create_autoencoder_system(
                     config_name=freq_config,
                     latent_dim=latent_dim,
@@ -1177,7 +1196,16 @@ class RCSWaveletGUI:
                     normalization_method=normalization_method,
                     mapper_activation=mapper_activation,
                     mapper_use_adaptive=mapper_use_adaptive,
-                    mapper_hidden_dims=mapper_hidden_dims
+                    mapper_hidden_dims=mapper_hidden_dims,
+                    # Additive Dual-Branch特有参数
+                    activation_encoder=activation_encoder,
+                    activation_high=activation_high,
+                    activation_smooth=activation_smooth,
+                    learnable_weights=learnable_weights,
+                    alpha_high=alpha_high,
+                    alpha_smooth=alpha_smooth,
+                    enforce_nonnegative_rcs=enforce_nonnegative_rcs,
+                    use_channel_attention=use_channel_attention
                 )
 
                 # 加载模型权重
