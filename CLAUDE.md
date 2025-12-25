@@ -1,6 +1,6 @@
 # Claude项目上下文文档
 
-> **最后更新**: 2025-12-23
+> **最后更新**: 2025-12-25
 > **项目**: RCS预测AutoEncoder系统
 > **核心技术**: PyTorch + 小波变换 + AutoEncoder
 
@@ -628,6 +628,7 @@ wavelet_size = (original_size + wavelet_filter_length - 1) // 2
 ## 🎓 学习资源
 
 ### 核心文档
+- **项目结构**: `PROJECT_STRUCTURE.md` - 功能快速索引（搜索代码必看⭐）
 - **项目README**: `README.md` - 完整项目文档
 - **本文档**: `CLAUDE.md` - Claude工作上下文（核心参考）
 - **参数参考**: `PARAMETERS_REFERENCE.md` - ⚠️ 所有参数命名规范（必看）
