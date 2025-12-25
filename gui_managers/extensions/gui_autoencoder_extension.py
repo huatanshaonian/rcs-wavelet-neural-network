@@ -485,8 +485,8 @@ class AutoEncoderExtension:
         ttk.Button(ops_frame, text="创建当前模式系统", command=self.create_current_system).pack(fill=tk.X, pady=(0, 3))
         # 初始化Loss归一化
         ttk.Button(ops_frame, text="初始化Loss归一化", command=self.initialize_loss_normalization).pack(fill=tk.X, pady=(0, 3))
-        # 运行性能对比分析
-        ttk.Button(ops_frame, text="运行性能对比", command=self.run_performance_comparison).pack(fill=tk.X, pady=(0, 3))
+        # 变更模式和参数（支持跨模式继续训练）
+        ttk.Button(ops_frame, text="🔧 变更模式/参数", command=self.change_system_config).pack(fill=tk.X, pady=(0, 3))
 
         # 配置文件管理（两按钮并排）
         config_button_frame = ttk.Frame(ops_frame)
@@ -1431,6 +1431,310 @@ class AutoEncoderExtension:
             error_msg = f"加载配置失败: {e}"
             self.main_gui.ae_log(f"❌ {error_msg}")
             messagebox.showerror("加载失败", error_msg)
+
+    def change_system_config(self):
+        """变更模式和参数（支持跨模式继续训练）"""
+        try:
+            # 1. 检查是否已加载模型
+            if not hasattr(self.main_gui, 'ae_system') or self.main_gui.ae_system is None:
+                messagebox.showwarning("警告", "请先加载模型或创建系统!")
+                return
+
+            # 2. 读取当前配置
+            current_system = self.main_gui.ae_system
+            current_config = {
+                'mode': current_system.get('mode', 'wavelet'),
+                'architecture': current_system.get('architecture', 'cnn'),
+                'latent_dim': current_system.get('latent_dim', 256),
+                'activation': current_system.get('activation', 'relu'),
+                'training_mode': current_system.get('training_mode', 'three_stage'),
+                'dropout_rate': current_system.get('dropout_rate', 0.2),
+                'wavelet': current_system.get('wavelet_type', 'db4'),
+            }
+
+            # 读取数据预处理配置
+            data_adapter = current_system.get('data_adapter', None)
+            if data_adapter:
+                current_config['normalize'] = getattr(data_adapter, 'normalize', True)
+                current_config['db_transform'] = getattr(data_adapter, 'db_transform', False)
+                current_config['normalization_method'] = getattr(data_adapter, 'normalization_method', 'zscore')
+            else:
+                current_config['normalize'] = True
+                current_config['db_transform'] = False
+                current_config['normalization_method'] = 'zscore'
+
+            self.main_gui.ae_log("📋 当前配置:")
+            for key, value in current_config.items():
+                self.main_gui.ae_log(f"  {key}: {value}")
+
+            # 3. 打开配置变更对话框
+            self._show_config_change_dialog(current_config)
+
+        except Exception as e:
+            error_msg = f"变更配置失败: {e}"
+            self.main_gui.ae_log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def _show_config_change_dialog(self, current_config):
+        """显示配置变更对话框"""
+        dialog = tk.Toplevel(self.main_gui.root)
+        dialog.title("变更模式和参数")
+        dialog.geometry("600x700")
+        dialog.transient(self.main_gui.root)
+        dialog.grab_set()
+
+        # 主容器
+        main_frame = ttk.Frame(dialog, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 说明文本
+        info_label = ttk.Label(main_frame, text="📝 修改配置后将重建AutoEncoder系统\n✅ 已加载的数据和权重将保留",
+                              justify=tk.LEFT, foreground='blue')
+        info_label.pack(pady=(0, 10))
+
+        # 创建滚动容器
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # 配置项容器
+        config_vars = {}
+
+        # === 1. 训练模式 ===
+        mode_frame = ttk.LabelFrame(scrollable_frame, text="训练模式", padding=10)
+        mode_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(mode_frame, text=f"当前: {current_config['training_mode']}", foreground='gray').pack(anchor='w')
+
+        config_vars['training_mode'] = tk.StringVar(value=current_config['training_mode'])
+        mode_options = ['stage1_only', 'stage2_only', 'three_stage', 'joint_training']
+        mode_display = {
+            'stage1_only': '仅Stage 1（AE预训练）',
+            'stage2_only': '仅Stage 2（Mapper训练）',
+            'three_stage': '三阶段训练',
+            'joint_training': '联合训练'
+        }
+
+        for mode in mode_options:
+            ttk.Radiobutton(mode_frame, text=mode_display[mode],
+                          variable=config_vars['training_mode'], value=mode).pack(anchor='w')
+
+        # === 2. 模式 ===
+        ae_mode_frame = ttk.LabelFrame(scrollable_frame, text="AE模式", padding=10)
+        ae_mode_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(ae_mode_frame, text=f"当前: {current_config['mode']}", foreground='gray').pack(anchor='w')
+
+        config_vars['mode'] = tk.StringVar(value=current_config['mode'])
+        mode_opts = ['wavelet', 'direct', 'differentiable_wavelet']
+        for m in mode_opts:
+            ttk.Radiobutton(ae_mode_frame, text=m, variable=config_vars['mode'], value=m).pack(anchor='w')
+
+        # === 3. 架构 ===
+        arch_frame = ttk.LabelFrame(scrollable_frame, text="架构", padding=10)
+        arch_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(arch_frame, text=f"当前: {current_config['architecture']}", foreground='gray').pack(anchor='w')
+
+        config_vars['architecture'] = tk.StringVar(value=current_config['architecture'])
+        arch_opts = ['cnn', 'mlp', 'enhanced_cnn', 'deep_cnn',
+                    'dual_branch_cnn', 'dual_branch_mlp',
+                    'additive_dual_branch_cnn', 'additive_dual_branch_mlp']
+        ttk.Combobox(arch_frame, textvariable=config_vars['architecture'],
+                    values=arch_opts, state='readonly', width=30).pack(fill=tk.X)
+
+        # === 4. 激活函数 ===
+        act_frame = ttk.LabelFrame(scrollable_frame, text="激活函数", padding=10)
+        act_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(act_frame, text=f"当前: {current_config['activation']}", foreground='gray').pack(anchor='w')
+
+        config_vars['activation'] = tk.StringVar(value=current_config['activation'])
+        act_opts = ['relu', 'sin', 'gelu', 'swish', 'tanh', 'mish', 'leaky_relu', 'elu', 'selu']
+        ttk.Combobox(act_frame, textvariable=config_vars['activation'],
+                    values=act_opts, state='readonly', width=30).pack(fill=tk.X)
+
+        # === 5. 隐空间维度 ===
+        latent_frame = ttk.LabelFrame(scrollable_frame, text="隐空间维度", padding=10)
+        latent_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(latent_frame, text=f"当前: {current_config['latent_dim']}", foreground='gray').pack(anchor='w')
+
+        config_vars['latent_dim'] = tk.IntVar(value=current_config['latent_dim'])
+        latent_opts = [32, 64, 128, 256, 512]
+        ttk.Combobox(latent_frame, textvariable=config_vars['latent_dim'],
+                    values=latent_opts, state='readonly', width=30).pack(fill=tk.X)
+
+        # === 6. Dropout率 ===
+        dropout_frame = ttk.LabelFrame(scrollable_frame, text="Dropout率", padding=10)
+        dropout_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(dropout_frame, text=f"当前: {current_config['dropout_rate']}", foreground='gray').pack(anchor='w')
+
+        config_vars['dropout_rate'] = tk.DoubleVar(value=current_config['dropout_rate'])
+        ttk.Entry(dropout_frame, textvariable=config_vars['dropout_rate'], width=10).pack(anchor='w')
+
+        # === 7. 数据预处理 ===
+        prep_frame = ttk.LabelFrame(scrollable_frame, text="数据预处理", padding=10)
+        prep_frame.pack(fill=tk.X, pady=(0, 10))
+
+        config_vars['normalize'] = tk.BooleanVar(value=current_config['normalize'])
+        ttk.Checkbutton(prep_frame, text="标准化", variable=config_vars['normalize']).pack(anchor='w')
+
+        config_vars['db_transform'] = tk.BooleanVar(value=current_config['db_transform'])
+        ttk.Checkbutton(prep_frame, text="dB变换", variable=config_vars['db_transform']).pack(anchor='w')
+
+        ttk.Label(prep_frame, text="标准化方法:", foreground='gray').pack(anchor='w', pady=(5, 0))
+        config_vars['normalization_method'] = tk.StringVar(value=current_config['normalization_method'])
+        norm_opts = ['zscore', 'minmax', 'none']
+        ttk.Combobox(prep_frame, textvariable=config_vars['normalization_method'],
+                    values=norm_opts, state='readonly', width=15).pack(anchor='w')
+
+        # 布局滚动容器
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # 按钮区域
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        def on_confirm():
+            try:
+                # 收集新配置
+                new_config = {
+                    'training_mode': config_vars['training_mode'].get(),
+                    'mode': config_vars['mode'].get(),
+                    'architecture': config_vars['architecture'].get(),
+                    'activation': config_vars['activation'].get(),
+                    'latent_dim': config_vars['latent_dim'].get(),
+                    'dropout_rate': config_vars['dropout_rate'].get(),
+                    'normalize': config_vars['normalize'].get(),
+                    'db_transform': config_vars['db_transform'].get(),
+                    'normalization_method': config_vars['normalization_method'].get(),
+                }
+
+                # 关闭对话框
+                dialog.destroy()
+
+                # 执行配置变更
+                self._rebuild_system_with_new_config(new_config, current_config)
+
+            except Exception as e:
+                messagebox.showerror("错误", f"应用配置失败: {e}")
+
+        def on_cancel():
+            dialog.destroy()
+
+        ttk.Button(button_frame, text="✅ 确认变更", command=on_confirm).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="❌ 取消", command=on_cancel).pack(side=tk.LEFT)
+
+    def _rebuild_system_with_new_config(self, new_config, old_config):
+        """使用新配置重建AE系统"""
+        try:
+            self.main_gui.ae_log("🔧 开始重建AutoEncoder系统...")
+
+            # 显示变更对比
+            self.main_gui.ae_log("\n📋 配置变更对比:")
+            for key in new_config.keys():
+                if key in old_config:
+                    old_val = old_config[key]
+                    new_val = new_config[key]
+                    if old_val != new_val:
+                        self.main_gui.ae_log(f"  {key}: {old_val} → {new_val}")
+
+            # 保存当前数据和权重
+            old_system = self.main_gui.ae_system
+            rcs_data = old_system.get('rcs_data', None)
+            param_data = old_system.get('param_data', None)
+            old_weights = {
+                'autoencoder': old_system['autoencoder'].state_dict() if 'autoencoder' in old_system else None,
+                'parameter_mapper': old_system['parameter_mapper'].state_dict() if 'parameter_mapper' in old_system else None
+            }
+
+            # 获取频率配置（从旧系统）
+            config_name = old_system.get('config_name', '2freq')
+
+            # 创建新系统
+            from autoencoder.utils.frequency_config import create_autoencoder_system
+
+            self.main_gui.ae_log(f"🔨 创建新系统: mode={new_config['mode']}, arch={new_config['architecture']}")
+
+            new_system = create_autoencoder_system(
+                config_name=config_name,
+                mode=new_config['mode'],
+                architecture=new_config['architecture'],
+                latent_dim=new_config['latent_dim'],
+                dropout_rate=new_config['dropout_rate'],
+                activation=new_config['activation'],
+                normalize=new_config['normalize'],
+                db_transform=new_config['db_transform'],
+                normalization_method=new_config['normalization_method']
+            )
+
+            # 尝试加载旧权重（如果架构兼容）
+            if old_weights['autoencoder'] is not None:
+                try:
+                    new_system['autoencoder'].load_state_dict(old_weights['autoencoder'])
+                    self.main_gui.ae_log("✅ AutoEncoder权重加载成功")
+                except Exception as e:
+                    self.main_gui.ae_log(f"⚠️ AutoEncoder权重不兼容（架构变化），使用随机初始化: {e}")
+
+            if old_weights['parameter_mapper'] is not None:
+                try:
+                    new_system['parameter_mapper'].load_state_dict(old_weights['parameter_mapper'])
+                    self.main_gui.ae_log("✅ ParameterMapper权重加载成功")
+                except Exception as e:
+                    self.main_gui.ae_log(f"⚠️ ParameterMapper权重不兼容（架构变化），使用随机初始化: {e}")
+
+            # 恢复数据
+            if rcs_data is not None:
+                new_system['rcs_data'] = rcs_data
+                self.main_gui.ae_log(f"✅ RCS数据已恢复 (shape: {rcs_data.shape})")
+            if param_data is not None:
+                new_system['param_data'] = param_data
+                self.main_gui.ae_log(f"✅ 参数数据已恢复 (shape: {param_data.shape})")
+
+            # 设置训练模式
+            new_system['training_mode'] = new_config['training_mode']
+
+            # 更新GUI系统
+            self.main_gui.ae_system = new_system
+
+            # 更新GUI控件（让GUI显示新配置）
+            self.ae_mode_var.set(new_config['mode'])
+            self.ae_arch_var.set(new_config['architecture'])
+            self.ae_activation_var.set(new_config['activation'])
+            self.ae_latent_dim.set(new_config['latent_dim'])
+
+            # 更新训练模式下拉框
+            mode_display_reverse = {
+                'stage1_only': '仅Stage 1',
+                'stage2_only': '仅Stage 2',
+                'three_stage': '三阶段训练',
+                'joint_training': '联合训练'
+            }
+            if new_config['training_mode'] in mode_display_reverse:
+                self.ae_training_mode.set(mode_display_reverse[new_config['training_mode']])
+
+            self.main_gui.ae_log("\n✅ 系统重建完成！可以点击【继续训练】开始跨模式训练")
+            self.main_gui.ae_log("💡 提示: 训练将从当前权重继续（如果架构兼容），否则从随机初始化开始")
+
+            messagebox.showinfo("成功", "配置变更完成！\n可以开始继续训练了。")
+
+        except Exception as e:
+            error_msg = f"重建系统失败: {e}"
+            self.main_gui.ae_log(f"❌ {error_msg}")
+            import traceback
+            self.main_gui.ae_log(traceback.format_exc())
+            messagebox.showerror("错误", error_msg)
 
     def run_performance_comparison(self):
         """运行性能对比分析"""

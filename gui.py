@@ -1210,7 +1210,14 @@ class RCSWaveletGUI:
 
                 # 加载模型权重
                 self.ae_system['autoencoder'].load_state_dict(checkpoint['autoencoder'])
-                self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
+                
+                # ✅ 兼容性检查：Stage 1模型没有parameter_mapper
+                if 'parameter_mapper' in checkpoint:
+                    self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
+                    self.ae_log("✅ 已加载ParameterMapper权重")
+                else:
+                    self.ae_log("⚠️ Stage 1模型，ParameterMapper使用随机初始化")
+                    self.ae_log("💡 提示: 可以使用【变更模式/参数】功能切换到联合训练或三阶段训练")
 
                 # ✅ 识别并存储训练模式（必须在ae_log之前设置，因为extension会读取此值）
                 training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
