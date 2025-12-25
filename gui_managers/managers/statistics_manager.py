@@ -205,13 +205,25 @@ class StatisticsManager:
                         parameter_mapper.to(device).eval()
 
                         with torch.no_grad():
-                            # 批量预测所有模型
-                            params_tensor = torch.FloatTensor(param_data).to(device)
+                            # ⚠️ 关键修复：使用训练时的param_scaler标准化参数！
+                            param_scaler = self.gui.ae_system.get('param_scaler', None)
+
+                            if param_scaler is not None:
+                                print("✅ 使用训练时的param_scaler标准化参数")
+                                param_normalized = param_scaler.transform(param_data)
+                                params_tensor = torch.FloatTensor(param_normalized).to(device)
+                            else:
+                                print("⚠️ 警告：未找到param_scaler，使用原始参数（可能导致预测不准确）")
+                                params_tensor = torch.FloatTensor(param_data).to(device)
 
                             # 调试：检查输入参数的多样性
                             print(f"输入参数形状: {param_data.shape}")
-                            print(f"前3个样本的参数: \n{param_data[:3]}")
-                            print(f"参数统计: min={param_data.min():.6f}, max={param_data.max():.6f}, mean={param_data.mean():.6f}, std={param_data.std():.6f}")
+                            print(f"前3个样本的原始参数: \n{param_data[:3]}")
+                            if param_scaler is not None:
+                                print(f"前3个样本的标准化参数: \n{param_normalized[:3]}")
+                            print(f"原始参数统计: min={param_data.min():.6f}, max={param_data.max():.6f}, mean={param_data.mean():.6f}, std={param_data.std():.6f}")
+                            if param_scaler is not None:
+                                print(f"标准化参数统计: min={param_normalized.min():.6f}, max={param_normalized.max():.6f}, mean={param_normalized.mean():.6f}, std={param_normalized.std():.6f}")
 
                             predicted_latents = parameter_mapper(params_tensor)
 
@@ -537,6 +549,13 @@ class StatisticsManager:
                                     continue
 
                                 model_params = param_data_full[model_idx:model_idx+1]  # [1, num_params]
+
+                                # ⚠️ 关键修复：使用训练时的param_scaler标准化参数！
+                                if use_ae_system:
+                                    param_scaler = self.gui.ae_system.get('param_scaler', None)
+                                    if param_scaler is not None:
+                                        model_params = param_scaler.transform(model_params)
+
                                 params_tensor = torch.FloatTensor(model_params).to(device)
 
                                 if use_ae_system:
