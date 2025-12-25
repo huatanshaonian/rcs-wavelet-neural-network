@@ -60,6 +60,10 @@ class LossConfigTab(ttk.Frame):
         self.use_laplacian_loss = tk.BooleanVar(value=False)
         self.laplacian_weight = tk.StringVar(value="0.05")
 
+        # RCS非负约束损失
+        self.use_non_negative_loss = tk.BooleanVar(value=False)
+        self.non_negative_weight = tk.StringVar(value="1.0")
+
         # 统计特性损失配置
         self.use_mean_loss = tk.BooleanVar(value=False)
         self.mean_weight = tk.StringVar(value="0.01")
@@ -190,6 +194,14 @@ class LossConfigTab(ttk.Frame):
         ttk.Label(laplacian_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
         ttk.Entry(laplacian_frame, textvariable=self.laplacian_weight, width=8).pack(side=tk.LEFT)
 
+        # RCS非负约束损失 (新增)
+        nonneg_frame = ttk.Frame(physics_group)
+        nonneg_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Checkbutton(nonneg_frame, text="RCS非负约束 (Physical)", variable=self.use_non_negative_loss).pack(side=tk.LEFT)
+        ttk.Label(nonneg_frame, text="权重:").pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Entry(nonneg_frame, textvariable=self.non_negative_weight, width=8).pack(side=tk.LEFT)
+        ttk.Label(nonneg_frame, text="(惩罚反标准化后的负值)", foreground="gray", font=("", 8)).pack(side=tk.LEFT, padx=(5, 0))
+
         # 均值损失（统计特性）
         mean_frame = ttk.Frame(physics_group)
         mean_frame.pack(fill=tk.X, padx=5, pady=2)
@@ -301,6 +313,8 @@ class LossConfigTab(ttk.Frame):
                 config_text += f"  ✅ 多尺度损失 (权重: {self.multiscale_weight.get()})\n"
             if self.use_laplacian_loss.get():
                 config_text += f"  ✅ 拉普拉斯损失 (权重: {self.laplacian_weight.get()})\n"
+            if self.use_non_negative_loss.get():
+                config_text += f"  ✅ RCS非负约束 (权重: {self.non_negative_weight.get()})\n"
             if self.use_mean_loss.get():
                 mean_type_str = "按通道" if self.mean_type.get() == "channel" else "全局"
                 distance_str = "L1" if self.mean_use_l1.get() else "L2"
@@ -326,6 +340,8 @@ class LossConfigTab(ttk.Frame):
                 total_weight += float(self.multiscale_weight.get())
             if self.use_laplacian_loss.get():
                 total_weight += float(self.laplacian_weight.get())
+            if self.use_non_negative_loss.get():
+                total_weight += float(self.non_negative_weight.get())
             if self.use_mean_loss.get():
                 total_weight += float(self.mean_weight.get())
 
@@ -393,6 +409,9 @@ class LossConfigTab(ttk.Frame):
                 'use_laplacian': self.use_laplacian_loss.get(),
                 'laplacian_weight': float(self.laplacian_weight.get()) if self.use_laplacian_loss.get() else 0,
 
+                'use_non_negative': self.use_non_negative_loss.get(),
+                'non_negative_weight': float(self.non_negative_weight.get()) if self.use_non_negative_loss.get() else 0,
+
                 'use_mean': self.use_mean_loss.get(),
                 'mean_weight': float(self.mean_weight.get()) if self.use_mean_loss.get() else 0,
                 'mean_type': self.mean_type.get(),
@@ -446,6 +465,9 @@ class LossConfigTab(ttk.Frame):
 
         self.use_laplacian_loss.set(False)
         self.laplacian_weight.set("0.05")
+
+        self.use_non_negative_loss.set(False)
+        self.non_negative_weight.set("1.0")
 
         self.use_mean_loss.set(False)
         self.mean_weight.set("0.01")

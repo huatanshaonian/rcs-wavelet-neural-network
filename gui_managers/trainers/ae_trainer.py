@@ -1257,7 +1257,15 @@ class AETrainer:
 
         # 2. 检查全局自定义配置（Stage 2除外，因为它在latent空间操作）
         if stage != 'stage2' and training_config.get('use_custom_loss', False) and 'custom_loss_config' in training_config:
-            loss_config = training_config['custom_loss_config']
+            loss_config = training_config['custom_loss_config'].copy()
+            
+            # 注入数据统计信息（用于RCS非负约束）
+            # 只有当启用了非负约束时才需要注入，但注入了也无妨
+            if hasattr(self.gui, 'ae_system') and self.gui.ae_system and 'data_adapter' in self.gui.ae_system:
+                adapter = self.gui.ae_system['data_adapter']
+                if hasattr(adapter, 'data_stats'):
+                    loss_config['data_stats'] = adapter.data_stats
+            
             from autoencoder.utils.configurable_loss import create_loss_function
             return self._wrap_configurable_loss(create_loss_function(loss_config))
 
@@ -1301,7 +1309,15 @@ class AETrainer:
             if 'custom_loss_config' in training_config:
                 from autoencoder.utils.configurable_loss import create_loss_function
                 self.gui.ae_log(f"  {loss_name}使用全局自定义损失函数")
-                return self._wrap_configurable_loss(create_loss_function(training_config['custom_loss_config']))
+                
+                loss_config = training_config['custom_loss_config'].copy()
+                # 注入数据统计信息
+                if hasattr(self.gui, 'ae_system') and self.gui.ae_system and 'data_adapter' in self.gui.ae_system:
+                    adapter = self.gui.ae_system['data_adapter']
+                    if hasattr(adapter, 'data_stats'):
+                        loss_config['data_stats'] = adapter.data_stats
+                        
+                return self._wrap_configurable_loss(create_loss_function(loss_config))
 
         # 3. 默认MSE
         return nn.MSELoss()
