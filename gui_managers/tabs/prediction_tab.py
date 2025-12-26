@@ -8,7 +8,7 @@ from matplotlib.figure import Figure
 class PredictionTab(ttk.Frame):
     """
     RCS预测标签页
-    负责飞行器参数输入和RCS预测及结果展示。
+    负责飞行器参数输入和AutoEncoder RCS预测及结果展示。
     """
 
     def __init__(self, notebook, app):
@@ -27,7 +27,6 @@ class PredictionTab(ttk.Frame):
         self.font_medium = getattr(app, 'font_medium', None)
 
         self.param_vars = []
-        self.pred_model_type_var = tk.StringVar(value="传统网络")
         
         # 初始化Matplotlib图形
         self.pred_fig = Figure(figsize=(12, 6), dpi=80)
@@ -67,14 +66,8 @@ class PredictionTab(ttk.Frame):
         ttk.Button(control_frame, text="载入参数模板", command=self.load_param_template).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="随机生成参数", command=self.generate_random_params).pack(side=tk.LEFT, padx=5)
 
-        # 模型选择
-        ttk.Label(control_frame, text="使用模型:").pack(side=tk.LEFT, padx=(20, 5))
-        model_combo = ttk.Combobox(control_frame, textvariable=self.pred_model_type_var,
-                                   values=["传统网络", "AutoEncoder"], state="readonly", width=12)
-        model_combo.pack(side=tk.LEFT, padx=5)
-
-        ttk.Button(control_frame, text="执行预测", command=self.make_prediction,
-                  style="Accent.TButton").pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="执行AutoEncoder预测", command=self.make_prediction,
+                  style="Accent.TButton").pack(side=tk.LEFT, padx=(20, 5))
 
         # 预测结果显示
         result_group = ttk.LabelFrame(main_frame, text="预测结果")
@@ -114,19 +107,11 @@ class PredictionTab(ttk.Frame):
             var.set(f"{random_val:.6f}")
 
     def make_prediction(self):
-        """执行RCS预测（支持传统网络和AutoEncoder）"""
-        # 检查选择的模型类型
-        model_type = self.pred_model_type_var.get()
-
-        # 检查模型是否可用
-        if model_type == "传统网络":
-            if not self.app.model_trained or self.app.current_model is None:
-                messagebox.showwarning("警告", "请先训练或加载传统神经网络模型")
-                return
-        elif model_type == "AutoEncoder":
-            if not hasattr(self.app, 'ae_system') or self.app.ae_system is None:
-                messagebox.showwarning("警告", "请先训练或加载AutoEncoder模型")
-                return
+        """执行AutoEncoder RCS预测"""
+        # 检查AutoEncoder模型是否可用
+        if not hasattr(self.app, 'ae_system') or self.app.ae_system is None:
+            messagebox.showwarning("警告", "请先训练或加载AutoEncoder模型")
+            return
 
         try:
             # 获取输入参数
@@ -138,87 +123,65 @@ class PredictionTab(ttk.Frame):
 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-            if model_type == "传统网络":
-                # 传统网络需要标准化参数
-                if hasattr(self.app, 'param_data'):
-                    from sklearn.preprocessing import StandardScaler
-                    scaler = StandardScaler()
-                    scaler.fit(self.app.param_data)
-                    params_scaled = scaler.transform(params)
+            # 使用AutoEncoder预测
+            autoencoder = self.app.ae_system['autoencoder']
+            parameter_mapper = self.app.ae_system['parameter_mapper']
+            wavelet_transform = self.app.ae_system.get('wavelet_transform', None)
+            data_adapter = self.app.ae_system.get('data_adapter', None)
+            mode = self.app.ae_system.get('mode', 'wavelet')
+            config_info = self.app.ae_system.get('config_info', {})
+            num_frequencies = config_info.get('num_frequencies', 2)
+
+            autoencoder.to(device).eval()
+            parameter_mapper.to(device).eval()
+
+            with torch.no_grad():
+                # Step 1: 标准化参数（与训练时保持一致）
+                param_scaler = self.app.ae_system.get('param_scaler', None)
+                if param_scaler is not None:
+                    # 使用训练时的StandardScaler标准化参数
+                    params_normalized = param_scaler.transform(params)
+                    params_tensor = torch.tensor(params_normalized, dtype=torch.float32).to(device)
                 else:
-                    params_scaled = params
-                # 使用传统神经网络预测
-                self.app.current_model.to(device)
-                self.app.current_model.eval()
+                    # 如果没有scaler（旧模型），使用原始参数并警告
+                    self.app.log_message("⚠️ 未找到param_scaler，使用原始参数（可能导致预测不准确）")
+                    params_tensor = torch.tensor(params, dtype=torch.float32).to(device)
 
-                with torch.no_grad():
-                    params_tensor = torch.tensor(params_scaled, dtype=torch.float32).to(device)
-                    prediction = self.app.current_model(params_tensor)
-                    prediction = prediction.cpu().numpy()[0]  # [91, 91, 2]
+                # Step 2: 参数 → 隐空间
+                predicted_latents = parameter_mapper(params_tensor)
 
-                # 可视化预测结果
-                self._plot_prediction_results(prediction, model_type="传统网络")
+                # Step 3: 隐空间 → 重建输出
+                predicted_output = autoencoder.decode(predicted_latents)
 
-            elif model_type == "AutoEncoder":
-                # 使用AutoEncoder预测
-                autoencoder = self.app.ae_system['autoencoder']
-                parameter_mapper = self.app.ae_system['parameter_mapper']
-                wavelet_transform = self.app.ae_system.get('wavelet_transform', None)
-                data_adapter = self.app.ae_system.get('data_adapter', None)
-                mode = self.app.ae_system.get('mode', 'wavelet')
-                config_info = self.app.ae_system.get('config_info', {})
-                num_frequencies = config_info.get('num_frequencies', 2)
-
-                autoencoder.to(device).eval()
-                parameter_mapper.to(device).eval()
-
-                with torch.no_grad():
-                    # Step 1: 标准化参数（与训练时保持一致）
-                    param_scaler = self.app.ae_system.get('param_scaler', None)
-                    if param_scaler is not None:
-                        # 使用训练时的StandardScaler标准化参数
-                        params_normalized = param_scaler.transform(params)
-                        params_tensor = torch.tensor(params_normalized, dtype=torch.float32).to(device)
+                # Step 4: 逆变换到原始RCS空间
+                if mode == 'wavelet':
+                    # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                    if data_adapter:
+                        predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
+                        predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
                     else:
-                        # 如果没有scaler（旧模型），使用原始参数并警告
-                        self.app.log_message("⚠️ 未找到param_scaler，使用原始参数（可能导致预测不准确）")
-                        params_tensor = torch.tensor(params, dtype=torch.float32).to(device)
+                        predicted_coeffs = predicted_output
 
-                    # Step 2: 参数 → 隐空间
-                    predicted_latents = parameter_mapper(params_tensor)
-
-                    # Step 3: 隐空间 → 重建输出
-                    predicted_output = autoencoder.decode(predicted_latents)
-
-                    # Step 4: 逆变换到原始RCS空间
-                    if mode == 'wavelet':
-                        # 小波模式：标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
-                        if data_adapter:
-                            predicted_coeffs_np = data_adapter.inverse_adapt(predicted_output)
-                            predicted_coeffs = torch.FloatTensor(predicted_coeffs_np).to(device)
-                        else:
-                            predicted_coeffs = predicted_output
-
-                        prediction = wavelet_transform.inverse_transform(predicted_coeffs)
+                    prediction = wavelet_transform.inverse_transform(predicted_coeffs)
+                else:
+                    # 直接模式：标准化RCS → 逆标准化 → RCS
+                    if data_adapter:
+                        prediction_np = data_adapter.inverse_adapt(predicted_output)
+                        prediction = torch.FloatTensor(prediction_np).to(device)
                     else:
-                        # 直接模式：标准化RCS → 逆标准化 → RCS
-                        if data_adapter:
-                            prediction_np = data_adapter.inverse_adapt(predicted_output)
-                            prediction = torch.FloatTensor(prediction_np).to(device)
-                        else:
-                            prediction = predicted_output
+                        prediction = predicted_output
 
-                    prediction = prediction.cpu().numpy()[0]  # [91, 91, num_freq]
+                prediction = prediction.cpu().numpy()[0]  # [91, 91, num_freq]
 
-                # 可视化预测结果
-                self._plot_prediction_results(prediction, model_type="AutoEncoder", num_frequencies=num_frequencies)
+            # 可视化预测结果
+            self._plot_prediction_results(prediction, num_frequencies=num_frequencies)
 
         except Exception as e:
             import traceback
             traceback.print_exc()
             messagebox.showerror("错误", f"预测失败: {str(e)}")
 
-    def _plot_prediction_results(self, prediction, model_type="传统网络", num_frequencies=2):
+    def _plot_prediction_results(self, prediction, num_frequencies=2):
         """绘制预测结果（支持2freq和3freq）"""
         self.pred_fig.clear()
 

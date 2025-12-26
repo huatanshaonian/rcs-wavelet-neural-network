@@ -85,7 +85,7 @@ class VisualizationTab(ttk.Frame):
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         type_combo = ttk.Combobox(control_frame, textvariable=self.vis_type_var,
                                  values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "AE分支对比", "差值分析", "相关性分析",
-                                        "训练历史", "统计对比", "AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"],
+                                        "统计对比", "AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"],
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
 
@@ -130,21 +130,17 @@ class VisualizationTab(ttk.Frame):
         self.vis_toolbar.update()
 
     def generate_visualization(self):
-        """生成可视化图表（支持AutoEncoder和传统网络）"""
+        """生成可视化图表（AutoEncoder专用）"""
         try:
             chart_type = self.vis_type_var.get()
 
             # 检查模型可用性
-            has_traditional_model = self.app.model_trained and self.app.current_model is not None
             has_ae_model = hasattr(self.app, 'ae_system') and self.app.ae_system is not None
 
-            # 分类处理：需要model_id的图表 vs 全局统计图表 vs AutoEncoder特定图表
-            if chart_type in ["训练历史", "统计对比"]:
+            # 分类处理：全局统计图表 vs AutoEncoder特定图表
+            if chart_type == "统计对比":
                 # 全局统计图表 - 不需要model_id
-                if chart_type == "训练历史":
-                    self._plot_training_history()
-                elif chart_type == "统计对比":
-                    self._plot_global_statistics_comparison()
+                self._plot_global_statistics_comparison()
             elif chart_type in ["AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"]:
                 # AutoEncoder特定图表
                 if not has_ae_model:
@@ -235,31 +231,6 @@ class VisualizationTab(ttk.Frame):
     def _plot_correlation_analysis(self, model_id):
         """绘制相关性分析图"""
         return self.app.visualization_manager._plot_correlation_analysis(model_id, self.app.current_model, self.vis_fig, self.vis_canvas, self.app.rcs_data, self.app.param_data, self.app.log_message)
-
-    def _plot_training_history(self):
-        """绘制训练历史图（对交叉验证，分别保存每折到results文件夹，GUI显示最佳折）"""
-        # Training history for traditional network is in app.training_history
-        # For AE, it's in app.ae_training_history
-        if self.app.training_history:
-            return self.app.visualization_manager._plot_training_history(self.app.training_history, self.vis_fig, self.vis_canvas, self.app.log_message)
-        elif self.app.ae_training_history:
-            # For AE training history, use a specific plot for AE if available, or adapt generic
-            return self._plot_ae_training_progress_vis() # Fallback to AE specific plot
-        else:
-            messagebox.showwarning("警告", "没有可用的训练历史数据。" )
-
-
-    def _save_fold_plot(self, fold_data, fold_idx, results_dir):
-        """保存单个折的训练历史图表"""
-        return self.app.visualization_manager._save_fold_plot(fold_data, fold_idx, results_dir)
-
-    def _display_fold_in_gui(self, fold_data, fold_idx):
-        """在GUI中显示指定折的训练历史"""
-        return self.app.visualization_manager._display_fold_in_gui(fold_data, fold_idx, self.vis_fig, self.vis_canvas, self.app.log_message)
-
-    def _display_simple_training_history(self):
-        """显示简单训练模式的历史（非交叉验证）"""
-        return self.app.visualization_manager._display_simple_training_history(self.app.training_history, self.vis_fig, self.vis_canvas, self.app.log_message)
 
     def _plot_global_statistics_comparison(self):
         """改进的全局统计对比分析 - 委托给StatisticsManager处理"""
