@@ -3,7 +3,7 @@ RCS小波神经网络图形用户界面
 
 提供直观的GUI界面用于:
 1. 数据加载和预处理
-2. 模型训练和监控
+2. AutoEncoder训练和监控
 3. 预测结果可视化
 4. 模型评估和对比
 5. 参数配置和管理
@@ -11,7 +11,7 @@ RCS小波神经网络图形用户界面
 基于tkinter构建，提供完整的工作流程界面
 
 作者: RCS Wavelet Network Project
-版本: 1.0
+版本: 2.0 (专注AutoEncoder)
 """
 
 # Unicode字符支持 ✨
@@ -67,7 +67,6 @@ import torch
 from gui_managers.managers import StatisticsManager, VisualizationManager, TrainingManager, EvaluationManager, ReconstructionManager
 # GUI标签页模块
 from gui_managers.tabs.data_management_tab import DataManagementTab
-from gui_managers.tabs.training_tab import TrainingTab
 from gui_managers.tabs.visualization_tab import VisualizationTab
 from gui_managers.tabs.loss_config_tab import LossConfigTab
 from gui_managers.tabs.evaluation_tab import EvaluationTab
@@ -433,27 +432,22 @@ class RCSWaveletGUI:
         self.notebook.add(self.autoencoder_frame, text="AutoEncoder")
         self.create_autoencoder_tab()
 
-        # 标签页4: 模型训练
-        self.training_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.training_frame, text="模型训练")
-        self.create_training_tab()
-
-        # 标签页5: 模型评估
+        # 标签页4: 模型评估
         self.evaluation_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.evaluation_frame, text="模型评估")
         self.create_evaluation_tab()
 
-        # 标签页6: RCS预测
+        # 标签页5: RCS预测
         self.prediction_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.prediction_frame, text="RCS预测")
         self.create_prediction_tab()
 
-        # 标签页7: 可视化
+        # 标签页6: 可视化
         self.visualization_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.visualization_frame, text="可视化")
         self.create_visualization_tab()
 
-        # 标签页8: 批量实验
+        # 标签页7: 批量实验
         self.batch_experiment_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.batch_experiment_frame, text="批量实验")
         self.create_batch_experiment_tab()
@@ -498,15 +492,6 @@ class RCSWaveletGUI:
         # 代码已迁移至 gui_managers/tabs/loss_config_tab.py
         self.loss_config_tab = LossConfigTab(self.loss_config_frame, self)
         self.loss_config_tab.pack(fill=tk.BOTH, expand=True)
-        return
-
-    def create_training_tab(self):
-        """创建模型训练标签页"""
-
-        # 使用新重构的标签页类
-        # 代码已迁移至 gui_managers/tabs/training_tab.py
-        self.training_tab = TrainingTab(self.training_frame, self)
-        self.training_tab.pack(fill=tk.BOTH, expand=True)
         return
 
     def create_evaluation_tab(self):
@@ -564,8 +549,8 @@ class RCSWaveletGUI:
     # ======= 系统管理功能 (已迁移至 DataManagementTab) =======
     # CUDA管理方法已迁移至 gui_managers/tabs/data_management_tab.py
 
-    # ======= 训练功能 (已迁移至 TrainingTab) =======
-    # 所有训练相关方法已迁移至 gui_managers/tabs/training_tab.py
+    # ======= 传统模型训练功能 (已删除) =======
+    # 传统模型训练功能已完全移除，项目专注于AutoEncoder系统
 
     # ======= 评估功能 (已迁移至 EvaluationTab) =======
     # 所有评估相关方法已迁移至 gui_managers/tabs/evaluation_tab.py
