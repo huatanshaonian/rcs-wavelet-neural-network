@@ -36,6 +36,26 @@ class AdditiveDualBranchWaveletMLPAutoEncoder(BaseAutoEncoder):
     叠加型双分支小波MLP AutoEncoder
     """
 
+    def _init_layer(self, layer: nn.Linear, activation_name: str, is_first: bool = False):
+        """
+        根据激活函数初始化层权重
+        """
+        if activation_name == 'sin':
+            # SIREN初始化
+            omega_0 = 30.0
+            if is_first:
+                limit = 1.0 / layer.in_features
+                nn.init.uniform_(layer.weight, -limit, limit)
+            else:
+                limit = np.sqrt(6 / layer.in_features) / omega_0
+                nn.init.uniform_(layer.weight, -limit, limit)
+        else:
+            # 标准Xavier初始化
+            nn.init.xavier_uniform_(layer.weight)
+
+        if layer.bias is not None:
+            nn.init.constant_(layer.bias, 0)
+
     def __init__(self,
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
@@ -90,22 +110,31 @@ class AdditiveDualBranchWaveletMLPAutoEncoder(BaseAutoEncoder):
         encoder_layers = []
         current_dim = self.input_dim
 
-        for intermediate_dim in self.intermediate_dims:
+        for i, intermediate_dim in enumerate(self.intermediate_dims):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, self.activation_encoder_type, is_first=(i==0))
+
             encoder_layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
+                layer,
                 get_activation(activation_encoder),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
 
-        encoder_layers.append(nn.Linear(current_dim, latent_dim))
+        # Encoder最后一层
+        last_enc_layer = nn.Linear(current_dim, latent_dim)
+        nn.init.xavier_uniform_(last_enc_layer.weight)
+        if last_enc_layer.bias is not None:
+            nn.init.constant_(last_enc_layer.bias, 0)
+        encoder_layers.append(last_enc_layer)
+
         self.encoder = nn.Sequential(*encoder_layers)
 
         # ===== Decoder Branch 1: High Frequency (Detail) =====
-        self.decoder_high = self._build_decoder_mlp(activation_high)
+        self.decoder_high = self._build_decoder_mlp(self.activation_high_type)
 
         # ===== Decoder Branch 2: Smooth (Mean/Trend) =====
-        self.decoder_smooth = self._build_decoder_mlp(activation_smooth)
+        self.decoder_smooth = self._build_decoder_mlp(self.activation_smooth_type)
 
         # ===== 叠加权重 =====
         if learnable_weights:
@@ -115,47 +144,34 @@ class AdditiveDualBranchWaveletMLPAutoEncoder(BaseAutoEncoder):
             self.register_buffer('alpha_high', torch.tensor(float(alpha_high)))
             self.register_buffer('alpha_smooth', torch.tensor(float(alpha_smooth)))
 
-        # 权重初始化
-        self._initialize_weights()
-
         # 统一接口
         self.decoder = nn.ModuleList([self.decoder_high, self.decoder_smooth])
 
-    def _build_decoder_mlp(self, activation: str) -> nn.Sequential:
+    def _build_decoder_mlp(self, activation_name: str) -> nn.Sequential:
         """构建Decoder MLP"""
         layers = []
         current_dim = self.latent_dim
 
         # 反向构建中间层
-        for intermediate_dim in reversed(self.intermediate_dims):
+        for i, intermediate_dim in enumerate(reversed(self.intermediate_dims)):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, activation_name, is_first=(i==0))
+
             layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
-                get_activation(activation),
+                layer,
+                get_activation(activation_name),
                 nn.Dropout(self.dropout_rate)
             ])
             current_dim = intermediate_dim
 
         # 输出层
-        layers.append(nn.Linear(current_dim, self.input_dim))
-        
-        # 注意：最后一层通常不加激活函数，或者根据数据范围加 Tanh/Sigmoid
-        # 这里为了保持通用性不加，让激活函数在Loss计算前处理或由数据预处理决定
-        
-        return nn.Sequential(*layers)
+        out_layer = nn.Linear(current_dim, self.input_dim)
+        nn.init.xavier_uniform_(out_layer.weight)
+        if out_layer.bias is not None:
+            nn.init.constant_(out_layer.bias, 0)
+        layers.append(out_layer)
 
-    def _initialize_weights(self):
-        """权重初始化"""
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                # 对Sin激活函数使用特殊的初始化
-                if hasattr(m, 'activation_type') and m.activation_type == 'sin':
-                    # SIREN initialization (如果实现了的话)
-                    nn.init.uniform_(m.weight, -np.sqrt(6/m.in_features) / 30, np.sqrt(6/m.in_features) / 30)
-                else:
-                    nn.init.xavier_uniform_(m.weight)
-                
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
+        return nn.Sequential(*layers)
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -273,6 +289,26 @@ class AdditiveDualBranchDirectMLPAutoEncoder(BaseAutoEncoder):
     叠加型双分支Direct MLP AutoEncoder (无小波变换)
     """
 
+    def _init_layer(self, layer: nn.Linear, activation_name: str, is_first: bool = False):
+        """
+        根据激活函数初始化层权重
+        """
+        if activation_name == 'sin':
+            # SIREN初始化
+            omega_0 = 30.0
+            if is_first:
+                limit = 1.0 / layer.in_features
+                nn.init.uniform_(layer.weight, -limit, limit)
+            else:
+                limit = np.sqrt(6 / layer.in_features) / omega_0
+                nn.init.uniform_(layer.weight, -limit, limit)
+        else:
+            # 标准Xavier初始化
+            nn.init.xavier_uniform_(layer.weight)
+        
+        if layer.bias is not None:
+            nn.init.constant_(layer.bias, 0)
+
     def __init__(self,
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
@@ -307,19 +343,28 @@ class AdditiveDualBranchDirectMLPAutoEncoder(BaseAutoEncoder):
         # ===== Encoder =====
         encoder_layers = []
         current_dim = self.input_dim
-        for intermediate_dim in self.intermediate_dims:
+        for i, intermediate_dim in enumerate(self.intermediate_dims):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, self.activation_encoder_type, is_first=(i==0))
+            
             encoder_layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
+                layer,
                 get_activation(activation_encoder),
                 nn.Dropout(dropout_rate)
             ])
             current_dim = intermediate_dim
-        encoder_layers.append(nn.Linear(current_dim, latent_dim))
+            
+        # Encoder最后一层
+        last_enc_layer = nn.Linear(current_dim, latent_dim)
+        nn.init.xavier_uniform_(last_enc_layer.weight)
+        if last_enc_layer.bias is not None: nn.init.constant_(last_enc_layer.bias, 0)
+        encoder_layers.append(last_enc_layer)
+        
         self.encoder = nn.Sequential(*encoder_layers)
 
         # ===== Decoders =====
-        self.decoder_high = self._build_decoder_mlp(activation_high)
-        self.decoder_smooth = self._build_decoder_mlp(activation_smooth)
+        self.decoder_high = self._build_decoder_mlp(self.activation_high_type)
+        self.decoder_smooth = self._build_decoder_mlp(self.activation_smooth_type)
 
         # ===== Weights =====
         if learnable_weights:
@@ -329,28 +374,31 @@ class AdditiveDualBranchDirectMLPAutoEncoder(BaseAutoEncoder):
             self.register_buffer('alpha_high', torch.tensor(float(alpha_high)))
             self.register_buffer('alpha_smooth', torch.tensor(float(alpha_smooth)))
 
-        self._initialize_weights()
         self.decoder = nn.ModuleList([self.decoder_high, self.decoder_smooth])
 
-    def _build_decoder_mlp(self, activation: str) -> nn.Sequential:
+    def _build_decoder_mlp(self, activation_name: str) -> nn.Sequential:
         layers = []
         current_dim = self.latent_dim
-        for intermediate_dim in reversed(self.intermediate_dims):
+        
+        # 反向构建中间层
+        for i, intermediate_dim in enumerate(reversed(self.intermediate_dims)):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, activation_name, is_first=(i==0))
+            
             layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
-                get_activation(activation),
+                layer,
+                get_activation(activation_name),
                 nn.Dropout(self.dropout_rate)
             ])
             current_dim = intermediate_dim
-        layers.append(nn.Linear(current_dim, self.input_dim))
+            
+        # 输出层
+        out_layer = nn.Linear(current_dim, self.input_dim)
+        nn.init.xavier_uniform_(out_layer.weight)
+        if out_layer.bias is not None: nn.init.constant_(out_layer.bias, 0)
+        layers.append(out_layer)
+        
         return nn.Sequential(*layers)
-
-    def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size = x.shape[0]
