@@ -19,7 +19,7 @@ class ReconstructionManager:
         """
         self.gui = parent_gui
 
-    def _reconstruct_rcs(self, input_data=None, input_type='auto', model_ids=None, return_latents=False, return_wavelet_coeffs=False):
+    def _reconstruct_rcs(self, input_data=None, input_type='auto', model_ids=None, return_latents=False, return_wavelet_coeffs=False, force_reconstruction_mode='auto'):
         """
         统一的RCS重建函数 - 支持多种输入方式
 
@@ -41,6 +41,10 @@ class ReconstructionManager:
                 - 可以是字符串列表 ['001', '002'] 或整数列表 [0, 1]
             return_latents: 是否返回隐空间表示（默认False）
             return_wavelet_coeffs: 是否返回小波系数（仅Wavelet模式，默认False）
+            force_reconstruction_mode: 强制指定重建模式（用于可视化等场景）
+                - 'auto': 根据training_mode自动选择（默认）
+                - 'ae_only': 强制使用纯AE重建（RCS → Encoder → Decoder → RCS）
+                - 'end_to_end': 强制从参数重建（参数 → ParameterMapper → Decoder → RCS）
 
         Returns:
             dict: {
@@ -65,8 +69,20 @@ class ReconstructionManager:
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         autoencoder.to(device).eval()
-        if training_mode == 'three_stage':
+        if training_mode in ('three_stage', 'joint_training'):
             parameter_mapper.to(device).eval()
+
+        # 打印重建模式信息（如果指定了强制模式）
+        if force_reconstruction_mode != 'auto':
+            print(f"\n{'='*60}")
+            print(f"【强制重建模式】")
+            print(f"  训练模式: {training_mode}")
+            print(f"  强制模式: {force_reconstruction_mode}")
+            if force_reconstruction_mode == 'ae_only':
+                print(f"  重建路径: RCS → Encoder → Decoder → RCS (纯AE)")
+            elif force_reconstruction_mode == 'end_to_end':
+                print(f"  重建路径: 参数 → ParameterMapper → Decoder → RCS (端到端)")
+            print(f"{'='*60}\n")
 
         # 初始化小波系数变量
         original_wavelet_coeffs_np = None
@@ -76,8 +92,10 @@ class ReconstructionManager:
         if input_type == 'auto':
             if training_mode == 'stage1_only':
                 input_type = 'rcs'
-            else:
+            elif training_mode in ('three_stage', 'joint_training'):
                 input_type = 'params'
+            else:
+                input_type = 'params'  # 默认从参数重建
 
         # 3. 处理model_ids输入（转换为实际数据）
         if input_type == 'model_ids':
@@ -92,9 +110,23 @@ class ReconstructionManager:
                 else:
                     indices.append(int(mid))
 
-            # 根据training_mode获取对应数据
-            if training_mode == 'three_stage':
-                # Three-Stage: 从参数重建
+            # 根据 force_reconstruction_mode 或 training_mode 获取对应数据
+            # 优先级: force_reconstruction_mode > training_mode
+            if force_reconstruction_mode == 'ae_only':
+                # 强制纯AE重建：使用RCS数据
+                use_rcs = True
+            elif force_reconstruction_mode == 'end_to_end':
+                # 强制端到端重建：使用参数数据
+                use_rcs = False
+            else:  # 'auto'
+                # 自动模式：根据 training_mode 决定
+                if training_mode in ('three_stage', 'joint_training'):
+                    use_rcs = False  # 从参数重建
+                else:  # stage1_only
+                    use_rcs = True  # 从RCS重建
+
+            if not use_rcs:
+                # 从参数重建（Three-Stage/Joint-Training 或强制端到端）
                 param_data = self.gui.ae_system.get('param_data', None)
                 if param_data is None:
                     param_data = self.gui.ae_system.get('parameter_data', None)
@@ -106,7 +138,7 @@ class ReconstructionManager:
                 input_data = param_data[indices]
                 input_type = 'params'
             else:
-                # Stage1-Only: 从RCS重建
+                # 从RCS重建（Stage1-Only 或强制纯AE）
                 rcs_data = self.gui.ae_system.get('rcs_data', None)
                 if rcs_data is None and hasattr(self.gui, 'rcs_data') and self.gui.rcs_data is not None:
                     self.gui.ae_system['rcs_data'] = self.gui.rcs_data
@@ -127,9 +159,9 @@ class ReconstructionManager:
         # 5. 执行重建
         with torch.no_grad():
             if input_type == 'params':
-                # ========== Three-Stage模式：从参数重建 ==========
-                if training_mode != 'three_stage':
-                    raise ValueError("从参数重建需要Three-Stage训练模式")
+                # ========== Three-Stage/Joint-Training模式：从参数重建 ==========
+                if training_mode not in ('three_stage', 'joint_training'):
+                    raise ValueError(f"从参数重建需要Three-Stage或Joint-Training训练模式，当前模式: {training_mode}")
 
                 # ✅ 使用param_scaler标准化参数（与训练时保持一致）
                 param_scaler = self.gui.ae_system.get('param_scaler', None)
@@ -185,9 +217,11 @@ class ReconstructionManager:
 
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(predicted_coeffs)
+
                 elif mode == 'differentiable_wavelet':
                     # Differentiable小波模式：decoder输出已经是RCS，但需要获取小波系数
                     reconstructed_rcs = decoder_output  # 已经是RCS
+
 
                     # 如果需要小波系数，从AutoEncoder内部提取
                     if return_wavelet_coeffs:
@@ -222,6 +256,7 @@ class ReconstructionManager:
                         reconstructed_rcs = torch.FloatTensor(reconstructed_rcs_np).to(device)
                     else:
                         reconstructed_rcs = decoder_output
+
 
             elif input_type == 'rcs':
                 # ========== Stage1-Only模式：从RCS重建 ==========
@@ -286,9 +321,11 @@ class ReconstructionManager:
 
                     # 逆小波变换
                     reconstructed_rcs = wavelet_transform.inverse_transform(reconstructed_coeffs)
+
                 elif mode == 'differentiable_wavelet':
                     # Differentiable小波模式：输出已经是RCS
                     reconstructed_rcs = reconstructed_output
+
 
                     # 如果需要小波系数，从AutoEncoder内部提取
                     if return_wavelet_coeffs:
@@ -301,6 +338,7 @@ class ReconstructionManager:
                         reconstructed_rcs = torch.FloatTensor(reconstructed_rcs_np).to(device)
                     else:
                         reconstructed_rcs = reconstructed_output
+
             else:
                 raise ValueError(f"不支持的input_type: {input_type}")
 

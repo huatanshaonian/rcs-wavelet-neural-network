@@ -10,7 +10,19 @@
       "Bash(python:*)",
       "Bash(grep:*)",
       "Bash(wc:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git stash:*)",
+      "Bash(pip install:*)",
+      "Bash(未训练\"\n\n修复内容：\n\n1. ae_trainer.py - 同步所有训练模式到ae_system\n   - Stage 1 Only模式：训练完成后设置ae_system[''training_mode''] = ''stage1_only'' \\(2处\\)\n   - 三阶段训练模式：Stage 3完成后设置ae_system[''training_mode''] = ''three_stage''\n   - 端到端训练模式：训练完成后设置ae_system[''training_mode''] = ''end_to_end''\n   - Stage 2 Only模式：已在training_manager.py正确设置\n   - 联合训练模式：已正确设置（保持不变）\n\n2. gui_autoencoder_extension.py - 更新状态栏显示映射\n   - 扩展mode_display字典支持所有5种训练模式\n   - stage1_only → ''Stage1''\n   - three_stage → ''3Stage''\n   - stage2_only → ''Stage2''\n   - joint_training → ''联合''\n   - end_to_end → ''端到端''\n\n预期效果：\n- 训练完成后状态栏正确显示训练模式\n- 所有5种训练模式都能正确识别和显示\n- 用户可以清楚看到模型已完成哪种训练\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git checkout:*)",
+      "Bash(ls:*)",
+      "Bash(__NEW_LINE__ Args:)",
+      "Bash(adapted_data: [N, H, W, C] 处理后的数据（Tensor或numpy数组）)",
+      "Bash(__NEW_LINE__ Returns:)",
+      "Bash(original_data: [N, H, W, C] 线性域数据（numpy数组）)",
+      "Bash(低频:YY%\"\n   - 添加注释说明避免硬编码假设\n\n2. plotting.py:942-946 - 第二分支频谱图标题\n   - 修复前：硬编码\"低频占比=XX%\"\n   - 修复后：显示完整能量分布\"高频:XX%)",
+      "Bash(低频:YY%\"\n   - 添加注释说明避免硬编码假设\n\n技术细节：\n- 数据流100%正确（已验证）：decoder_high使用sin → 产生高频，decoder_smooth使用relu → 产生低频\n- 仅修改可视化标签，不改变任何数据处理逻辑\n- 新标签客观中立，显示实际测量的能量分布，便于用户分析\n\n预期效果：\n- SIN分支将显示：高频:75%+ | 低频:25%-（符合物理直觉）\n- RELU分支将显示：高频:15%- | 低频:85%+（符合物理直觉）\n- 用户不再困惑，标签准确反映真实物理特性\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

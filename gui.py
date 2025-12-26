@@ -76,11 +76,11 @@ from gui_managers.tabs.prediction_tab import PredictionTab
 # 导入项目模块
 try:
     from wavelet_network import create_model, create_loss_function
-    from configurable_loss import create_loss_function as create_configurable_loss
+    from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
     from training import (CrossValidationTrainer, RCSDataLoader,
                          create_training_config, create_data_config, RCSDataset)
     from evaluation import RCSEvaluator, evaluate_model_with_visualizations
-    from data_cache import create_cache_manager
+    from autoencoder.utils.data_cache import create_cache_manager
 
     # 导入现代化的网络接口
     try:
@@ -164,8 +164,14 @@ class RCSWaveletGUI:
         """
         self.root = root
         self.root.title("RCS小波神经网络预测系统 v1.0")
-        self.root.geometry("1400x900")
-        self.root.minsize(1200, 800)
+        self.root.geometry("1600x1200")  # 增加默认尺寸
+        self.root.minsize(1200, 900)
+        
+        # 尝试最大化窗口
+        # try:
+        #     self.root.state('zoomed')
+        # except:
+        #     pass
 
         # 设置字体 (使用系统默认字体避免字体问题)
         try:
@@ -249,12 +255,25 @@ class RCSWaveletGUI:
         self.ae_architecture_type = tk.StringVar(value="CNN")  # 架构类型: CNN或MLP
         self.ae_activation = tk.StringVar(value="relu")  # 激活函数类型
 
+        # Additive Dual-Branch专用配置
+        self.ae_activation_encoder = tk.StringVar(value="relu")  # Encoder激活函数
+        self.ae_activation_high = tk.StringVar(value="sin")  # 高频Decoder激活函数
+        self.ae_activation_smooth = tk.StringVar(value="tanh")  # 低频Decoder激活函数
+        self.ae_learnable_weights = tk.BooleanVar(value=False)  # 是否使用可学习权重
+        self.ae_alpha_high = tk.StringVar(value="0.5")  # 高频权重（固定权重模式）
+        self.ae_alpha_smooth = tk.StringVar(value="0.5")  # 低频权重（固定权重模式）
+
+        # 参数映射器配置
+        self.ae_mapper_activation = tk.StringVar(value="auto")  # auto表示与AutoEncoder相同
+        self.ae_mapper_use_adaptive = tk.BooleanVar(value=True)  # 默认使用自适应层
+
         # 训练配置
         self.ae_batch_size = tk.StringVar(value="16")
         self.ae_learning_rate = tk.StringVar(value="1e-3")
         self.ae_epochs_stage1 = tk.StringVar(value="100")  # AE预训练轮数
         self.ae_epochs_stage2 = tk.StringVar(value="50")   # 参数映射训练轮数
         self.ae_epochs_stage3 = tk.StringVar(value="20")   # 端到端微调轮数
+        self.ae_epochs_joint = tk.StringVar(value="200")   # 联合训练轮数
 
         # 优化器配置
         self.ae_optimizer_type = tk.StringVar(value="adam")  # adam/adamw/sgd - 优化算法选择
@@ -278,6 +297,12 @@ class RCSWaveletGUI:
         self.ae_patience_stage2 = tk.StringVar(value="10")  # 阶段2早停耐心值
         self.ae_patience_stage3 = tk.StringVar(value="5")   # 阶段3早停耐心值
         self.ae_patience_e2e = tk.StringVar(value="15")     # 端到端早停耐心值
+        self.ae_patience_joint = tk.StringVar(value="50")   # 联合训练早停耐心值
+
+        # 联合训练损失权重配置
+        self.ae_alpha_recon = tk.StringVar(value="0.3")       # RCS重建损失权重
+        self.ae_beta_consistency = tk.StringVar(value="0.5")  # 一致性损失权重
+        self.ae_gamma_param_recon = tk.StringVar(value="1.0") # 参数重建损失权重（最重要）
 
         # 数据预处理配置
         # 预处理选项已移至数据管理页面，此处不再需要相关变量
@@ -287,6 +312,9 @@ class RCSWaveletGUI:
 
         # 损失函数配置复用
         self.ae_use_custom_loss = tk.BooleanVar(value=False)  # 是否使用自定义损失函数
+
+        # 梯度监控配置 (新增)
+        self.ae_gradient_monitoring = tk.BooleanVar(value=False)  # 是否启用梯度监控 (默认关闭以提高性能)
 
     def setup_logging(self):
         """设置日志系统和输出重定向"""
@@ -593,49 +621,92 @@ class RCSWaveletGUI:
     # ==================== AutoEncoder功能函数 ====================
 
     def update_ae_status(self):
-        """更新AutoEncoder系统状态显示"""
+        """更新AutoEncoder系统状态显示（紧凑格式）"""
         try:
             status_info = []
-            status_info.append("=== AutoEncoder系统状态 ===")
 
-            # 频率配置信息
-            freq_config = self.ae_freq_config.get()
-            freq_info = "1.5GHz+3GHz" if freq_config == "2freq" else "1.5GHz+3GHz+6GHz"
-            status_info.append(f"频率配置: {freq_config} ({freq_info})")
+            # 如果系统已创建，显示完整信息
+            if self.ae_system is not None:
+                config = self.ae_system.get('config_info', {})
+                model = self.ae_system['autoencoder']
 
-            # 模型配置信息
-            status_info.append(f"隐空间维度: {self.ae_latent_dim.get()}")
-            status_info.append(f"小波类型: {self.ae_wavelet_type.get()}")
-            status_info.append(f"Dropout率: {self.ae_dropout_rate.get()}")
+                # 提取关键参数
+                mode = config.get('mode', self.ae_mode.get())
+                architecture = config.get('architecture', self.ae_architecture.get())
+                activation = config.get('activation', self.ae_activation.get())
+                latent_dim = config.get('latent_dim', self.ae_latent_dim.get())
+                num_freq = config.get('num_frequencies', 2)
+                wavelet = config.get('wavelet', self.ae_wavelet_type.get())
+                dropout = config.get('dropout_rate', self.ae_dropout_rate.get())
 
-            # 系统状态
-            if self.ae_system is None:
-                status_info.append("系统状态: 未创建")
-            else:
-                status_info.append("系统状态: 已创建")
-                # 显示模型信息 (兼容不同模型格式)
-                model_info = self.ae_system['autoencoder'].get_model_info()
-
-                # 获取参数量 (兼容两种格式)
-                if 'parameters' in model_info and 'total' in model_info['parameters']:
-                    # WaveletAutoEncoder格式
-                    total_params = model_info['parameters']['total']
-                elif 'total_parameters' in model_info:
-                    # DirectAutoEncoder格式
-                    total_params = model_info['total_parameters']
+                # 获取参数量
+                param_count = model.get_parameter_count()
+                total_params = param_count.get('total', 0)
+                if total_params >= 1_000_000:
+                    params_str = f"{total_params/1_000_000:.2f}M"
+                elif total_params >= 1_000:
+                    params_str = f"{total_params/1_000:.1f}K"
                 else:
-                    total_params = 0
+                    params_str = f"{total_params}"
 
-                status_info.append(f"模型参数量: {total_params:,}")
+                # 数据预处理参数
+                data_adapter = self.ae_system.get('data_adapter')
+                if data_adapter:
+                    normalize = getattr(data_adapter, 'normalize', False)
+                    use_db = getattr(data_adapter, 'use_db', False)
+                    norm_method = getattr(data_adapter, 'normalization_method', 'z_score')
+                    preprocess_str = []
+                    if normalize:
+                        preprocess_str.append(f"标准化({norm_method})")
+                    if use_db:
+                        preprocess_str.append("dB")
+                    preprocess = "+".join(preprocess_str) if preprocess_str else "无"
+                else:
+                    preprocess = "无"
 
-                # 压缩比 (可能不存在于直接模式)
-                if 'compression_ratio' in model_info:
-                    status_info.append(f"压缩比: {model_info['compression_ratio']}")
+                # 训练模式
+                training_mode = self.ae_system.get('training_mode', 'N/A')
+                mode_display = {
+                    'stage1_only': '仅Stage1', 
+                    'three_stage': '3阶段',
+                    'joint_training': '联合',
+                    'stage2_only': '仅Stage2',
+                    'end_to_end': '端到端'
+                }.get(training_mode, training_mode)
+                trained_status = "已训练" if self.ae_trained else "未训练"
 
-            if self.ae_trained:
-                status_info.append("训练状态: 已训练")
+                # 第1行：网络架构（紧凑格式）
+                freq_labels = config.get('frequency_labels', ['1.5GHz', '3.0GHz'])
+                freq_str = '+'.join(freq_labels)
+                status_info.append(f"【网络】{mode.upper()}-{architecture.upper()} | 激活:{activation} | 隐空间:{latent_dim}D | 参数:{params_str} | 频率:{num_freq}f({freq_str}) | 小波:{wavelet} | Dropout:{dropout}")
+
+                # 第2行：数据和训练状态（紧凑格式）
+                status_info.append(f"【状态】预处理:{preprocess} | 训练:{trained_status}({mode_display}) | 系统:✓")
+
+                # 如果有训练历史，显示最佳Loss
+                if hasattr(self, 'ae_training_history') and self.ae_training_history:
+                    stage_histories = self.ae_training_history.get('stage_histories', {})
+                    best_losses = []
+                    for stage_name in ['stage1', 'stage2', 'stage3']:
+                        if stage_name in stage_histories:
+                            best_loss = stage_histories[stage_name].get('best_val_loss', None)
+                            if isinstance(best_loss, float):
+                                best_losses.append(f"{stage_name.upper()}:{best_loss:.6f}")
+                    if best_losses:
+                        status_info.append(f"【性能】最佳Loss: {' | '.join(best_losses)}")
+
             else:
-                status_info.append("训练状态: 未训练")
+                # 系统未创建，显示配置信息（单行）
+                mode = self.ae_mode.get()
+                architecture = self.ae_architecture.get()
+                activation = self.ae_activation.get()
+                freq_config = self.ae_freq_config.get()
+                latent_dim = self.ae_latent_dim.get()
+                wavelet = self.ae_wavelet_type.get()
+                dropout = self.ae_dropout_rate.get()
+
+                status_info.append(f"【配置】模式:{mode} | 架构:{architecture} | 激活:{activation} | 频率:{freq_config} | 隐空间:{latent_dim}D | 小波:{wavelet} | Dropout:{dropout} | 系统:✗")
+                status_info.append("💡 点击'创建AutoEncoder系统'开始")
 
             # 更新显示
             self.ae_status_text.delete(1.0, tk.END)
@@ -774,14 +845,25 @@ class RCSWaveletGUI:
             else:
                 params_str = f"{total_params}"
 
+            # 获取训练模式显示
+            training_mode = self.ae_system.get('training_mode', 'N/A')
+            mode_map = {
+                'stage1_only': '仅Stage1',
+                'three_stage': '3阶段',
+                'joint_training': '联合',
+                'stage2_only': '仅Stage2',
+                'end_to_end': '端到端'
+            }
+            mode_display = mode_map.get(training_mode, training_mode)
+
             # 构建状态栏信息
             status_text = (
                 f"网络: {mode.upper()}-{architecture.upper()} | "
+                f"模式: {mode_display} | "
                 f"激活: {activation} | "
                 f"隐空间: {latent_dim}D | "
                 f"频率: {num_freq}freq | "
                 f"小波: {wavelet} | "
-                f"Dropout: {dropout} | "
                 f"参数量: {params_str}"
             )
 
@@ -832,117 +914,10 @@ class RCSWaveletGUI:
         except Exception as e:
             print(f"添加AE日志失败: {e}")
 
-    def create_ae_system(self):
-        """创建AutoEncoder系统"""
-        try:
-            if not self.data_loaded:
-                messagebox.showwarning("警告", "请先在数据管理页面加载数据!")
-                return
-
-            # 检查已加载的数据
-            if not hasattr(self, 'rcs_data') or self.rcs_data is None:
-                messagebox.showwarning("警告", "RCS数据未加载，请在数据管理页面加载数据!")
-                return
-
-            if not hasattr(self, 'param_data') or self.param_data is None:
-                messagebox.showwarning("警告", "参数数据未加载，请在数据管理页面加载数据!")
-                return
-
-            # 重置并生成本次会话的时间戳（用于命名一致性）
-            self.ae_session_timestamp = None  # 清空旧的时间戳
-            session_ts = self.get_ae_session_timestamp()  # 生成新的时间戳
-            self.ae_log(f"🕐 会话时间戳: {session_ts}")
-
-            self.ae_log("📊 检测到已加载的数据:")
-            self.ae_log(f"  RCS数据形状: {self.rcs_data.shape}")
-            self.ae_log(f"  参数数据形状: {self.param_data.shape}")
-
-            # 自动检测频率配置
-            detected_freq = self.rcs_data.shape[-1] if len(self.rcs_data.shape) == 4 else 2
-            if detected_freq == 2:
-                auto_freq_config = "2freq"
-                freq_desc = "1.5GHz+3GHz"
-            elif detected_freq == 3:
-                auto_freq_config = "3freq"
-                freq_desc = "1.5GHz+3GHz+6GHz"
-            else:
-                auto_freq_config = "2freq"  # 默认
-                freq_desc = f"{detected_freq}频率"
-
-            # 更新频率配置（如果与检测结果不同）
-            current_config = self.ae_freq_config.get()
-            if current_config != auto_freq_config:
-                self.ae_log(f"⚠️ 自动调整频率配置: {current_config} → {auto_freq_config}")
-                self.ae_freq_config.set(auto_freq_config)
-
-            self.ae_log("🚀 开始创建AutoEncoder系统...")
-
-            # 导入AutoEncoder模块
-            try:
-                import sys
-                sys.path.append('autoencoder')
-                from autoencoder.utils.frequency_config import create_autoencoder_system
-
-                # 获取配置参数
-                freq_config = self.ae_freq_config.get()
-                latent_dim = int(self.ae_latent_dim.get())
-                dropout_rate = float(self.ae_dropout_rate.get())
-                wavelet_type = self.ae_wavelet_type.get()
-
-                # 获取mode和architecture参数（如果存在）
-                mode = self.ae_mode.get() if hasattr(self, 'ae_mode') else 'wavelet'
-                architecture = self.ae_architecture_type.get().lower() if hasattr(self, 'ae_architecture_type') else 'cnn'
-                activation = self.ae_activation.get() if hasattr(self, 'ae_activation') else 'relu'
-
-                # 移除重复的预处理配置，直接使用数据管理的预处理结果
-                normalize = True  # 数据管理页面已经处理过标准化
-
-                # 创建系统
-                self.ae_system = create_autoencoder_system(
-                    config_name=freq_config,
-                    latent_dim=latent_dim,
-                    dropout_rate=dropout_rate,
-                    wavelet=wavelet_type,
-                    normalize=normalize,
-                    mode=mode,
-                    architecture=architecture,
-                    activation=activation
-                )
-
-                # 存储数据引用，便于训练使用
-                self.ae_system['rcs_data'] = self.rcs_data
-
-                self.ae_system['param_data'] = self.param_data
-
-                self.ae_log(f"✅ AutoEncoder系统创建成功!")
-                self.ae_log(f"  📊 配置: {freq_config}")
-                self.ae_log(f"  🔧 模式: {mode}")
-                self.ae_log(f"  🏗️ 架构: {architecture.upper()}")
-                self.ae_log(f"  🎯 隐空间维度: {latent_dim}")
-                self.ae_log(f"  📊 频率信息: {self.ae_system['config_info'].get('num_frequencies')}频 {self.ae_system['config_info'].get('frequency_labels', [])}")
-                self.ae_log(f"  📈 模型参数量: {self.ae_system['autoencoder'].get_parameter_count()['total']:,}")
-
-                # 更新状态
-                self.update_ae_status()
-
-                # 更新状态栏显示网络参数
-                self._update_status_bar_with_model_info()
-
-                messagebox.showinfo("成功",
-                    f"AutoEncoder系统创建成功!\n\n"
-                    f"模式: {mode}\n"
-                    f"架构: {architecture.upper()}\n"
-                    f"频率: {freq_config}")
-
-            except ImportError as e:
-                error_msg = f"导入AutoEncoder模块失败: {e}"
-                self.ae_log(f"❌ {error_msg}")
-                messagebox.showerror("错误", error_msg)
-
-        except Exception as e:
-            error_msg = f"创建AutoEncoder系统失败: {e}"
-            self.ae_log(f"❌ {error_msg}")
-            messagebox.showerror("错误", error_msg)
+    # ⚠️ 已废弃：create_ae_system() 函数已被删除
+    # 原因：缺少 mapper_activation 等参数，导致ParameterMapper配置不正确
+    # 替代方案：使用 gui_autoencoder_extension.py 中的 create_current_system()
+    # 该函数已完整实现所有参数传递，包括mapper配置
 
     def start_ae_training(self):
         """开始AutoEncoder训练 (使用统一配置管理器)"""
@@ -1009,6 +984,7 @@ class RCSWaveletGUI:
                     'wavelet': self.ae_wavelet_type.get(),
                     'normalize': self.ae_normalize.get(),
                     'db_transform': self.ae_db_transform.get(),
+                    'normalization_method': self.ae_normalization_method.get() if hasattr(self, 'ae_normalization_method') else 'none',
                     'mode': self.ae_system.get('mode', 'wavelet'),
                     'architecture': self.ae_system.get('architecture', 'cnn'),
                     'activation': activation
@@ -1170,6 +1146,43 @@ class RCSWaveletGUI:
                 else:
                     self.ae_log(f"  标准化方法: {normalization_method}")
 
+                # 读取ParameterMapper配置（如果存在）
+                mapper_config = config.get('mapper_config', None)
+                if mapper_config:
+                    self.ae_log(f"  检测到Mapper配置:")
+                    self.ae_log(f"    - 隐空间维度: {mapper_config.get('latent_dim', 'N/A')}")
+                    self.ae_log(f"    - 隐藏层维度: {mapper_config.get('hidden_dims', 'N/A')}")
+                    self.ae_log(f"    - 激活函数: {mapper_config.get('activation', 'N/A')}")
+                    self.ae_log(f"    - 自适应层: {mapper_config.get('use_adaptive', False)}")
+                    mapper_activation = mapper_config.get('activation', None)
+                    mapper_use_adaptive = mapper_config.get('use_adaptive', False)
+                    mapper_hidden_dims = mapper_config.get('hidden_dims', None)
+                else:
+                    # 旧版模型：使用默认mapper配置
+                    self.ae_log("  ⚠️ 未检测到Mapper配置，使用默认值")
+                    mapper_activation = None
+                    mapper_use_adaptive = False
+                    mapper_hidden_dims = None
+
+                # 读取Additive Dual-Branch特有参数（如果存在）
+                learnable_weights = config.get('learnable_weights', False)
+                alpha_high = config.get('alpha_high', 0.5)
+                alpha_smooth = config.get('alpha_smooth', 0.5)
+                activation_encoder = config.get('activation_encoder', None)
+                activation_high = config.get('activation_high', None)
+                activation_smooth = config.get('activation_smooth', None)
+                enforce_nonnegative_rcs = config.get('enforce_nonnegative_rcs', False)
+                use_channel_attention = config.get('use_channel_attention', False)
+
+                if 'additive_dual_branch' in architecture:
+                    self.ae_log(f"  检测到Additive Dual-Branch架构配置:")
+                    self.ae_log(f"    - learnable_weights: {learnable_weights}")
+                    self.ae_log(f"    - alpha_high: {alpha_high}")
+                    self.ae_log(f"    - alpha_smooth: {alpha_smooth}")
+                    self.ae_log(f"    - activation_encoder: {activation_encoder}")
+                    self.ae_log(f"    - activation_high: {activation_high}")
+                    self.ae_log(f"    - activation_smooth: {activation_smooth}")
+
                 self.ae_system = create_autoencoder_system(
                     config_name=freq_config,
                     latent_dim=latent_dim,
@@ -1180,12 +1193,36 @@ class RCSWaveletGUI:
                     architecture=architecture,
                     activation=activation,
                     db_transform=db_transform,
-                    normalization_method=normalization_method
+                    normalization_method=normalization_method,
+                    mapper_activation=mapper_activation,
+                    mapper_use_adaptive=mapper_use_adaptive,
+                    mapper_hidden_dims=mapper_hidden_dims,
+                    # Additive Dual-Branch特有参数
+                    activation_encoder=activation_encoder,
+                    activation_high=activation_high,
+                    activation_smooth=activation_smooth,
+                    learnable_weights=learnable_weights,
+                    alpha_high=alpha_high,
+                    alpha_smooth=alpha_smooth,
+                    enforce_nonnegative_rcs=enforce_nonnegative_rcs,
+                    use_channel_attention=use_channel_attention
                 )
 
                 # 加载模型权重
                 self.ae_system['autoencoder'].load_state_dict(checkpoint['autoencoder'])
-                self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
+                
+                # ✅ 兼容性检查：Stage 1模型没有parameter_mapper
+                if 'parameter_mapper' in checkpoint:
+                    self.ae_system['parameter_mapper'].load_state_dict(checkpoint['parameter_mapper'])
+                    self.ae_log("✅ 已加载ParameterMapper权重")
+                else:
+                    self.ae_log("⚠️ Stage 1模型，ParameterMapper使用随机初始化")
+                    self.ae_log("💡 提示: 可以使用【变更模式/参数】功能切换到联合训练或三阶段训练")
+
+                # ✅ 识别并存储训练模式（必须在ae_log之前设置，因为extension会读取此值）
+                training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
+                self.ae_system['training_mode'] = training_mode
+                self.ae_trained = True
 
                 # 恢复data_adapter统计信息（使用统一函数）
                 if 'adapter_stats' in checkpoint and checkpoint['adapter_stats']:
@@ -1262,6 +1299,18 @@ class RCSWaveletGUI:
                 self.ae_activation.set(activation)
                 self.ae_log(f"  架构类型: {architecture_display}, 激活函数: {activation}")
 
+                # 恢复Mapper配置选项到GUI界面
+                if mapper_config:
+                    mapper_act = mapper_config.get('activation', 'relu')
+                    mapper_adaptive = mapper_config.get('use_adaptive', False)
+
+                    if hasattr(self, 'ae_mapper_activation'):
+                        self.ae_mapper_activation.set(mapper_act)
+                    if hasattr(self, 'ae_mapper_use_adaptive'):
+                        self.ae_mapper_use_adaptive.set(mapper_adaptive)
+
+                    self.ae_log(f"  Mapper GUI选项已更新: 激活={mapper_act}, 自适应={mapper_adaptive}")
+
                 # 4. 模式选项（ae_mode由ae_extension初始化到main_gui）
                 if hasattr(self, 'ae_mode'):
                     self.ae_mode.set(mode)
@@ -1329,6 +1378,77 @@ class RCSWaveletGUI:
                 if training_history:
                     self.ae_training_history = training_history
 
+                    # ✅ 打印训练历史中的最佳loss信息和数据集划分
+                    self.ae_log("📊 训练历史信息:")
+                    stage_histories = training_history.get('stage_histories', {})
+
+                    # 首先显示数据集划分（从Stage 1获取，因为所有阶段使用相同的划分）
+                    if 'stage1' in stage_histories:
+                        stage1 = stage_histories['stage1']
+                        train_indices = stage1.get('train_indices', [])
+                        val_indices = stage1.get('val_indices', [])
+
+                        # 如果旧模型没保存indices，但有数据，可以重新计算（种子固定，结果相同）
+                        if (not train_indices or not val_indices) and hasattr(self, 'rcs_data') and self.rcs_data is not None:
+                            self.ae_log(f"💡 模型未保存数据集划分信息（旧版本模型）")
+                            self.ae_log(f"   正在根据固定种子(42)重新计算...")
+
+                            import torch
+                            from torch.utils.data import TensorDataset, random_split
+
+                            # 使用相同的逻辑重新计算
+                            total_samples = len(self.rcs_data)
+                            train_size = int(total_samples * 0.8)
+                            val_size = total_samples - train_size
+
+                            # 创建临时dataset用于获取indices
+                            temp_tensor = torch.zeros(total_samples, 1)  # 占位tensor
+                            temp_dataset = TensorDataset(temp_tensor)
+                            generator = torch.Generator().manual_seed(42)
+                            train_dataset, val_dataset = random_split(temp_dataset, [train_size, val_size], generator=generator)
+
+                            train_indices = list(train_dataset.indices)
+                            val_indices = list(val_dataset.indices)
+                            self.ae_log(f"✅ 重新计算完成（基于当前{total_samples}个样本）")
+
+                        if train_indices and val_indices:
+                            self.ae_log(f"📋 数据集划分:")
+                            self.ae_log(f"  训练集: {len(train_indices)} 样本 - {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+                            self.ae_log(f"  验证集: {len(val_indices)} 样本 - {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+                            if len(train_indices) > 20 or len(val_indices) > 20:
+                                self.ae_log(f"  (仅显示前20个标号)")
+                        else:
+                            self.ae_log(f"⚠️ 无法显示数据集划分（模型未保存且未加载数据）")
+                    if 'stage1' in stage_histories:
+                        stage1 = stage_histories['stage1']
+                        best_loss = stage1.get('best_val_loss', 'N/A')
+                        best_epoch = stage1.get('best_epoch', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.ae_log(f"  Stage 1: 最佳Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                        else:
+                            self.ae_log(f"  Stage 1: 最佳Loss={best_loss} @ Epoch {best_epoch}")
+
+                    if 'stage2' in stage_histories:
+                        stage2 = stage_histories['stage2']
+                        best_loss = stage2.get('best_val_loss', 'N/A')
+                        best_epoch = stage2.get('best_epoch', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.ae_log(f"  Stage 2: 最佳Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                        else:
+                            self.ae_log(f"  Stage 2: 最佳Loss={best_loss} @ Epoch {best_epoch}")
+
+                    if 'stage3' in stage_histories:
+                        stage3 = stage_histories['stage3']
+                        best_loss = stage3.get('best_val_loss', 'N/A')
+                        best_epoch = stage3.get('best_epoch', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.ae_log(f"  Stage 3: 最佳Loss={best_loss:.6f} @ Epoch {best_epoch}")
+                        else:
+                            self.ae_log(f"  Stage 3: 最佳Loss={best_loss} @ Epoch {best_epoch}")
+
+                    if not stage_histories:
+                        self.ae_log("  暂无训练历史")
+
                     # ✅ 恢复训练配置到GUI（用于继续训练）
                     if 'training_config' in training_history:
                         saved_config = training_history['training_config']
@@ -1380,18 +1500,16 @@ class RCSWaveletGUI:
                 else:
                     self.ae_training_history = None
 
-                # 识别训练模式
-                training_mode = checkpoint.get('training_mode', 'three_stage')  # 默认为三阶段
+                # 准备训练模式显示文本（training_mode已在前面设置）
                 training_mode_display = {
                     'stage1_only': 'Stage 1 Only (仅重建)',
-                    'three_stage': '完整三阶段'
+                    'three_stage': '完整三阶段',
+                    'joint_training': '联合训练'
                 }.get(training_mode, training_mode)
 
                 # 重置会话时间戳（加载模型算作新会话）
                 self.ae_session_timestamp = None
                 session_ts = self.get_ae_session_timestamp()
-
-                self.ae_trained = True
 
                 # 验证频率配置匹配性
                 model_num_freq = self.ae_system['config_info'].get('num_frequencies', 'unknown')
@@ -1410,9 +1528,6 @@ class RCSWaveletGUI:
                     self.ae_log(f"  💡 可使用'继续训练'完成Stage 2/3，或'开始训练'选择其他模式")
                 else:
                     self.ae_log(f"  评估方式: 从参数预测RCS")
-
-                # 存储training_mode到系统中供评估使用
-                self.ae_system['training_mode'] = training_mode
 
                 # 检查是否已加载数据
                 if hasattr(self, 'rcs_data') and self.rcs_data is not None:
@@ -1708,7 +1823,7 @@ def main():
 
     # 初始化AutoEncoder扩展（如果可用）
     try:
-        from gui_autoencoder_extension import AutoEncoderExtension
+        from gui_managers.extensions.gui_autoencoder_extension import AutoEncoderExtension
         app.ae_extension = AutoEncoderExtension(app)
         app.ae_extension.extend_autoencoder_tab()
         print("✓ AutoEncoder扩展已加载")
@@ -1719,7 +1834,7 @@ def main():
 
     # 初始化批量实验扩展（如果可用）
     try:
-        from gui_batch_experiment_extension import BatchExperimentExtension
+        from gui_managers.extensions.gui_batch_experiment_extension import BatchExperimentExtension
         batch_extension = BatchExperimentExtension(app)
         batch_extension.extend_batch_experiment_tab()
         print("✓ 批量实验扩展已加载")

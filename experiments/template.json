@@ -1,0 +1,93 @@
+{
+  "_comment": "这是AutoEncoder批量实验的JSON配置模板",
+  "_usage": "1. 修改base_config设置固定参数; 2. 在parameter_grid中定义搜索空间; 3. 运行批量实验",
+  "_扩展性说明": "parameter_grid中可以包含任何训练超参数，无需修改代码",
+  "experiment_name": "example_experiment",
+  "description": "示例实验：探索隐空间维度和学习率的影响",
+  "base_config": {
+    "# 模型配置": "-----",
+    "mode": "wavelet",
+    "architecture": "cnn",
+    "activation": "relu",
+    "latent_dim": 256,
+    "# 数据预处理": "-----",
+    "normalization_method": "zscore",
+    "db_transform": true,
+    "wavelet_type": "db4",
+    "# 训练配置": "-----",
+    "training_mode": "three_stage",
+    "batch_size": 8,
+    "learning_rate": 0.001,
+    "epochs": {
+      "stage1": 100,
+      "stage2": 50,
+      "stage3": 30
+    },
+    "# 优化器配置": "-----",
+    "lr_scheduler": "plateau",
+    "optimizer_type": "adam",
+    "momentum": 0.9,
+    "# 正则化": "-----",
+    "dropout_rate": 0.2,
+    "# 高级功能（可选）": "-----",
+    "gradient_monitoring": false,
+    "channel_attention": false,
+    "loss_normalization": false,
+    "ssim_weight": 0.0,
+    "gradient_penalty_weight": 0.0
+  },
+  "parameter_grid": {
+    "_comment_说明": "列表值会生成笛卡尔积，单值是固定参数",
+    "latent_dim": [
+      128,
+      256,
+      512
+    ],
+    "learning_rate": [
+      0.001,
+      0.0001
+    ],
+    "dropout_rate": [
+      0.1,
+      0.2,
+      0.3
+    ]
+  },
+  "_comment_更多可选参数示例": {
+    "activation": [
+      "relu",
+      "sin",
+      "gelu"
+    ],
+    "architecture": [
+      "cnn",
+      "mlp",
+      "enhanced_cnn"
+    ],
+    "batch_size": [
+      8,
+      16,
+      32
+    ],
+    "lr_scheduler": [
+      "cosine",
+      "plateau",
+      "multi_stage"
+    ],
+    "optimizer_type": [
+      "adam",
+      "adamw",
+      "sgd",
+      "lbfgs"
+    ],
+    "num_lr_stages": [
+      2,
+      3,
+      4
+    ],
+    "lr_decay_factor": [
+      0.1,
+      0.5
+    ]
+  }
+}

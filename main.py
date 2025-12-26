@@ -206,7 +206,8 @@ class RCSWaveletApp:
 
             # 设置窗口属性
             root.title("RCS小波神经网络 - 增强版 (双模式AutoEncoder + 小波分析)")
-            root.geometry("1400x900")
+            root.geometry("1700x950")  # 增加宽度以容纳更多控制选项
+            root.minsize(1400, 900)    # 设置最小尺寸
 
             # 创建主GUI实例
             app = RCSWaveletGUI(root)
@@ -214,7 +215,7 @@ class RCSWaveletApp:
 
             # 5. 集成AutoEncoder扩展功能
             try:
-                from gui_autoencoder_extension import AutoEncoderExtension
+                from gui_managers.extensions.gui_autoencoder_extension import AutoEncoderExtension
                 print("正在集成AutoEncoder扩展...")
                 app.ae_extension = AutoEncoderExtension(app)
                 app.ae_extension.extend_autoencoder_tab()
@@ -228,7 +229,7 @@ class RCSWaveletApp:
 
             # 6. 集成批量实验扩展功能
             try:
-                from gui_batch_experiment_extension import BatchExperimentExtension
+                from gui_managers.extensions.gui_batch_experiment_extension import BatchExperimentExtension
                 print("正在集成批量实验扩展...")
                 app.batch_extension = BatchExperimentExtension(app)
                 app.batch_extension.extend_batch_experiment_tab()

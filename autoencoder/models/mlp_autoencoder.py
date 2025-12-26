@@ -10,6 +10,7 @@ from typing import Tuple, Dict, Any, List
 import numpy as np
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 
 def calculate_mlp_dims(input_dim: int, latent_dim: int, max_ratio: int = 4, min_layers: int = 3) -> List[int]:
@@ -75,7 +76,7 @@ def calculate_mlp_dims(input_dim: int, latent_dim: int, max_ratio: int = 4, min_
     return dims
 
 
-class WaveletMLPAutoEncoder(nn.Module):
+class WaveletMLPAutoEncoder(BaseAutoEncoder):
     """
     小波增强的MLP-AutoEncoder
     使用全连接网络处理小波系数
@@ -84,13 +85,34 @@ class WaveletMLPAutoEncoder(nn.Module):
     输出: [B, 49, 49, 8] 重建小波系数
     """
 
+    def _init_layer(self, layer: nn.Linear, activation_name: str, is_first: bool = False):
+        """
+        根据激活函数初始化层权重
+        """
+        if activation_name == 'sin':
+            # SIREN初始化
+            omega_0 = 30.0
+            if is_first:
+                limit = 1.0 / layer.in_features
+                nn.init.uniform_(layer.weight, -limit, limit)
+            else:
+                limit = np.sqrt(6 / layer.in_features) / omega_0
+                nn.init.uniform_(layer.weight, -limit, limit)
+        else:
+            # 标准Xavier初始化
+            nn.init.xavier_uniform_(layer.weight)
+
+        if layer.bias is not None:
+            nn.init.constant_(layer.bias, 0)
+
     def __init__(self,
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
                  wavelet_bands: int = 4,
                  dropout_rate: float = 0.2,
                  input_size: int = 49,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化小波MLP-AutoEncoder
 
@@ -101,8 +123,9 @@ class WaveletMLPAutoEncoder(nn.Module):
             dropout_rate: Dropout比例
             input_size: 输入小波系数尺寸 (49 for db4小波变换后的尺寸)
             activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -128,9 +151,12 @@ class WaveletMLPAutoEncoder(nn.Module):
         current_dim = self.input_dim
 
         # 构建中间层
-        for intermediate_dim in self.intermediate_dims:
+        for i, intermediate_dim in enumerate(self.intermediate_dims):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, self.activation_type, is_first=(i==0))
+
             encoder_layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
+                layer,
                 nn.BatchNorm1d(intermediate_dim),
                 get_activation(activation),
                 nn.Dropout(dropout_rate)
@@ -138,7 +164,11 @@ class WaveletMLPAutoEncoder(nn.Module):
             current_dim = intermediate_dim
 
         # 最后一层到latent_dim（不加激活函数）
-        encoder_layers.append(nn.Linear(current_dim, latent_dim))
+        last_enc_layer = nn.Linear(current_dim, latent_dim)
+        nn.init.xavier_uniform_(last_enc_layer.weight)
+        if last_enc_layer.bias is not None:
+            nn.init.constant_(last_enc_layer.bias, 0)
+        encoder_layers.append(last_enc_layer)
         self.encoder = nn.Sequential(*encoder_layers)
 
         # ===== Decoder: 隐空间 → 小波系数 =====
@@ -147,9 +177,12 @@ class WaveletMLPAutoEncoder(nn.Module):
         current_dim = latent_dim
 
         # 反向构建中间层
-        for intermediate_dim in reversed(self.intermediate_dims):
+        for i, intermediate_dim in enumerate(reversed(self.intermediate_dims)):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, self.activation_type, is_first=(i==0))
+
             decoder_layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
+                layer,
                 nn.BatchNorm1d(intermediate_dim),
                 get_activation(activation),
                 nn.Dropout(dropout_rate)
@@ -157,7 +190,11 @@ class WaveletMLPAutoEncoder(nn.Module):
             current_dim = intermediate_dim
 
         # 最后一层到input_dim（不加激活函数，允许小波系数任意范围）
-        decoder_layers.append(nn.Linear(current_dim, self.input_dim))
+        last_dec_layer = nn.Linear(current_dim, self.input_dim)
+        nn.init.xavier_uniform_(last_dec_layer.weight)
+        if last_dec_layer.bias is not None:
+            nn.init.constant_(last_dec_layer.bias, 0)
+        decoder_layers.append(last_dec_layer)
         self.decoder = nn.Sequential(*decoder_layers)
 
         # 保存结构信息（用于 get_model_info）
@@ -167,17 +204,9 @@ class WaveletMLPAutoEncoder(nn.Module):
             self.intermediate_dims
         )
 
-        # 权重初始化
-        self._initialize_weights()
-
-    def _initialize_weights(self):
-        """Xavier权重初始化"""
+        # BatchNorm初始化
         for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm1d):
+            if isinstance(m, nn.BatchNorm1d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
@@ -217,6 +246,9 @@ class WaveletMLPAutoEncoder(nn.Module):
 
         # 调整维度: [B, num_freq*4, input_size, input_size] → [B, input_size, input_size, num_freq*4]
         x_recon = x_recon.permute(0, 2, 3, 1)
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x_recon = self.apply_output_activation(x_recon)
 
         return x_recon
 
@@ -282,7 +314,7 @@ class WaveletMLPAutoEncoder(nn.Module):
         }
 
 
-class DirectMLPAutoEncoder(nn.Module):
+class DirectMLPAutoEncoder(BaseAutoEncoder):
     """
     直接处理RCS数据的MLP-AutoEncoder
     使用全连接网络处理原始RCS数据
@@ -291,11 +323,32 @@ class DirectMLPAutoEncoder(nn.Module):
     输出: [B, 91, 91, 2] 重建RCS数据
     """
 
+    def _init_layer(self, layer: nn.Linear, activation_name: str, is_first: bool = False):
+        """
+        根据激活函数初始化层权重
+        """
+        if activation_name == 'sin':
+            # SIREN初始化
+            omega_0 = 30.0
+            if is_first:
+                limit = 1.0 / layer.in_features
+                nn.init.uniform_(layer.weight, -limit, limit)
+            else:
+                limit = np.sqrt(6 / layer.in_features) / omega_0
+                nn.init.uniform_(layer.weight, -limit, limit)
+        else:
+            # 标准Xavier初始化
+            nn.init.xavier_uniform_(layer.weight)
+
+        if layer.bias is not None:
+            nn.init.constant_(layer.bias, 0)
+
     def __init__(self,
                  latent_dim: int = 256,
                  num_frequencies: int = 2,
                  dropout_rate: float = 0.2,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化直接MLP-AutoEncoder
 
@@ -304,8 +357,9 @@ class DirectMLPAutoEncoder(nn.Module):
             num_frequencies: 频率数量 (2 for 1.5GHz+3GHz, 3 for +6GHz)
             dropout_rate: Dropout比例
             activation: 激活函数类型 (例如 'relu', 'sin', 'gelu', 'swish')
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -329,9 +383,12 @@ class DirectMLPAutoEncoder(nn.Module):
         current_dim = self.input_dim
 
         # 构建中间层
-        for intermediate_dim in self.intermediate_dims:
+        for i, intermediate_dim in enumerate(self.intermediate_dims):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, self.activation_type, is_first=(i==0))
+
             encoder_layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
+                layer,
                 nn.BatchNorm1d(intermediate_dim),
                 get_activation(activation),
                 nn.Dropout(dropout_rate)
@@ -339,7 +396,11 @@ class DirectMLPAutoEncoder(nn.Module):
             current_dim = intermediate_dim
 
         # 最后一层到latent_dim（不加激活函数）
-        encoder_layers.append(nn.Linear(current_dim, latent_dim))
+        last_enc_layer = nn.Linear(current_dim, latent_dim)
+        nn.init.xavier_uniform_(last_enc_layer.weight)
+        if last_enc_layer.bias is not None:
+            nn.init.constant_(last_enc_layer.bias, 0)
+        encoder_layers.append(last_enc_layer)
         self.encoder = nn.Sequential(*encoder_layers)
 
         # ===== Decoder: 隐空间 → RCS数据 =====
@@ -348,9 +409,12 @@ class DirectMLPAutoEncoder(nn.Module):
         current_dim = latent_dim
 
         # 反向构建中间层
-        for intermediate_dim in reversed(self.intermediate_dims):
+        for i, intermediate_dim in enumerate(reversed(self.intermediate_dims)):
+            layer = nn.Linear(current_dim, intermediate_dim)
+            self._init_layer(layer, self.activation_type, is_first=(i==0))
+
             decoder_layers.extend([
-                nn.Linear(current_dim, intermediate_dim),
+                layer,
                 nn.BatchNorm1d(intermediate_dim),
                 get_activation(activation),
                 nn.Dropout(dropout_rate)
@@ -358,7 +422,11 @@ class DirectMLPAutoEncoder(nn.Module):
             current_dim = intermediate_dim
 
         # 最后一层到input_dim（不加激活函数，允许RCS任意范围）
-        decoder_layers.append(nn.Linear(current_dim, self.input_dim))
+        last_dec_layer = nn.Linear(current_dim, self.input_dim)
+        nn.init.xavier_uniform_(last_dec_layer.weight)
+        if last_dec_layer.bias is not None:
+            nn.init.constant_(last_dec_layer.bias, 0)
+        decoder_layers.append(last_dec_layer)
         self.decoder = nn.Sequential(*decoder_layers)
 
         # 保存结构信息（用于 get_model_info）
@@ -368,17 +436,9 @@ class DirectMLPAutoEncoder(nn.Module):
             self.intermediate_dims
         )
 
-        # 权重初始化
-        self._initialize_weights()
-
-    def _initialize_weights(self):
-        """Xavier权重初始化"""
+        # BatchNorm初始化
         for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm1d):
+            if isinstance(m, nn.BatchNorm1d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
@@ -418,6 +478,9 @@ class DirectMLPAutoEncoder(nn.Module):
 
         # 调整维度: [B, num_freq, 91, 91] → [B, 91, 91, num_freq]
         x_recon = x_recon.permute(0, 2, 3, 1)
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x_recon = self.apply_output_activation(x_recon)
 
         return x_recon
 

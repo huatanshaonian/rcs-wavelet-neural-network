@@ -11,9 +11,13 @@ from torch.utils.data import DataLoader, TensorDataset, random_split
 from tkinter import messagebox
 import tkinter as tk
 from copy import deepcopy
+import os
+from datetime import datetime
 
 from autoencoder.utils.gradient_monitor import GradientMonitor
-from configurable_loss import create_loss_function as create_configurable_loss
+
+from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
+
 
 
 class AETrainer:
@@ -27,6 +31,110 @@ class AETrainer:
             gui: Parent GUI instance for accessing state and logging
         """
         self.gui = gui
+
+    def _save_stage1_checkpoint(self, best_val_loss, best_epoch):
+        """
+        自动保存Stage 1 checkpoint（三阶段训练时调用）
+
+        Args:
+            best_val_loss: Stage 1最佳验证损失
+            best_epoch: Stage 1最佳epoch
+        """
+        import json
+
+        try:
+            # 创建checkpoint目录
+            checkpoint_dir = "ae_checkpoints"
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
+
+            # 生成文件名
+            ae_system = self.gui.ae_system
+            mode = ae_system.get('mode', 'wavelet')
+            architecture = ae_system.get('architecture', 'cnn')
+            activation = ae_system.get('activation', 'relu')
+
+            # 获取预处理标签
+            data_adapter = ae_system.get('data_adapter')
+            preprocess_tag = "raw"
+            if data_adapter:
+                normalize = getattr(data_adapter, 'normalize', False)
+                use_db = getattr(data_adapter, 'use_db', False)
+                if normalize and use_db:
+                    preprocess_tag = "norm_db"
+                elif normalize:
+                    preprocess_tag = "norm"
+                elif use_db:
+                    preprocess_tag = "db"
+
+            # 时间戳
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # 文件名格式: mode_architecture_activation_preprocess_stage1_timestamp.pth
+            base_name = f"{mode}_{architecture}_{activation}_{preprocess_tag}_stage1_{timestamp}"
+            model_path = os.path.join(checkpoint_dir, f"{base_name}.pth")
+            config_path = os.path.join(checkpoint_dir, f"{base_name}_config.json")
+
+            # 保存模型权重（仅AutoEncoder，不含ParameterMapper）
+            autoencoder = ae_system['autoencoder']
+            save_dict = {
+                'autoencoder_state_dict': autoencoder.state_dict(),
+                'training_mode': 'stage1_only',  # 标记为Stage 1模型
+                'stage1_best_val_loss': best_val_loss,
+                'stage1_best_epoch': best_epoch
+            }
+
+            # 如果有data_adapter统计信息，一并保存
+            if data_adapter and hasattr(data_adapter, 'data_stats') and data_adapter.data_stats:
+                save_dict['data_adapter_stats'] = data_adapter.data_stats
+
+            torch.save(save_dict, model_path)
+
+            # 保存配置文件
+            config_data = {
+                'model_info': {
+                    'mode': mode,
+                    'architecture': architecture,
+                    'latent_dim': ae_system.get('latent_dim', 256),
+                    'dropout_rate': ae_system.get('dropout_rate', 0.2),
+                    'activation': activation,
+                    'training_mode': 'stage1_only'
+                },
+                'frequency_config': {
+                    'num_frequencies': ae_system.get('num_frequencies', 2),
+                    'frequency_labels': ae_system.get('frequency_labels', ['1.5GHz', '3.0GHz']),
+                    'frequency_values_ghz': ae_system.get('frequency_values_ghz', [1.5, 3.0])
+                },
+                'data_preprocessing': {
+                    'wavelet_type': ae_system.get('wavelet_type', 'db4'),
+                    'normalize': getattr(data_adapter, 'normalize', False) if data_adapter else False,
+                    'use_db': getattr(data_adapter, 'use_db', False) if data_adapter else False,
+                    'normalization_method': getattr(data_adapter, 'normalization_method', 'z_score') if data_adapter else 'z_score'
+                },
+                'training_info': {
+                    'stage1_best_val_loss': best_val_loss,
+                    'stage1_best_epoch': best_epoch,
+                    'note': 'This is a Stage 1 checkpoint automatically saved during three-stage training'
+                },
+                'save_info': {
+                    'save_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'model_filename': os.path.basename(model_path),
+                    'checkpoint_type': 'stage1_auto_checkpoint'
+                }
+            }
+
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+            self.gui.ae_log(f"💾 自动保存Stage 1 checkpoint:")
+            self.gui.ae_log(f"  模型: {os.path.basename(model_path)}")
+            self.gui.ae_log(f"  配置: {os.path.basename(config_path)}")
+            self.gui.ae_log(f"  最佳损失: {best_val_loss:.6f} (Epoch {best_epoch})")
+            self.gui.ae_log(f"  💡 提示: 可以加载此checkpoint单独查看Stage 1重建性能")
+
+        except Exception as e:
+            self.gui.ae_log(f"⚠️ 保存Stage 1 checkpoint失败: {e}")
+            # 不抛出异常，避免中断训练流程
 
     def _is_lbfgs_optimizer(self, optimizer):
         """检查是否是L-BFGS优化器"""
@@ -140,6 +248,7 @@ class AETrainer:
                     # 更新配置，保留stage_histories
                     self.gui.ae_training_history['training_mode'] = 'stage1_only'
                     self.gui.ae_training_history['training_config'] = training_config
+                    self.gui.ae_system['training_mode'] = 'stage1_only'  # ✅ 同步到ae_system
                     if 'stage_histories' not in self.gui.ae_training_history:
                         self.gui.ae_training_history['stage_histories'] = {}
                 else:
@@ -150,6 +259,7 @@ class AETrainer:
                         'stage_histories': {},
                         'training_config': training_config
                     }
+                    self.gui.ae_system['training_mode'] = 'stage1_only'  # ✅ 同步到ae_system
 
                 # 阶段1: AutoEncoder预训练
                 self.gui.ae_log("📊 开始阶段1: AutoEncoder预训练...")
@@ -220,6 +330,9 @@ class AETrainer:
                 stage3_history = self.train_stage3(rcs_data, param_data, training_config)
                 self.gui.ae_training_history['stage_histories']['stage3'] = stage3_history
 
+                # ✅ 三阶段训练完成，同步训练模式到ae_system
+                self.gui.ae_system['training_mode'] = 'three_stage'
+
                 self.gui.ae_log("🎉 三阶段训练完成!")
 
                 # 打印通道注意力权重（如果启用）
@@ -251,6 +364,12 @@ class AETrainer:
             # 实现端到端训练
             self.train_end_to_end_full(rcs_data, param_data, training_config, total_epochs)
 
+            # ✅ 端到端训练完成，同步训练模式到ae_system
+            if not hasattr(self.gui, 'ae_training_history'):
+                self.gui.ae_training_history = {}
+            self.gui.ae_training_history['training_mode'] = 'end_to_end'
+            self.gui.ae_system['training_mode'] = 'end_to_end'
+
             self.gui.ae_log("🎉 端到端训练完成!")
 
             # 批量实验模式下不弹窗
@@ -265,6 +384,80 @@ class AETrainer:
             if not getattr(self.gui, 'batch_experiment_mode', False):
                 messagebox.showerror("错误", error_msg)
             raise
+
+    def run_joint_training(self, rcs_data, param_data, training_config):
+        """
+        执行联合训练模式
+
+        核心思想：同时训练AutoEncoder和ParameterMapper，强制隐空间与参数对齐
+
+        损失函数：
+            L_recon_rcs: RCS重建损失（衡量AE压缩能力）
+            L_consistency: 隐空间一致性损失（强制encoder和mapper对齐）
+            L_param_recon: 参数重建损失（params → RCS的能力）
+
+        总损失：total_loss = α*L_recon_rcs + β*L_consistency + γ*L_param_recon
+        """
+        try:
+            epochs = training_config['epochs'].get('joint', 200)  # 联合训练epoch数
+            self.gui.ae_log("🚀 开始联合训练模式:")
+            self.gui.ae_log(f"  📊 训练轮数: {epochs}")
+            self.gui.ae_log(f"  🎯 目标: 优化 params → RCS 的重建能力")
+
+            # 获取损失权重
+            alpha = training_config.get('alpha_recon', 0.3)      # RCS重建权重
+            beta = training_config.get('beta_consistency', 0.5)  # 一致性权重
+            gamma = training_config.get('gamma_param_recon', 1.0)  # 参数重建权重（最重要）
+
+            self.gui.ae_log(f"  ⚖️ 损失权重: α={alpha} (RCS重建), β={beta} (一致性), γ={gamma} (参数重建)")
+
+            # 执行联合训练
+            history = self.train_joint_mode(rcs_data, param_data, training_config, epochs, alpha, beta, gamma)
+
+            # 保存训练历史（原始格式，用于后续分析）
+            if not hasattr(self.gui, 'ae_training_history'):
+                self.gui.ae_training_history = {'stage_histories': {}}
+            self.gui.ae_training_history['joint'] = history
+            self.gui.ae_training_history['training_mode'] = 'joint_training'
+            self.gui.ae_system['training_mode'] = 'joint_training'
+
+            # ✅ 将联合训练的三个损失主题映射到stage_histories，复用绘图函数
+            # stage1: RCS重建损失（α权重）
+            # stage2: 隐空间一致性损失（β权重）
+            # stage3: 参数重建损失（γ权重，最重要）
+            self.gui.ae_training_history['stage_histories'] = {
+                'stage1': {
+                    'train_losses': history['train_loss_recon'],
+                    'val_losses': history['val_loss_recon'],
+                    'name': 'RCS重建'
+                },
+                'stage2': {
+                    'train_losses': history['train_loss_consistency'],
+                    'val_losses': history['val_loss_consistency'],
+                    'name': '隐空间一致性'
+                },
+                'stage3': {
+                    'train_losses': history['train_loss_param_recon'],
+                    'val_losses': history['val_loss_param_recon'],
+                    'name': '参数重建'
+                }
+            }
+
+            self.gui.ae_log("🎉 联合训练完成!")
+            self.gui.status_var.set("AE联合训练完成")
+
+            # 批量实验模式下不弹窗
+            if not getattr(self.gui, 'batch_experiment_mode', False):
+                messagebox.showinfo("成功", "联合训练完成!")
+
+        except Exception as e:
+            error_msg = f"联合训练失败: {e}"
+            self.gui.ae_log(f"❌ {error_msg}")
+
+            if not getattr(self.gui, 'batch_experiment_mode', False):
+                messagebox.showerror("错误", error_msg)
+            raise
+
 
     def train_stage1(self, rcs_data, training_config):
         """阶段1: AutoEncoder预训练"""
@@ -327,6 +520,14 @@ class AETrainer:
 
             self.gui.ae_log(f"📊 阶段1数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
 
+            # 输出训练集和验证集样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
+
             # 调整批次大小
             batch_size = training_config['batch_size']
             if batch_size > train_size:
@@ -338,7 +539,7 @@ class AETrainer:
             val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False, drop_last=False)
 
             # 创建优化器和调度器 (复用项目标准)
-            optimizer, scheduler = self._create_optimizer_and_scheduler(autoencoder.parameters(), training_config)
+            optimizer, scheduler = self._create_optimizer_and_scheduler(autoencoder.parameters(), training_config, stage='stage1')
 
             # 创建损失函数 (支持三阶段独立配置)
             criterion = self._create_stage_loss_function(training_config, stage='stage1')
@@ -365,12 +566,17 @@ class AETrainer:
             }
 
             # 创建梯度监控器
-            gradient_monitor = GradientMonitor(
-                log_interval=10,           # 每10步记录一次
-                warn_threshold_high=10.0,  # 梯度范数>10警告
-                warn_threshold_low=1e-5    # 梯度范数<1e-5警告
-            )
-            self.gui.ae_log("梯度监控已启用 (阈值: 1e-5 < grad_norm < 10.0)")
+            use_gradient_monitoring = training_config.get('gradient_monitoring', True)
+            gradient_monitor = None
+            if use_gradient_monitoring:
+                gradient_monitor = GradientMonitor(
+                    log_interval=10,           # 每10步记录一次
+                    warn_threshold_high=10.0,  # 梯度范数>10警告
+                    warn_threshold_low=1e-5    # 梯度范数<1e-5警告
+                )
+                self.gui.ae_log("梯度监控已启用 (阈值: 1e-5 < grad_norm < 10.0)")
+            else:
+                self.gui.ae_log("梯度监控已禁用")
 
             # 梯度历史记录
             gradient_history = {
@@ -406,8 +612,8 @@ class AETrainer:
                         optimizer.zero_grad()
                         loss.backward()
 
-                        # 梯度监控（仅标准优化器）
-                        if batch_idx == 0 and (epoch + 1) % 10 == 0:
+                        # 梯度监控（仅标准优化器且启用时）
+                        if use_gradient_monitoring and gradient_monitor and batch_idx == 0 and (epoch + 1) % 10 == 0:
                             stats, status = gradient_monitor.check_gradients(autoencoder, step=epoch, verbose=False)
                             gradient_history['epochs'].append(epoch)
                             gradient_history['grad_norm'].append(stats['grad_norm'])
@@ -532,13 +738,20 @@ class AETrainer:
             self.gui.ae_log("\n📊 分析训练完成后的隐空间分布...")
             self.print_latent_space_statistics(rcs_data)
 
+            # ✅ 三阶段训练和联合训练时自动保存Stage 1 checkpoint
+            training_mode = training_config.get('training_mode', 'three_stage')
+            if training_mode in ('three_stage', 'joint_training'):
+                self._save_stage1_checkpoint(best_val_loss, best_epoch)
+
             return {
                 'train_losses': train_losses,
                 'val_losses': val_losses,
                 'best_val_loss': best_val_loss,
                 'best_epoch': best_epoch,
                 'attention_history': attention_history,
-                'gradient_history': gradient_history
+                'gradient_history': gradient_history,
+                'train_indices': train_indices.tolist() if hasattr(train_indices, 'tolist') else list(train_indices),
+                'val_indices': val_indices.tolist() if hasattr(val_indices, 'tolist') else list(val_indices)
             }
 
         except Exception as e:
@@ -593,16 +806,26 @@ class AETrainer:
             
             param_tensor = torch.FloatTensor(param_normalized)
             dataset = TensorDataset(param_tensor, target_latents)
-            
+
             train_size = int(len(dataset) * 0.8)
             val_size = len(dataset) - train_size
             train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+
+            self.gui.ae_log(f"📊 阶段2数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 输出训练集和验证集样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
 
             batch_size = min(training_config['batch_size'], train_size)
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False)
 
-            optimizer, scheduler = self._create_optimizer_and_scheduler(parameter_mapper.parameters(), training_config)
+            optimizer, scheduler = self._create_optimizer_and_scheduler(parameter_mapper.parameters(), training_config, stage='stage2')
             criterion = self._create_stage_loss_function(training_config, stage='stage2')
 
             epochs = training_config['epochs']['stage2']
@@ -724,7 +947,14 @@ class AETrainer:
                 param.requires_grad = True
 
             self.gui.ae_log(f"✅ 阶段2完成，最佳损失: {best_val_loss:.6f}")
-            return {'train_losses': train_losses, 'val_losses': val_losses}
+            return {
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch,
+                'train_indices': train_indices.tolist() if hasattr(train_indices, 'tolist') else list(train_indices),
+                'val_indices': val_indices.tolist() if hasattr(val_indices, 'tolist') else list(val_indices)
+            }
         except Exception as e:
             self.gui.ae_log(f"❌ 阶段2失败: {e}")
             raise e
@@ -761,6 +991,16 @@ class AETrainer:
             val_size = len(dataset) - train_size
             train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
 
+            self.gui.ae_log(f"📊 阶段3数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+            # 输出训练集和验证集样本标号
+            train_indices = train_dataset.indices
+            val_indices = val_dataset.indices
+            self.gui.ae_log(f"📋 训练集样本标号: {sorted(train_indices)[:20]}{'...' if len(train_indices) > 20 else ''}")
+            self.gui.ae_log(f"📋 验证集样本标号: {sorted(val_indices)[:20]}{'...' if len(val_indices) > 20 else ''}")
+            if len(train_indices) > 20 or len(val_indices) > 20:
+                self.gui.ae_log(f"   (仅显示前20个标号，完整标号请查看详细日志)")
+
             batch_size = min(training_config['batch_size'], train_size)
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False)
@@ -771,7 +1011,8 @@ class AETrainer:
             
             optimizer, scheduler = self._create_optimizer_and_scheduler(
                 list(autoencoder.parameters()) + list(parameter_mapper.parameters()),
-                cfg_fine
+                cfg_fine,
+                stage='stage3'
             )
             criterion = self._create_stage_loss_function(training_config, stage='stage3')
             epochs = training_config['epochs']['stage3']
@@ -779,6 +1020,7 @@ class AETrainer:
             scheduler_type = training_config['lr_scheduler']
 
             best_val_loss = float('inf')
+            best_epoch = 0
             best_model_state = None
             patience_counter = 0
             train_losses, val_losses = [], []
@@ -867,6 +1109,7 @@ class AETrainer:
 
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
+                    best_epoch = epoch + 1
                     patience_counter = 0
                     best_model_state = {
                         'autoencoder': deepcopy(autoencoder.state_dict()),
@@ -912,7 +1155,14 @@ class AETrainer:
                 parameter_mapper.load_state_dict(best_model_state['parameter_mapper'])
 
             self.gui.ae_log(f"✅ 阶段 3完成，最佳损失: {best_val_loss:.6f}")
-            return {'train_losses': train_losses, 'val_losses': val_losses}
+            return {
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch,
+                'train_indices': train_indices.tolist() if hasattr(train_indices, 'tolist') else list(train_indices),
+                'val_indices': val_indices.tolist() if hasattr(val_indices, 'tolist') else list(val_indices)
+            }
         except Exception as e:
             self.gui.ae_log(f"❌ 阶段 3失败: {e}")
             raise e
@@ -925,8 +1175,15 @@ class AETrainer:
         # Assuming this is just a long stage 3.
         return self.train_stage3(rcs_data, param_data, {**training_config, 'epochs': {'stage3': total_epochs}})
 
-    def _create_optimizer_and_scheduler(self, params, training_config):
-        """创建优化器和学习率调度器（支持Adam/AdamW/SGD/L-BFGS）"""
+    def _create_optimizer_and_scheduler(self, params, training_config, stage='stage1'):
+        """
+        创建优化器和学习率调度器（支持Adam/AdamW/SGD/L-BFGS）
+
+        Args:
+            params: 模型参数
+            training_config: 训练配置
+            stage: 当前训练阶段 ('stage1', 'stage2', 'stage3')，用于选择对应的patience
+        """
         optimizer_type = training_config.get('optimizer_type', 'adam').lower()
         lr = training_config['learning_rate']
         weight_decay = training_config.get('weight_decay', 1e-4)
@@ -961,12 +1218,15 @@ class AETrainer:
             scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=training_config.get('restart_period', 50))
         elif scheduler_type == 'adaptive':
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
-        elif scheduler_type == 'multi_stage':
+        elif scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
             # 多阶段学习率调度器（patience驱动）
             from autoencoder.training.multi_stage_scheduler import create_patience_driven_scheduler
             num_stages = training_config.get('num_lr_stages', 3)
             lr_decay = training_config.get('lr_decay_factor', 0.1)
-            initial_patience = training_config['patience'].get('stage1', 30)
+
+            # ✅ 使用当前阶段对应的patience（而非总是使用stage1）
+            initial_patience = training_config['patience'].get(stage, 30)
+
             scheduler = create_patience_driven_scheduler(
                 optimizer,
                 initial_lr=lr,
@@ -975,6 +1235,7 @@ class AETrainer:
                 initial_patience=initial_patience,
                 verbose=True
             )
+            self.gui.ae_log(f"✅ 多阶段调度器：使用{stage}的patience={initial_patience}作为基准")
         else:
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda e: 1.0)
 
@@ -991,13 +1252,21 @@ class AETrainer:
         stage_config_key = f'{stage}_loss_config'
         if stage_config_key in training_config:
             loss_config = training_config[stage_config_key]
-            from configurable_loss import create_loss_function
+            from autoencoder.utils.configurable_loss import create_loss_function
             return self._wrap_configurable_loss(create_loss_function(loss_config))
 
         # 2. 检查全局自定义配置（Stage 2除外，因为它在latent空间操作）
         if stage != 'stage2' and training_config.get('use_custom_loss', False) and 'custom_loss_config' in training_config:
-            loss_config = training_config['custom_loss_config']
-            from configurable_loss import create_loss_function
+            loss_config = training_config['custom_loss_config'].copy()
+            
+            # 注入数据统计信息（用于RCS非负约束）
+            # 只有当启用了非负约束时才需要注入，但注入了也无妨
+            if hasattr(self.gui, 'ae_system') and self.gui.ae_system and 'data_adapter' in self.gui.ae_system:
+                adapter = self.gui.ae_system['data_adapter']
+                if hasattr(adapter, 'data_stats'):
+                    loss_config['data_stats'] = adapter.data_stats
+            
+            from autoencoder.utils.configurable_loss import create_loss_function
             return self._wrap_configurable_loss(create_loss_function(loss_config))
 
         # 3. 默认MSE（包括Stage 2）
@@ -1010,6 +1279,49 @@ class AETrainer:
             return loss_dict['total']
         return loss_wrapper
 
+    def _create_joint_loss_function(self, training_config, loss_name):
+        """
+        为联合训练创建指定的损失函数
+
+        Args:
+            training_config: 训练配置字典
+            loss_name: 损失名称 ('recon_rcs', 'consistency', 'param_recon')
+
+        Returns:
+            损失函数
+
+        优先级：
+        1. joint_loss_config[loss_name] (最高)
+        2. 全局自定义配置 use_custom_loss
+        3. 默认MSE
+        """
+        # 1. 检查联合训练特定配置
+        if 'joint_loss_config' in training_config:
+            joint_config = training_config['joint_loss_config']
+            if loss_name in joint_config:
+                from autoencoder.utils.configurable_loss import create_loss_function
+                self.gui.ae_log(f"  使用自定义{loss_name}损失函数")
+                return self._wrap_configurable_loss(create_loss_function(joint_config[loss_name]))
+
+        # 2. 检查全局自定义配置（仅对recon_rcs和param_recon，不对consistency）
+        # consistency是隐空间的MSE，通常不需要自定义
+        if loss_name != 'consistency' and training_config.get('use_custom_loss', False):
+            if 'custom_loss_config' in training_config:
+                from autoencoder.utils.configurable_loss import create_loss_function
+                self.gui.ae_log(f"  {loss_name}使用全局自定义损失函数")
+                
+                loss_config = training_config['custom_loss_config'].copy()
+                # 注入数据统计信息
+                if hasattr(self.gui, 'ae_system') and self.gui.ae_system and 'data_adapter' in self.gui.ae_system:
+                    adapter = self.gui.ae_system['data_adapter']
+                    if hasattr(adapter, 'data_stats'):
+                        loss_config['data_stats'] = adapter.data_stats
+                        
+                return self._wrap_configurable_loss(create_loss_function(loss_config))
+
+        # 3. 默认MSE
+        return nn.MSELoss()
+
     def _step_scheduler(self, scheduler, scheduler_type, val_loss):
         if scheduler_type == 'adaptive':
             scheduler.step(val_loss)
@@ -1021,7 +1333,30 @@ class AETrainer:
             scheduler.step()
 
     def _log_progress(self, epoch, total_epochs, train_loss, val_loss, lr, stage):
+        """
+        记录训练进度日志
+
+        对于Additive Dual-Branch架构，额外打印分支权重（如果启用learnable_weights）
+        """
+        # 基本日志
         self.gui.ae_log(f"  {stage} Epoch {epoch+1}/{total_epochs}: Train={train_loss:.6f}, Val={val_loss:.6f}, LR={lr:.2e}")
+
+        # 检查是否是Additive Dual-Branch架构且启用可学习权重
+        autoencoder = self.gui.ae_system.get('autoencoder', None)
+        if autoencoder is not None:
+            model_type = type(autoencoder).__name__
+            if 'AdditiveDualBranch' in model_type and hasattr(autoencoder, 'learnable_weights'):
+                if autoencoder.learnable_weights:
+                    # 打印分支权重
+                    alpha_high = autoencoder.alpha_high.item()
+                    alpha_smooth = autoencoder.alpha_smooth.item()
+                    total = alpha_high + alpha_smooth
+                    # 计算归一化权重（相对占比）
+                    high_ratio = (alpha_high / total * 100) if total > 0 else 50.0
+                    smooth_ratio = (alpha_smooth / total * 100) if total > 0 else 50.0
+
+                    self.gui.ae_log(f"    🎚️ 分支权重: 高频={alpha_high:.4f} ({high_ratio:.1f}%), 低频={alpha_smooth:.4f} ({smooth_ratio:.1f}%)")
+
         self.gui.root.update_idletasks()
 
     def _record_attention_weights(self, autoencoder, sample_data, attention_history, epoch):
@@ -1035,3 +1370,327 @@ class AETrainer:
     def print_latent_space_statistics(self, rcs_data):
         # ... logic ...
         pass
+
+    def train_joint_mode(self, rcs_data, param_data, training_config, epochs, alpha, beta, gamma):
+        """
+        联合训练核心实现
+
+        训练流程：
+        1. 前向传播：
+           - RCS → Encoder → latent_from_rcs → Decoder → recon_rcs
+           - Params → Mapper → latent_from_params
+           - Params → Mapper → latent_from_params → Decoder → recon_from_params
+
+        2. 损失计算：
+           - L_recon_rcs = MSE(recon_rcs, rcs)
+           - L_consistency = MSE(latent_from_rcs, latent_from_params)
+           - L_param_recon = MSE(recon_from_params, rcs)
+
+        3. 反向传播：
+           - 梯度通过三条路径自动流动
+           - Encoder梯度 = α*∂L_recon_rcs + β*∂L_consistency
+           - Decoder梯度 = α*∂L_recon_rcs + γ*∂L_param_recon
+           - Mapper梯度 = β*∂L_consistency + γ*∂L_param_recon
+
+        Args:
+            rcs_data: RCS数据 [N, ...]
+            param_data: 参数数据 [N, 9]
+            training_config: 训练配置
+            epochs: 训练轮数
+            alpha: RCS重建损失权重
+            beta: 一致性损失权重
+            gamma: 参数重建损失权重（最重要）
+
+        Returns:
+            history: 训练历史字典
+        """
+        # 获取组件
+        autoencoder = self.gui.ae_system['autoencoder']
+        parameter_mapper = self.gui.ae_system['parameter_mapper']
+        wavelet_transform = self.gui.ae_system.get('wavelet_transform', None)
+        data_adapter = self.gui.ae_system.get('data_adapter', None)
+        mode = self.gui.ae_system.get('mode', 'wavelet')
+
+        # 获取损失归一化系数（如果已初始化）
+        loss_normalization_factor = self.gui.ae_system.get('loss_normalization_factor', 1.0)
+        if loss_normalization_factor != 1.0:
+            self.gui.ae_log(f"🔧 使用Loss归一化系数: {loss_normalization_factor:.6f}")
+        else:
+            self.gui.ae_log("⚠️ 未初始化Loss归一化（使用默认系数1.0）")
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        autoencoder.to(device)
+        parameter_mapper.to(device)
+
+        self.gui.ae_log(f"🖥️ 使用设备: {device}")
+        self.gui.ae_log(f"🔧 训练模式: {mode}")
+
+        # 数据预处理（与Stage 1相同的逻辑）
+        if data_adapter is None:
+            from autoencoder.utils.data_adapters import RCS_DataAdapter
+            data_adapter = RCS_DataAdapter(normalize=True, mode=mode)
+
+        self.gui.ae_log(f"🔧 数据预处理: 标准化={data_adapter.normalize}, dB变换={data_adapter.db_transform}")
+
+        # RCS数据预处理
+        if mode in ['wavelet', 'differentiable_wavelet']:
+            self.gui.ae_log("📊 对RCS执行小波变换...")
+            rcs_tensor = torch.FloatTensor(rcs_data)
+            wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+            input_data = data_adapter.adapt_rcs_data(wavelet_coeffs.cpu().numpy())
+        else:
+            self.gui.ae_log("📊 对RCS执行预处理...")
+            input_data = data_adapter.adapt_rcs_data(rcs_data)
+
+        # 参数数据标准化
+        from sklearn.preprocessing import StandardScaler
+        self.gui.ae_log("🔧 标准化设计参数...")
+        param_scaler = StandardScaler()
+        param_normalized = param_scaler.fit_transform(param_data)
+        self.gui.ae_system['param_scaler'] = param_scaler
+
+        # 创建数据集
+        input_tensor = torch.FloatTensor(input_data)
+        param_tensor = torch.FloatTensor(param_normalized)
+        dataset = TensorDataset(input_tensor, param_tensor)
+
+        # 数据划分
+        train_size = int(len(dataset) * 0.8)
+        val_size = len(dataset) - train_size
+        train_dataset, val_dataset = random_split(dataset, [train_size, val_size],
+                                                   generator=torch.Generator().manual_seed(42))
+
+        self.gui.ae_log(f"📊 数据划分: 训练集 {train_size} 样本, 验证集 {val_size} 样本")
+
+        # 创建数据加载器
+        batch_size = min(training_config['batch_size'], train_size)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        val_loader = DataLoader(val_dataset, batch_size=min(batch_size, val_size), shuffle=False)
+
+        # 创建联合优化器（包含AE和Mapper的所有参数）
+        from itertools import chain
+        all_params = chain(autoencoder.parameters(), parameter_mapper.parameters())
+        optimizer, scheduler = self._create_optimizer_and_scheduler(all_params, training_config, stage='joint')
+
+        # 获取调度器类型（用于后续step调用）
+        scheduler_type = training_config.get('lr_scheduler', 'constant')
+
+        self.gui.ae_log("✅ 联合优化器已创建（包含AutoEncoder + ParameterMapper）")
+        self.gui.ae_log(f"  调度器类型: {scheduler_type}")
+
+        # 训练循环
+        autoencoder.train()
+        parameter_mapper.train()
+
+        best_val_loss = float('inf')
+        best_epoch = 0
+        best_ae_state = None
+        best_mapper_state = None
+        patience = training_config['patience'].get('joint', 50)
+        patience_counter = 0
+
+        # 训练历史
+        history = {
+            'train_loss': [], 'val_loss': [],
+            'train_loss_recon': [], 'train_loss_consistency': [], 'train_loss_param_recon': [],
+            'val_loss_recon': [], 'val_loss_consistency': [], 'val_loss_param_recon': []
+        }
+
+        # 创建三个损失函数（支持configurable_loss）
+        criterion_recon = self._create_joint_loss_function(training_config, 'recon_rcs')
+        criterion_consistency = self._create_joint_loss_function(training_config, 'consistency')
+        criterion_param_recon = self._create_joint_loss_function(training_config, 'param_recon')
+
+        self.gui.ae_log("✅ 联合训练损失函数已创建")
+        self.gui.ae_log(f"  L_recon_rcs: {type(criterion_recon).__name__}")
+        self.gui.ae_log(f"  L_consistency: {type(criterion_consistency).__name__}")
+        self.gui.ae_log(f"  L_param_recon: {type(criterion_param_recon).__name__}")
+
+        # 检测L-BFGS
+        is_lbfgs = self._is_lbfgs_optimizer(optimizer)
+        if is_lbfgs:
+            self.gui.ae_log("⚠️ 联合训练模式不推荐使用L-BFGS（训练图复杂）")
+
+        self.gui.ae_log(f"🚀 开始联合训练 (epochs={epochs}, patience={patience})...")
+
+        for epoch in range(epochs):
+            # ========== 训练阶段 ==========
+            autoencoder.train()
+            parameter_mapper.train()
+
+            train_loss_total = 0.0
+            train_loss_recon = 0.0
+            train_loss_consistency = 0.0
+            train_loss_param_recon = 0.0
+            train_samples = 0
+
+            for rcs_batch, param_batch in train_loader:
+                rcs_batch = rcs_batch.to(device)
+                param_batch = param_batch.to(device)
+                batch_size_actual = rcs_batch.size(0)
+
+                optimizer.zero_grad()
+
+                # ========== 前向传播（三条路径）==========
+                # 路径1: RCS → Encoder → Decoder → RCS
+                recon_rcs, latent_from_rcs = autoencoder(rcs_batch)
+
+                # 路径2: Params → Mapper → Latent
+                latent_from_params = parameter_mapper(param_batch)
+
+                # 路径3: Params → Mapper → Decoder → RCS
+                recon_from_params = autoencoder.decode(latent_from_params)
+
+                # ========== 损失计算 ==========
+                L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)          # α
+                L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)  # β
+                L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)  # γ
+
+                # 总损失（加权）
+                total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
+
+                # 应用损失归一化
+                total_loss = total_loss * loss_normalization_factor
+
+                # ========== 反向传播 ==========
+                total_loss.backward()
+                optimizer.step()
+
+                # 累积损失
+                train_loss_total += total_loss.item() * batch_size_actual
+                train_loss_recon += L_recon_rcs.item() * batch_size_actual
+                train_loss_consistency += L_consistency.item() * batch_size_actual
+                train_loss_param_recon += L_param_recon.item() * batch_size_actual
+                train_samples += batch_size_actual
+
+            # 平均训练损失
+            avg_train_loss = train_loss_total / train_samples
+            avg_train_recon = train_loss_recon / train_samples
+            avg_train_consistency = train_loss_consistency / train_samples
+            avg_train_param_recon = train_loss_param_recon / train_samples
+
+            # ========== 验证阶段 ==========
+            autoencoder.eval()
+            parameter_mapper.eval()
+
+            val_loss_total = 0.0
+            val_loss_recon = 0.0
+            val_loss_consistency = 0.0
+            val_loss_param_recon = 0.0
+            val_samples = 0
+
+            with torch.no_grad():
+                for rcs_batch, param_batch in val_loader:
+                    rcs_batch = rcs_batch.to(device)
+                    param_batch = param_batch.to(device)
+                    batch_size_actual = rcs_batch.size(0)
+
+                    # 前向传播
+                    recon_rcs, latent_from_rcs = autoencoder(rcs_batch)
+                    latent_from_params = parameter_mapper(param_batch)
+                    recon_from_params = autoencoder.decode(latent_from_params)
+
+                    # 损失计算
+                    L_recon_rcs = criterion_recon(recon_rcs, rcs_batch)
+                    L_consistency = criterion_consistency(latent_from_rcs, latent_from_params)
+                    L_param_recon = criterion_param_recon(recon_from_params, rcs_batch)
+                    total_loss = alpha * L_recon_rcs + beta * L_consistency + gamma * L_param_recon
+
+                    # 应用损失归一化（与训练保持一致）
+                    total_loss = total_loss * loss_normalization_factor
+
+                    val_loss_total += total_loss.item() * batch_size_actual
+                    val_loss_recon += L_recon_rcs.item() * batch_size_actual
+                    val_loss_consistency += L_consistency.item() * batch_size_actual
+                    val_loss_param_recon += L_param_recon.item() * batch_size_actual
+                    val_samples += batch_size_actual
+
+            # 平均验证损失
+            avg_val_loss = val_loss_total / val_samples
+            avg_val_recon = val_loss_recon / val_samples
+            avg_val_consistency = val_loss_consistency / val_samples
+            avg_val_param_recon = val_loss_param_recon / val_samples
+
+            # 记录历史
+            history['train_loss'].append(avg_train_loss)
+            history['val_loss'].append(avg_val_loss)
+            history['train_loss_recon'].append(avg_train_recon)
+            history['train_loss_consistency'].append(avg_train_consistency)
+            history['train_loss_param_recon'].append(avg_train_param_recon)
+            history['val_loss_recon'].append(avg_val_recon)
+            history['val_loss_consistency'].append(avg_val_consistency)
+            history['val_loss_param_recon'].append(avg_val_param_recon)
+
+            # 学习率调度（使用统一的_step_scheduler方法）
+            old_lr = optimizer.param_groups[0]['lr']
+            self._step_scheduler(scheduler, scheduler_type, avg_val_loss)
+            current_lr = optimizer.param_groups[0]['lr']
+
+            # 如果学习率下降，回退到最佳模型（多阶段调度器特性）
+            if current_lr < old_lr and best_ae_state is not None:
+                autoencoder.load_state_dict(best_ae_state)
+                parameter_mapper.load_state_dict(best_mapper_state)
+                patience_counter = 0
+                self.gui.ae_log(f"  🔄 学习率下降 {old_lr:.2e} → {current_lr:.2e}，回退到最佳模型")
+
+            # 早停检查
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                best_epoch = epoch
+                best_ae_state = deepcopy(autoencoder.state_dict())
+                best_mapper_state = deepcopy(parameter_mapper.state_dict())
+                patience_counter = 0
+            else:
+                patience_counter += 1
+
+            # 日志输出
+            if (epoch + 1) % 10 == 0 or epoch == 0:
+                current_lr = optimizer.param_groups[0]['lr']
+                self.gui.ae_log(
+                    f"  Epoch {epoch+1}/{epochs}: "
+                    f"Total={avg_train_loss:.6f}/{avg_val_loss:.6f}, "
+                    f"Recon={avg_train_recon:.6f}, "
+                    f"Consistency={avg_train_consistency:.6f}, "
+                    f"ParamRecon={avg_train_param_recon:.6f}, "
+                    f"LR={current_lr:.2e}"
+                )
+
+            # 检查用户停止请求
+            if getattr(self.gui, 'stop_training_flag', False) or getattr(self.gui.training_manager, 'stop_training_flag', False):
+                self.gui.ae_log(f"  ⏹️ 用户停止训练 (Epoch {epoch+1}/{epochs})")
+                self.gui.ae_log(f"     当前验证损失: {avg_val_loss:.6f}, 最佳: {best_val_loss:.6f}")
+                break
+
+            # 早停（支持patience驱动的多阶段调度器）
+            current_patience = patience
+            if scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
+                from autoencoder.training.multi_stage_scheduler import PatienceDrivenMultiStageLRScheduler
+                if isinstance(scheduler, PatienceDrivenMultiStageLRScheduler):
+                    current_patience = scheduler.get_current_patience()
+                    if patience_counter >= current_patience:
+                        switched = scheduler.switch_to_next_stage()
+                        if switched:
+                            self.gui.ae_log(f"  🔄 切换到下一学习率阶段，回退到最佳模型")
+                            autoencoder.load_state_dict(best_ae_state)
+                            parameter_mapper.load_state_dict(best_mapper_state)
+                            patience_counter = 0
+                            continue
+                        else:
+                            self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1}): 已是最后学习率阶段")
+                            break
+                else:
+                    if patience_counter >= current_patience:
+                        self.gui.ae_log(f"  🛑 早停触发 (Epoch {epoch+1})")
+                        break
+            else:
+                if patience_counter >= current_patience:
+                    self.gui.ae_log(f"⏹️ 早停触发 (patience={patience}), 最佳epoch={best_epoch+1}")
+                    break
+
+        # 恢复最佳模型
+        if best_ae_state is not None:
+            autoencoder.load_state_dict(best_ae_state)
+            parameter_mapper.load_state_dict(best_mapper_state)
+            self.gui.ae_log(f"✅ 已恢复最佳模型 (epoch {best_epoch+1}, val_loss={best_val_loss:.6f})")
+
+        return history

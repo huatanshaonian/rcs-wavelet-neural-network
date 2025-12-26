@@ -18,7 +18,7 @@ from gui_managers.trainers.ae_trainer import AETrainer
 # 导入训练相关模块 (Config helpers need these)
 from training import CrossValidationTrainer, RCSDataset
 from wavelet_network import create_model, create_loss_function
-from configurable_loss import create_loss_function as create_configurable_loss
+from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
 
 
 class TrainingManager:
@@ -73,25 +73,46 @@ class TrainingManager:
                 messagebox.showwarning("警告", "请先加载数据!")
                 return
 
-            # 重新初始化模型权重
+            # 获取训练模式（提前获取用于判断是否重新初始化）
+            training_mode = self.gui.ae_training_mode.get()
+
+            # 重新初始化模型权重（但"仅Stage 2"模式除外）
             if self.gui.ae_model_loaded:
-                self.gui.ae_log("🔄 检测到已加载模型，重新初始化权重...")
-                self.gui.ae_log("  💡 提示：使用'继续训练'按钮可从加载的权重继续训练")
+                if training_mode == "仅Stage 2":
+                    # 仅Stage 2模式：保留AutoEncoder权重，仅重新初始化ParameterMapper
+                    self.gui.ae_log("🔄 仅Stage 2模式：保留AutoEncoder权重")
 
-                import torch.nn as nn
-                def init_weights(m):
-                    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
-                        nn.init.xavier_uniform_(m.weight)
-                        if m.bias is not None:
-                            nn.init.zeros_(m.bias)
+                    import torch.nn as nn
+                    def init_weights(m):
+                        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
+                            nn.init.xavier_uniform_(m.weight)
+                            if m.bias is not None:
+                                nn.init.zeros_(m.bias)
 
-                self.gui.ae_system['autoencoder'].apply(init_weights)
-                if 'parameter_mapper' in self.gui.ae_system:
-                    self.gui.ae_system['parameter_mapper'].apply(init_weights)
-                self.gui.ae_log("✅ 模型权重已重新初始化（随机）")
+                    if 'parameter_mapper' in self.gui.ae_system:
+                        self.gui.ae_system['parameter_mapper'].apply(init_weights)
+                        self.gui.ae_log("✅ 参数映射器权重已重新初始化（随机）")
 
-                self.gui.ae_training_history = {}
-                self.gui.ae_log("  训练历史已清空，将从头开始训练")
+                    # 不清空训练历史，保留Stage 1的历史记录
+                else:
+                    # 其他模式：完全重新初始化
+                    self.gui.ae_log("🔄 检测到已加载模型，重新初始化权重...")
+                    self.gui.ae_log("  💡 提示：使用'继续训练'按钮可从加载的权重继续训练")
+
+                    import torch.nn as nn
+                    def init_weights(m):
+                        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.Linear)):
+                            nn.init.xavier_uniform_(m.weight)
+                            if m.bias is not None:
+                                nn.init.zeros_(m.bias)
+
+                    self.gui.ae_system['autoencoder'].apply(init_weights)
+                    if 'parameter_mapper' in self.gui.ae_system:
+                        self.gui.ae_system['parameter_mapper'].apply(init_weights)
+                    self.gui.ae_log("✅ 模型权重已重新初始化（随机）")
+
+                    self.gui.ae_training_history = {}
+                    self.gui.ae_log("  训练历史已清空，将从头开始训练")
 
             self.gui.ae_log("🚀 开始AutoEncoder训练...")
 
@@ -104,8 +125,21 @@ class TrainingManager:
             self.gui.ae_log(f"  调度策略: {training_config['lr_scheduler']}")
             self.gui.ae_log(f"  损失函数: {'自定义配置' if training_config['use_custom_loss'] else '标准MSE'}")
 
-            training_mode = self.gui.ae_training_mode.get()
-            
+            # 检查"仅Stage 2"模式是否加载了Stage 1模型（training_mode已在line 77获取）
+            if training_mode == "仅Stage 2":
+                if not self.gui.ae_model_loaded:
+                    messagebox.showwarning("警告", "仅Stage 2模式需要先加载已训练好的Stage 1模型！\n\n请先：\n1. 加载Stage 1模型\n2. 选择'继续训练'")
+                    return
+
+                # 检查加载的模型是否包含训练好的AutoEncoder
+                loaded_training_mode = self.gui.ae_training_history.get('training_mode', 'unknown')
+                if loaded_training_mode not in ['stage1_only', 'three_stage']:
+                    messagebox.showwarning("警告", f"当前加载的模型训练模式为'{loaded_training_mode}'，\n不适合进行Stage 2训练。\n\n建议加载stage1_only或three_stage模式的模型。")
+                    return
+
+                self.gui.ae_log("✅ 检测到已加载Stage 1模型，将仅训练参数映射器")
+                self.gui.ae_log("  AutoEncoder权重将保持冻结")
+
             # Log training mode details (simplified)
             self.gui.ae_log(f"  模式: {training_mode}")
 
@@ -146,6 +180,21 @@ class TrainingManager:
                 # Ensure config reflects this
                 training_config['training_mode'] = 'stage1_only'
                 self.ae_trainer.run_three_stage_training(rcs_data, param_data, training_config)
+            elif training_mode == "仅Stage 2":
+                # 仅训练参数映射器（需要先加载Stage 1模型）
+                training_config['training_mode'] = 'stage2_only'
+                stage2_history = self.ae_trainer.train_stage2(rcs_data, param_data, training_config)
+                # 保存训练历史
+                if not hasattr(self.gui, 'ae_training_history'):
+                    self.gui.ae_training_history = {'stage_histories': {}}
+                self.gui.ae_training_history['stage_histories']['stage2'] = stage2_history
+                self.gui.ae_training_history['training_mode'] = 'stage2_only'
+                self.gui.ae_system['training_mode'] = 'stage2_only'
+                self.gui.ae_log("✅ 参数映射器训练完成！")
+            elif training_mode == "联合训练":
+                # 联合训练模式：同时训练AE和Mapper，强制隐空间对齐
+                training_config['training_mode'] = 'joint_training'
+                self.ae_trainer.run_joint_training(rcs_data, param_data, training_config)
             else:
                 self.ae_trainer.run_end_to_end_training(rcs_data, param_data, training_config)
 
@@ -159,6 +208,8 @@ class TrainingManager:
 
     def _on_ae_training_completed(self):
         self.gui.ae_log("✅ 训练流程全部完成!")
+        # 更新状态显示以反映最新的训练模式和结果
+        self.gui.update_ae_status()
         if not self.batch_experiment_mode:
             messagebox.showinfo("成功", "AutoEncoder训练完成!")
 
@@ -188,15 +239,47 @@ class TrainingManager:
                 return
 
             self.gui.ae_log("🔄 继续训练...")
-            
+
             # Restore weights logic (retained here as it interacts with GUI state)
             self.gui.ae_system['autoencoder'].load_state_dict(self.gui.ae_loaded_weights['autoencoder'])
             if 'parameter_mapper' in self.gui.ae_loaded_weights:
                 self.gui.ae_system['parameter_mapper'].load_state_dict(self.gui.ae_loaded_weights['parameter_mapper'])
-            
+
+            # ✅ 打印上次训练的最佳loss作为基准
+            if hasattr(self.gui, 'ae_training_history') and self.gui.ae_training_history:
+                self.gui.ae_log("📊 上次训练的最佳Loss（作为基准）:")
+                stage_histories = self.gui.ae_training_history.get('stage_histories', {})
+                training_mode = self.gui.ae_training_mode.get()
+
+                if training_mode == '3阶段训练' or training_mode == 'three_stage':
+                    # 三阶段训练：打印所有阶段的最佳loss
+                    for stage_name in ['stage1', 'stage2', 'stage3']:
+                        if stage_name in stage_histories:
+                            stage = stage_histories[stage_name]
+                            best_loss = stage.get('best_val_loss', 'N/A')
+                            if isinstance(best_loss, float):
+                                self.gui.ae_log(f"  {stage_name.upper()}: {best_loss:.6f}")
+                elif training_mode == '仅Stage 1' or training_mode == 'stage1_only':
+                    # Stage 1 Only：只打印stage1
+                    if 'stage1' in stage_histories:
+                        stage1 = stage_histories['stage1']
+                        best_loss = stage1.get('best_val_loss', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.gui.ae_log(f"  Stage 1: {best_loss:.6f}")
+                elif training_mode == '仅Stage 2' or training_mode == 'stage2_only':
+                    # Stage 2 Only：打印stage2（如果存在）
+                    if 'stage2' in stage_histories:
+                        stage2 = stage_histories['stage2']
+                        best_loss = stage2.get('best_val_loss', 'N/A')
+                        if isinstance(best_loss, float):
+                            self.gui.ae_log(f"  Stage 2: {best_loss:.6f}")
+
+                self.gui.ae_log("💡 注意: 继续训练将从best_val_loss=inf开始（每次训练独立评估最佳模型）")
+                self.gui.ae_log("  这样可以确保只有真正改进的模型才会被保存")
+
             training_config = self._create_ae_training_config()
-            training_mode = self.gui.ae_training_mode.get()
-            
+            training_mode = self.gui.ae_training_mode.get()  # 重新获取当前训练模式
+
             rcs_data = self.gui.ae_system['rcs_data']
             param_data = self.gui.ae_system['param_data']
 
@@ -266,8 +349,8 @@ class TrainingManager:
     def _print_latent_space_statistics(self, rcs_data):
         return self.ae_trainer.print_latent_space_statistics(rcs_data)
 
-    def _create_ae_optimizer_and_scheduler(self, params, config):
-        return self.ae_trainer._create_optimizer_and_scheduler(params, config)
+    def _create_ae_optimizer_and_scheduler(self, params, config, stage='stage1'):
+        return self.ae_trainer._create_optimizer_and_scheduler(params, config, stage)
 
     def _create_stage_loss_function(self, config, stage='stage1'):
         return self.ae_trainer._create_stage_loss_function(config, stage)
@@ -292,20 +375,23 @@ class TrainingManager:
                 'lr_scheduler': self.gui.ae_lr_scheduler.get(),
                 'min_lr': float(self.gui.ae_min_lr.get()),
                 'restart_period': int(self.gui.ae_restart_period.get()),
-                'use_custom_loss': self.gui.ae_use_custom_loss.get()
+                'use_custom_loss': self.gui.ae_use_custom_loss.get(),
+                'gradient_monitoring': self.gui.ae_gradient_monitoring.get()
             }
 
             config['epochs'] = {
                 'stage1': int(self.gui.ae_epochs_stage1.get()),
                 'stage2': int(self.gui.ae_epochs_stage2.get()),
-                'stage3': int(self.gui.ae_epochs_stage3.get())
+                'stage3': int(self.gui.ae_epochs_stage3.get()),
+                'joint': int(getattr(self.gui, 'ae_epochs_joint', tk.IntVar(value=200)).get())
             }
 
             config['patience'] = {
                 'stage1': int(self.gui.ae_patience_stage1.get()),
                 'stage2': int(self.gui.ae_patience_stage2.get()),
                 'stage3': int(self.gui.ae_patience_stage3.get()),
-                'e2e': int(self.gui.ae_patience_e2e.get())
+                'e2e': int(self.gui.ae_patience_e2e.get()),
+                'joint': int(getattr(self.gui, 'ae_patience_joint', tk.IntVar(value=50)).get())
             }
 
             config['num_lr_stages'] = int(self.gui.ae_num_lr_stages.get())
@@ -315,15 +401,26 @@ class TrainingManager:
             config['training_mode'] = {
                 '三阶段训练': 'three_stage',
                 '端到端训练': 'end_to_end',
-                '仅Stage 1': 'stage1_only'
+                '仅Stage 1': 'stage1_only',
+                '仅Stage 2': 'stage2_only',
+                '联合训练': 'joint_training'
             }.get(self.gui.ae_training_mode.get(), 'three_stage')
+
+            # 联合训练损失权重配置
+            config['alpha_recon'] = float(getattr(self.gui, 'ae_alpha_recon', tk.DoubleVar(value=0.3)).get())
+            config['beta_consistency'] = float(getattr(self.gui, 'ae_beta_consistency', tk.DoubleVar(value=0.5)).get())
+            config['gamma_param_recon'] = float(getattr(self.gui, 'ae_gamma_param_recon', tk.DoubleVar(value=1.0)).get())
 
             if hasattr(self.gui, 'ae_custom_loss_config'):
                 config['custom_loss_config'] = self.gui.ae_custom_loss_config
-                
+
             if hasattr(self.gui, 'ae_stage_loss_configs'):
                 for stage, loss_cfg in self.gui.ae_stage_loss_configs.items():
                     config[f'{stage}_loss_config'] = loss_cfg
+
+            # 联合训练损失配置（三个独立的损失函数）
+            if hasattr(self.gui, 'ae_joint_loss_config'):
+                config['joint_loss_config'] = self.gui.ae_joint_loss_config
 
             return config
 

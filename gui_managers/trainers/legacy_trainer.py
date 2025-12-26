@@ -17,7 +17,7 @@ import tkinter as tk
 
 from training import CrossValidationTrainer, RCSDataset, ProgressiveTrainer
 from wavelet_network import create_model, create_loss_function
-from configurable_loss import create_loss_function as create_configurable_loss
+from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
 
 
 class LegacyTrainer:

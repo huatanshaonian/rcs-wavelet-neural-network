@@ -631,7 +631,7 @@ class BatchExperimentExtension:
             normalization_method = config['preprocessing']['normalization_method']
             db_transform = config['preprocessing']['db_transform']
         else:
-            normalization_method = config.get('normalization_method', 'zscore')
+            normalization_method = config.get('normalization_method', 'none')
             db_transform = config.get('db_transform', False)
 
         # 创建系统

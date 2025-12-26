@@ -97,6 +97,64 @@ def create_model_state_dict(
     if loss_normalization_factor is not None:
         model_state['loss_normalization_factor'] = float(loss_normalization_factor)
 
+    # 保存ParameterMapper配置（关键！用于正确重建mapper）
+    parameter_mapper = ae_system.get('parameter_mapper', None)
+    if parameter_mapper is not None and hasattr(parameter_mapper, 'hidden_dims'):
+        mapper_config = {
+            'param_dim': getattr(parameter_mapper, 'param_dim', 9),
+            'latent_dim': getattr(parameter_mapper, 'latent_dim', 256),
+            'hidden_dims': getattr(parameter_mapper, 'hidden_dims', None),
+            'dropout_rate': getattr(parameter_mapper, 'dropout_rate', 0.3),
+            'activation': getattr(parameter_mapper, 'activation_name', 'relu'),
+            'use_adaptive': getattr(parameter_mapper, 'use_adaptive', False)
+        }
+        model_state['config']['mapper_config'] = mapper_config
+
+    # ✅ 保存 output_activation 配置（物理约束）
+    autoencoder = ae_system.get('autoencoder', None)
+    if autoencoder is not None and hasattr(autoencoder, 'get_output_activation_type'):
+        output_activation_type = autoencoder.get_output_activation_type()
+        if output_activation_type is not None:
+            model_state['config']['output_activation'] = output_activation_type
+
+    # ✅ 提取架构特定参数（双分支、叠加型等）
+    if autoencoder is not None:
+        # 通用架构参数
+        if hasattr(autoencoder, 'use_channel_attention'):
+            model_state['config']['use_channel_attention'] = autoencoder.use_channel_attention
+
+        # 双分支V2特定参数
+        if hasattr(autoencoder, 'll_ratio'):
+            model_state['config']['ll_ratio'] = autoencoder.ll_ratio
+        if hasattr(autoencoder, 'll_latent_dim'):
+            model_state['config']['ll_latent_dim'] = autoencoder.ll_latent_dim
+        if hasattr(autoencoder, 'hf_latent_dim'):
+            model_state['config']['hf_latent_dim'] = autoencoder.hf_latent_dim
+
+        # 叠加型双分支特定参数
+        if hasattr(autoencoder, 'learnable_weights'):
+            model_state['config']['learnable_weights'] = autoencoder.learnable_weights
+        if hasattr(autoencoder, 'alpha_high'):
+            model_state['config']['alpha_high'] = autoencoder.alpha_high.item() if hasattr(autoencoder.alpha_high, 'item') else autoencoder.alpha_high
+        if hasattr(autoencoder, 'alpha_smooth'):
+            model_state['config']['alpha_smooth'] = autoencoder.alpha_smooth.item() if hasattr(autoencoder.alpha_smooth, 'item') else autoencoder.alpha_smooth
+        if hasattr(autoencoder, 'activation_encoder_type'):
+            model_state['config']['activation_encoder'] = autoencoder.activation_encoder_type
+        if hasattr(autoencoder, 'activation_high_type'):
+            model_state['config']['activation_high'] = autoencoder.activation_high_type
+        if hasattr(autoencoder, 'activation_smooth_type'):
+            model_state['config']['activation_smooth'] = autoencoder.activation_smooth_type
+
+        # 尝试获取完整的架构摘要（如果模型提供）
+        if hasattr(autoencoder, 'get_architecture_summary'):
+            try:
+                arch_summary = autoencoder.get_architecture_summary()
+                if isinstance(arch_summary, dict):
+                    # 将架构摘要保存到单独的字段
+                    model_state['config']['architecture_summary'] = arch_summary
+            except Exception:
+                pass  # 忽略错误，不是所有模型都实现了这个方法
+
     return model_state
 
 
@@ -178,38 +236,147 @@ def save_model_config_json(
     # 构建可读的配置信息（不包含state_dict等二进制数据）
     config = model_state.get('config', {})
 
+    # 提取并简化训练历史（仅保留关键指标，避免文件过大）
+    full_history = model_state.get('training_history', {})
+    history_summary = {}
+
+    if full_history:
+        # 保留训练配置
+        if 'training_config' in full_history:
+            history_summary['training_config'] = full_history['training_config']
+
+        # 简化各阶段历史（只保留最佳值和最终值）
+        if 'stage_histories' in full_history:
+            history_summary['stage_histories'] = {}
+            for stage_name, stage_data in full_history['stage_histories'].items():
+                summary = {
+                    'best_val_loss': stage_data.get('best_val_loss', 'N/A'),
+                    'best_epoch': stage_data.get('best_epoch', 'N/A')
+                }
+                # 提取最终loss
+                if 'loss_history' in stage_data and stage_data['loss_history']:
+                    summary['final_loss'] = stage_data['loss_history'][-1]
+                if 'val_loss_history' in stage_data and stage_data['val_loss_history']:
+                    summary['final_val_loss'] = stage_data['val_loss_history'][-1]
+                
+                history_summary['stage_histories'][stage_name] = summary
+
+    # 构建模型信息（包含所有架构参数）
+    model_info = {
+        'mode': config.get('mode', 'N/A'),
+        'architecture': config.get('architecture', 'N/A'),
+        'latent_dim': config.get('latent_dim', 'N/A'),
+        'dropout_rate': config.get('dropout_rate', 0.2),
+        'activation': config.get('activation', 'relu'),
+        'output_activation': config.get('output_activation', 'none'),
+    }
+
+    # 添加通用架构参数
+    if 'use_channel_attention' in config:
+        model_info['use_channel_attention'] = config['use_channel_attention']
+
+    # 添加双分支V2特定参数
+    dual_branch_params = {}
+    if 'll_ratio' in config:
+        dual_branch_params['ll_ratio'] = config['ll_ratio']
+    if 'll_latent_dim' in config:
+        dual_branch_params['ll_latent_dim'] = config['ll_latent_dim']
+    if 'hf_latent_dim' in config:
+        dual_branch_params['hf_latent_dim'] = config['hf_latent_dim']
+    if dual_branch_params:
+        model_info['dual_branch_config'] = dual_branch_params
+
+    # 添加叠加型双分支特定参数
+    additive_params = {}
+    if 'learnable_weights' in config:
+        additive_params['learnable_weights'] = config['learnable_weights']
+    if 'alpha_high' in config:
+        additive_params['alpha_high'] = config['alpha_high']
+    if 'alpha_smooth' in config:
+        additive_params['alpha_smooth'] = config['alpha_smooth']
+    if 'activation_encoder' in config:
+        additive_params['activation_encoder'] = config['activation_encoder']
+    if 'activation_high' in config:
+        additive_params['activation_high'] = config['activation_high']
+    if 'activation_smooth' in config:
+        additive_params['activation_smooth'] = config['activation_smooth']
+    if additive_params:
+        model_info['additive_dual_branch_config'] = additive_params
+
+    # 添加完整架构摘要（如果有）
+    if 'architecture_summary' in config:
+        model_info['architecture_summary'] = config['architecture_summary']
+
+    # 构建数据预处理信息
+    data_preprocessing = {
+        'wavelet_type': config.get('wavelet', 'N/A'),
+        'normalize': config.get('normalize', False),
+        'normalization_method': config.get('normalization_method', 'N/A'),
+        'db_transform': config.get('db_transform', False)
+    }
+
+    # 添加data_adapter统计信息
+    if 'adapter_stats' in model_state:
+        data_preprocessing['adapter_stats'] = model_state['adapter_stats']
+
+    # 构建训练信息（包含训练配置和历史）
+    training_info = {
+        'training_mode': model_state.get('training_mode', 'N/A'),
+        'training_history_summary': history_summary,
+        'loss_normalization_factor': model_state.get('loss_normalization_factor', 'N/A')
+    }
+
+    # 添加训练配置（从training_history中提取）
+    if full_history and 'training_config' in full_history:
+        training_config = full_history['training_config']
+        training_info['training_config'] = {
+            'optimizer_type': training_config.get('optimizer_type', 'N/A'),
+            'learning_rate': training_config.get('learning_rate', 'N/A'),
+            'min_lr': training_config.get('min_lr', 'N/A'),
+            'lr_scheduler': training_config.get('lr_scheduler', 'N/A'),
+            'batch_size': training_config.get('batch_size', 'N/A'),
+            'epochs': training_config.get('epochs', 'N/A'),
+            'patience': training_config.get('patience', 'N/A'),
+            'gradient_monitoring': training_config.get('gradient_monitoring', 'N/A')
+        }
+
+        # 联合训练的损失权重
+        if model_state.get('training_mode') == 'joint_training':
+            training_info['training_config']['loss_weights'] = {
+                'alpha_rcs_recon': training_config.get('alpha_rcs_recon', 'N/A'),
+                'beta_consistency': training_config.get('beta_consistency', 'N/A'),
+                'gamma_param_recon': training_config.get('gamma_param_recon', 'N/A')
+            }
+
+    # 添加ParameterMapper配置
+    mapper_info = {}
+    if 'mapper_config' in config:
+        mapper_config = config['mapper_config']
+        mapper_info = {
+            'param_dim': mapper_config.get('param_dim', 'N/A'),
+            'latent_dim': mapper_config.get('latent_dim', 'N/A'),
+            'hidden_dims': mapper_config.get('hidden_dims', 'N/A'),
+            'dropout_rate': mapper_config.get('dropout_rate', 'N/A'),
+            'activation': mapper_config.get('activation', 'N/A'),
+            'use_adaptive': mapper_config.get('use_adaptive', False)
+        }
+
+    # 构建完整JSON
     json_data = {
-        'model_info': {
-            'mode': config.get('mode', 'N/A'),
-            'architecture': config.get('architecture', 'N/A'),
-            'latent_dim': config.get('latent_dim', 'N/A'),
-            'dropout_rate': config.get('dropout_rate', 0.2),
-            'activation': config.get('activation', 'relu')
-        },
+        'model_info': model_info,
+        'parameter_mapper_info': mapper_info,
         'frequency_config': {
             'num_frequencies': config.get('num_frequencies', 'N/A'),
             'frequency_labels': config.get('frequency_labels', []),
             'frequencies_ghz': config.get('frequencies_ghz', [])
         },
-        'data_preprocessing': {
-            'wavelet_type': config.get('wavelet', 'N/A'),
-            'normalize': config.get('normalize', False),
-            'db_transform': config.get('db_transform', False)
-        },
-        'training_info': {
-            'training_mode': model_state.get('training_mode', 'N/A'),
-            'training_history': model_state.get('training_history', {}),
-            'loss_normalization_factor': model_state.get('loss_normalization_factor', 'N/A')
-        },
+        'data_preprocessing': data_preprocessing,
+        'training_info': training_info,
         'save_info': {
             'save_time': datetime.now().isoformat(),
             'file_path': json_path
         }
     }
-
-    # 添加data_adapter统计信息
-    if 'adapter_stats' in model_state:
-        json_data['data_preprocessing']['adapter_stats'] = model_state['adapter_stats']
 
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(json_data, f, indent=2, ensure_ascii=False)

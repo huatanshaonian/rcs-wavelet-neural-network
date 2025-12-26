@@ -28,6 +28,37 @@ class ConfigurableLoss(nn.Module):
         if config.get('use_huber', False):
             self.huber_loss = nn.HuberLoss(delta=config.get('huber_delta', 0.1))
 
+        # 初始化数据统计信息（用于非负约束损失的反标准化）
+        if 'data_stats' in config:
+            stats = config['data_stats']
+            self.normalization_method = stats.get('method', 'none')
+            
+            if self.normalization_method == 'zscore':
+                if 'mean' in stats and 'std' in stats:
+                    # 注册为buffer以便随模型移动到GPU
+                    # 确保是Tensor类型
+                    mean_val = stats['mean']
+                    std_val = stats['std']
+                    if not isinstance(mean_val, torch.Tensor):
+                        mean_val = torch.FloatTensor(mean_val)
+                    if not isinstance(std_val, torch.Tensor):
+                        std_val = torch.FloatTensor(std_val)
+                        
+                    self.register_buffer('data_mean', mean_val)
+                    self.register_buffer('data_std', std_val)
+            
+            elif self.normalization_method == 'minmax':
+                if 'min' in stats and 'range' in stats:
+                    min_val = stats['min']
+                    range_val = stats['range']
+                    if not isinstance(min_val, torch.Tensor):
+                        min_val = torch.FloatTensor(min_val)
+                    if not isinstance(range_val, torch.Tensor):
+                        range_val = torch.FloatTensor(range_val)
+
+                    self.register_buffer('data_min', min_val)
+                    self.register_buffer('data_range', range_val)
+
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
         计算总损失
@@ -76,6 +107,14 @@ class ConfigurableLoss(nn.Module):
             if self.config.get('use_laplacian', False):
                 losses['laplacian'] = self._laplacian_loss(pred, target)
 
+            # RCS非负约束损失 (物理约束)
+            if self.config.get('use_non_negative', False):
+                losses['non_negative'] = self._rcs_non_negative_loss(pred)
+
+        # 统计特性损失 (对所有维度数据有效)
+        if self.config.get('use_mean', False):
+            losses['mean'] = self._mean_loss(pred, target)
+
         # 计算加权总损失
         total_loss = 0
         for loss_name, loss_value in losses.items():
@@ -85,6 +124,43 @@ class ConfigurableLoss(nn.Module):
 
         losses['total'] = total_loss
         return losses
+
+    def _rcs_non_negative_loss(self, pred: torch.Tensor) -> torch.Tensor:
+        """
+        RCS非负约束损失
+        将预测值反变换回原始线性域，对负值进行惩罚
+        """
+        # 1. 逆标准化 (Denormalization)
+        x_recon = pred
+        
+        if hasattr(self, 'data_mean') and hasattr(self, 'data_std'):
+            # Z-score逆变换: x = z * std + mean
+            x_recon = x_recon * self.data_std + self.data_mean
+        elif hasattr(self, 'data_min') and hasattr(self, 'data_range'):
+            # Min-Max逆变换: x = z * range + min
+            x_recon = x_recon * self.data_range + self.data_min
+
+        # 2. 逆dB变换 (Inverse dB)
+        # 如果训练数据是dB域的，那么 x_linear = 10^(x_db/10) 恒为正，无需惩罚
+        # 但如果模型在dB域预测了极小的值（物理上对应极小RCS），这本身是合法的
+        # 此损失主要针对：在线性域训练（normalize=True, db=False）时，模型预测出负RCS的情况
+        
+        if self.config.get('db_transform', False):
+            # 如果是dB数据，反变换后恒为正，理论上不需要此损失
+            # 除非我们想约束dB值不能太小（例如不能小于-100dB），但这属于数值稳定性约束而非物理非负约束
+            # 这里我们假设用户主要在非dB模式下使用此约束
+            pass
+
+        # 3. 计算负值惩罚
+        # 我们希望 x_recon >= 0
+        # 违规值：violation = ReLU(-x_recon)
+        # 如果 x = -5, -x = 5, ReLU(5) = 5 -> 惩罚
+        # 如果 x = 5, -x = -5, ReLU(-5) = 0 -> 无惩罚
+        
+        violation = F.relu(-x_recon)
+        
+        # 使用L2惩罚（平滑）
+        return torch.mean(violation ** 2)
 
     def _symmetry_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
@@ -394,6 +470,42 @@ class ConfigurableLoss(nn.Module):
 
         return total_loss / len(scales)
 
+    def _mean_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        均值损失 - 保持全局统计特性
+
+        计算预测和目标的均值差异，帮助模型学习数据的全局统计特性
+
+        Args:
+            pred: 预测值 [B, H, W, C] 或 [B, latent_dim]
+            target: 目标值 [B, H, W, C] 或 [B, latent_dim]
+
+        Returns:
+            均值损失值
+        """
+        mean_type = self.config.get('mean_type', 'channel')  # 'channel' 或 'global'
+
+        if mean_type == 'channel':
+            # 按通道分别计算均值（推荐 - 保持每个频率的独立统计特性）
+            if pred.dim() == 4:
+                # 4D数据（RCS）: [B, H, W, C] -> mean over [B, H, W] -> [C]
+                pred_mean = pred.mean(dim=[0, 1, 2])  # [C]
+                target_mean = target.mean(dim=[0, 1, 2])  # [C]
+            else:
+                # 2D数据（隐空间）: [B, latent_dim] -> mean over [B] -> [latent_dim]
+                pred_mean = pred.mean(dim=0)  # [latent_dim]
+                target_mean = target.mean(dim=0)  # [latent_dim]
+        else:
+            # 全局均值（所有维度平均）
+            pred_mean = pred.mean()
+            target_mean = target.mean()
+
+        # L1或L2距离
+        if self.config.get('mean_use_l1', False):
+            return F.l1_loss(pred_mean, target_mean)
+        else:
+            return F.mse_loss(pred_mean, target_mean)
+
 
 def create_loss_function(config: Dict[str, Any]) -> ConfigurableLoss:
     """
@@ -415,7 +527,8 @@ PRESET_CONFIGS = {
         'use_huber': False, 'use_l1': False,
         'use_symmetry': True, 'symmetry_weight': 0.02,
         'use_freq_consistency': False, 'use_continuity': False,
-        'use_multiscale': True, 'multiscale_weight': 0.1
+        'use_multiscale': True, 'multiscale_weight': 0.1,
+        'use_mean': True, 'mean_weight': 0.01, 'mean_type': 'channel', 'mean_use_l1': False
     },
 
     'enhanced': {
@@ -424,7 +537,8 @@ PRESET_CONFIGS = {
         'use_symmetry': True, 'symmetry_weight': 0.01,
         'use_freq_consistency': True, 'freq_consistency_weight': 0.02, 'freq_consistency_type': 'diff',
         'use_continuity': True, 'continuity_weight': 0.02, 'continuity_type': 'standard',
-        'use_multiscale': False
+        'use_multiscale': False,
+        'use_mean': True, 'mean_weight': 0.02, 'mean_type': 'channel', 'mean_use_l1': False
     },
 
     'robust': {
@@ -432,7 +546,8 @@ PRESET_CONFIGS = {
         'use_l1': True, 'l1_weight': 0.1,
         'use_symmetry': True, 'symmetry_weight': 0.005,
         'use_freq_consistency': True, 'freq_consistency_weight': 0.01, 'freq_consistency_type': 'correlation',
-        'use_continuity': False, 'use_multiscale': False
+        'use_continuity': False, 'use_multiscale': False,
+        'use_mean': True, 'mean_weight': 0.015, 'mean_type': 'channel', 'mean_use_l1': True
     },
 
     'high_freq': {
@@ -441,7 +556,8 @@ PRESET_CONFIGS = {
         'use_symmetry': True, 'symmetry_weight': 0.005,
         'use_freq_consistency': True, 'freq_consistency_weight': 0.005, 'freq_consistency_type': 'local',
         'use_continuity': True, 'continuity_weight': 0.005, 'continuity_type': 'adaptive',
-        'use_multiscale': False
+        'use_multiscale': False,
+        'use_mean': False  # 高频模式不需要均值约束
     },
 
     'smooth': {
@@ -450,7 +566,8 @@ PRESET_CONFIGS = {
         'use_symmetry': True, 'symmetry_weight': 0.02,
         'use_freq_consistency': True, 'freq_consistency_weight': 0.05, 'freq_consistency_type': 'diff',
         'use_continuity': True, 'continuity_weight': 0.05, 'continuity_type': 'standard',
-        'use_multiscale': True, 'multiscale_weight': 0.1
+        'use_multiscale': True, 'multiscale_weight': 0.1,
+        'use_mean': True, 'mean_weight': 0.05, 'mean_type': 'channel', 'mean_use_l1': False
     },
 
     'perceptual': {
@@ -459,7 +576,8 @@ PRESET_CONFIGS = {
         'use_l1': True, 'l1_weight': 0.1,
         'use_ssim': True, 'ssim_small_weight': 0.3, 'ssim_large_weight': 0.5,
         'use_symmetry': True, 'symmetry_weight': 0.02,
-        'use_multiscale': False
+        'use_multiscale': False,
+        'use_mean': True, 'mean_weight': 0.02, 'mean_type': 'channel', 'mean_use_l1': False
     },
 
     'stage2_default': {
@@ -467,7 +585,8 @@ PRESET_CONFIGS = {
         'use_huber': False, 'use_l1': False,
         'use_symmetry': False, 'use_ssim': False,
         'use_freq_consistency': False, 'use_continuity': False,
-        'use_multiscale': False
+        'use_multiscale': False,
+        'use_mean': True, 'mean_weight': 0.01, 'mean_type': 'channel', 'mean_use_l1': False
     }
 }
 

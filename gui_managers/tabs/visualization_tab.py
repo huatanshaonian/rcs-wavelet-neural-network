@@ -36,9 +36,12 @@ class VisualizationTab(ttk.Frame):
 
         # 可视化UI变量
         self.vis_model_var = tk.StringVar(value="001")
+        self.vis_aux_model_var = tk.StringVar(value="002")  # 辅助样本ID（用于插值）
         self.vis_freq_var = tk.StringVar(value="1.5G")
         self.fontsize_scale_var = tk.DoubleVar(value=1.0)
         self.vis_type_var = tk.StringVar(value="2D热图")
+        self.color_param_var = tk.StringVar(value="参数1(kw)")  # 隐空间分布着色参数
+        self.ae_reconstruction_mode_var = tk.StringVar(value="auto")  # AutoEncoder重建模式
 
         # Matplotlib图形初始化 (作为属性，以便在各种方法中访问和更新)
         self.vis_fig = Figure(figsize=(12, 8), dpi=80)
@@ -81,14 +84,38 @@ class VisualizationTab(ttk.Frame):
         # 可视化类型选择
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         type_combo = ttk.Combobox(control_frame, textvariable=self.vis_type_var,
-                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "差值分析", "相关性分析",
-                                        "训练历史", "统计对比", "AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重"],
+                                 values=["2D热图", "3D表面图", "球坐标图", "对比图", "小波系数对比", "AE分支对比", "差值分析", "相关性分析",
+                                        "训练历史", "统计对比", "AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"],
                                  state="readonly", width=12)
         type_combo.grid(row=1, column=1, padx=5, pady=2)
 
-        # 生成按钮
+        # 辅助样本ID（用于隐空间插值）
+        ttk.Label(control_frame, text="辅助样本ID:").grid(row=1, column=2, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(control_frame, textvariable=self.vis_aux_model_var, width=10).grid(row=1, column=3, padx=5, pady=2)
+
+        # AE重建模式选择（用于对比图等）
+        ttk.Label(control_frame, text="AE重建模式:").grid(row=1, column=4, sticky=tk.W, padx=5, pady=2)
+        ae_mode_combo = ttk.Combobox(control_frame, textvariable=self.ae_reconstruction_mode_var,
+                                     values=["auto", "ae_only", "end_to_end"],
+                                     state="readonly", width=12)
+        ae_mode_combo.grid(row=1, column=5, padx=5, pady=2)
+
+        # 着色参数选择（用于隐空间分布）
+        ttk.Label(control_frame, text="着色参数:").grid(row=1, column=6, sticky=tk.W, padx=5, pady=2)
+        param_combo = ttk.Combobox(control_frame, textvariable=self.color_param_var,
+                                   values=["参数1(kw)", "参数2(phi)", "参数3(yita)", "参数4(lam)",
+                                          "参数5(Ht)", "参数6(Nc)", "参数7(Theta)", "参数8(R)", "参数9(Beta)"],
+                                   state="readonly", width=12)
+        param_combo.grid(row=1, column=7, padx=5, pady=2)
+
+        # 第三行：生成按钮和提示
+        # 生成按钮（左下角）
         ttk.Button(control_frame, text="生成图表", command=self.generate_visualization,
-                  style="Accent.TButton").grid(row=1, column=3, padx=5, pady=2)
+                  style="Accent.TButton").grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky=tk.W)
+
+        # AE重建模式提示
+        ttk.Label(control_frame, text="AE重建模式说明: auto(自动) | ae_only(纯AE重建) | end_to_end(参数→RCS)",
+                 font=self.font_small, foreground="gray").grid(row=2, column=2, columnspan=6, sticky=tk.W, padx=5, pady=0)
 
         # 图表显示区域
         chart_group = ttk.LabelFrame(main_frame, text="图表显示")
@@ -118,13 +145,17 @@ class VisualizationTab(ttk.Frame):
                     self._plot_training_history()
                 elif chart_type == "统计对比":
                     self._plot_global_statistics_comparison()
-            elif chart_type in ["AE隐空间分析", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重"]:
+            elif chart_type in ["AE隐空间分析", "AE隐空间分布", "AE重建质量", "AE参数映射", "AE训练进度", "AE注意力权重", "AE隐空间插值"]:
                 # AutoEncoder特定图表
                 if not has_ae_model:
                     messagebox.showwarning("警告", "AutoEncoder图表需要先训练或加载AutoEncoder模型")
                     return
                 if chart_type == "AE注意力权重":
                     self._plot_attention_weights()
+                elif chart_type == "AE隐空间插值":
+                    self._plot_ae_latent_interpolation()
+                elif chart_type == "AE隐空间分布":
+                    self._plot_ae_latent_distribution()
                 else:
                     self._plot_autoencoder_visualization(chart_type)
             elif chart_type in ["2D热图", "3D表面图", "球坐标图"]:
@@ -165,6 +196,11 @@ class VisualizationTab(ttk.Frame):
                         self._plot_wavelet_coefficients_comparison()
                     else:
                         messagebox.showwarning("警告", "小波系数对比功能需要AutoEncoder模型")
+                elif chart_type == "AE分支对比":
+                    if has_ae_model:
+                        self._plot_ae_branch_comparison()
+                    else:
+                        messagebox.showwarning("警告", "分支对比功能需要Additive Dual-Branch AutoEncoder模型")
                 elif chart_type == "差值分析":
                     self._plot_difference_analysis(model_id)
                 elif chart_type == "相关性分析":
@@ -246,7 +282,7 @@ class VisualizationTab(ttk.Frame):
     def _plot_ae_latent_space(self):
         """绘制AutoEncoder隐空间分析"""
         if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
-            return self.app.visualization_manager._plot_ae_latent_space(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data)
+            return self.app.visualization_manager._plot_ae_latent_space(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data, self.app.param_data)
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制AutoEncoder隐空间分析。" )
 
@@ -257,6 +293,34 @@ class VisualizationTab(ttk.Frame):
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制AutoEncoder重建质量分析。" )
 
+    def _plot_ae_latent_interpolation(self):
+        """绘制AutoEncoder隐空间插值"""
+        if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
+            sample_id1 = self.vis_model_var.get()
+            sample_id2 = self.vis_aux_model_var.get()
+            return self.app.visualization_manager._plot_ae_latent_interpolation(
+                self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message,
+                self.app.rcs_data, sample_id1, sample_id2)
+        else:
+            self.app.log_message("警告: VisualizationManager未初始化，无法绘制隐空间插值。" )
+
+    def _plot_ae_latent_distribution(self):
+        """绘制AutoEncoder隐空间分布（PCA, t-SNE, UMAP）"""
+        if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
+            # 将参数选择转换为索引
+            color_param_str = self.color_param_var.get()
+            param_map = {
+                "参数1(kw)": 0, "参数2(phi)": 1, "参数3(yita)": 2,
+                "参数4(lam)": 3, "参数5(Ht)": 4, "参数6(Nc)": 5,
+                "参数7(Theta)": 6, "参数8(R)": 7, "参数9(Beta)": 8
+            }
+            color_param_idx = param_map.get(color_param_str, 0)
+
+            return self.app.visualization_manager._plot_ae_latent_distribution(
+                self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message,
+                self.app.rcs_data, self.app.param_data, color_param_idx)
+        else:
+            self.app.log_message("警告: VisualizationManager未初始化，无法绘制隐空间分布。" )
 
     def _plot_ae_parameter_mapping(self):
         """绘制AutoEncoder参数映射分析"""
@@ -297,7 +361,12 @@ class VisualizationTab(ttk.Frame):
     def _plot_ae_comparison(self):
         """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数"""
         if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
-            return self.app.visualization_manager._plot_ae_comparison(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data, self.app.param_data)
+            # 获取用户选择的重建模式
+            reconstruction_mode = self.ae_reconstruction_mode_var.get()
+            return self.app.visualization_manager._plot_ae_comparison(
+                self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message,
+                self.app.rcs_data, self.app.param_data, reconstruction_mode=reconstruction_mode
+            )
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制AutoEncoder对比图。" )
 
@@ -431,6 +500,20 @@ class VisualizationTab(ttk.Frame):
             return self.app.visualization_manager._plot_wavelet_coefficients_comparison(self.app.ae_system, self.vis_fig, self.vis_canvas, self.app.log_message, self.app.rcs_data, self.app.param_data)
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制小波系数对比图。" )
+
+    def _plot_ae_branch_comparison(self):
+        """绘制Additive Dual-Branch分支对比图：高频分支、低频分支、叠加重建、频域分析"""
+        if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
+            return self.app.visualization_manager._plot_ae_branch_comparison(
+                self.app.ae_system,
+                self.vis_fig,
+                self.vis_canvas,
+                self.app.log_message,
+                self.vis_model_var.get(),
+                self.vis_freq_var.get()
+            )
+        else:
+            self.app.log_message("警告: VisualizationManager未初始化，无法绘制分支对比图。")
 
     def save_current_visualization(self):
         """保存当前显示的可视化图表到results文件夹"""

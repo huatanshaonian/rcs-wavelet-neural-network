@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import os
 from datetime import datetime
+import tkinter as tk
 from tkinter import messagebox
 import rcs_visual as rv
 from mpl_toolkits.mplot3d import Axes3D
@@ -1063,7 +1064,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 fontsize_scale = 1.0
 
             if chart_type == "AE隐空间分析":
-                self._plot_ae_latent_space(sys, target_fig, target_canvas, log_msg, rcs_data)
+                self._plot_ae_latent_space(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
             elif chart_type == "AE重建质量":
                 self._plot_ae_reconstruction_quality(sys, target_fig, target_canvas, log_msg, rcs_data, param_data)
             elif chart_type == "AE参数映射":
@@ -1080,7 +1081,7 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
         except Exception as e:
             log_msg(f"AutoEncoder可视化失败: {str(e)}")
 
-    def _plot_ae_latent_space(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None):
+    def _plot_ae_latent_space(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder隐空间分析"""
         import torch
         import numpy as np
@@ -1097,6 +1098,13 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             data = sys['rcs_data']
         if data is None:
             data = getattr(self.gui, 'rcs_data', None)
+
+        # param_data
+        params = param_data
+        if params is None and sys is not None and 'param_data' in sys:
+            params = sys['param_data']
+        if params is None:
+            params = getattr(self.gui, 'param_data', None)
 
         log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
 
@@ -1135,8 +1143,8 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 编码所有数据到隐空间
             with torch.no_grad():
-                # 取前50个样本避免内存问题
-                sample_data = data[:50]
+                # 使用全部样本
+                sample_data = data
 
                 # 根据模式准备输入数据
                 if mode in ('wavelet', 'differentiable_wavelet'):
@@ -1163,60 +1171,56 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                 latent_vectors = autoencoder.encode(input_tensor)
                 latent_vectors = latent_vectors.cpu().numpy()
 
-            # 降维可视化
+            # 统计分析可视化
             target_fig.clear()
 
-            # 子图1: PCA降维
+            # 子图1: 隐空间维度统计
             ax1 = target_fig.add_subplot(2, 2, 1)
-            pca = PCA(n_components=2)
-            latent_2d_pca = pca.fit_transform(latent_vectors)
-            scatter = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
-                                c=range(len(latent_2d_pca)), cmap='viridis', alpha=0.6)
-            ax1.set_title('隐空间分布 - PCA',
-                          fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)',
-                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)',
-                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-            # 子图2: t-SNE降维
-            ax2 = target_fig.add_subplot(2, 2, 2)
-            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
-            latent_2d_tsne = tsne.fit_transform(latent_vectors)
-            ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
-                       c=range(len(latent_2d_tsne)), cmap='viridis', alpha=0.6)
-            ax2.set_title('隐空间分布 - t-SNE',
-                          fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.set_xlabel('t-SNE1', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.set_ylabel('t-SNE2', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-
-            # 子图3: 隐空间维度分布
-            ax3 = target_fig.add_subplot(2, 2, 3)
             latent_means = np.mean(latent_vectors, axis=0)
             latent_stds = np.std(latent_vectors, axis=0)
             dims = range(len(latent_means[:20]))  # 只显示前20个维度
-            ax3.errorbar(dims, latent_means[:20], yerr=latent_stds[:20],
+            ax1.errorbar(dims, latent_means[:20], yerr=latent_stds[:20],
                         capsize=3, marker='o', markersize=4)
-            ax3.set_title('隐空间维度统计 (前20维)',
+            ax1.set_title('隐空间维度统计 (前20维)',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.set_xlabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.set_ylabel('数值', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
-            ax3.grid(True, alpha=0.3)
+            ax1.set_xlabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel('数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax1.grid(True, alpha=0.3)
 
-            # 子图4: 隐空间激活热图
-            ax4 = target_fig.add_subplot(2, 2, 4)
-            im = ax4.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
-            ax4.set_title('隐空间激活模式 (前10样本×前20维)',
+            # 子图2: 隐空间激活热图
+            ax2 = target_fig.add_subplot(2, 2, 2)
+            im = ax2.imshow(latent_vectors[:10, :20].T, cmap='RdYlBu', aspect='auto')
+            ax2.set_title('隐空间激活模式 (前10样本×前20维)',
                           fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax4.set_xlabel('样本索引', fontsize=int(20*fontsize_scale), fontweight='bold')
-            ax4.set_ylabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
-            cbar = target_fig.colorbar(im, ax=ax4)
+            ax2.set_xlabel('样本索引', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('隐空间维度', fontsize=int(20*fontsize_scale), fontweight='bold')
+            cbar = target_fig.colorbar(im, ax=ax2)
             cbar.ax.tick_params(labelsize=int(16*fontsize_scale))
             cbar.set_label('激活值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+
+            # 子图3: 维度0直方图
+            ax3 = target_fig.add_subplot(2, 2, 3)
+            dim0_values = latent_vectors[:, 0]
+            ax3.hist(dim0_values, bins=100, color='skyblue', edgecolor='black', alpha=0.7)
+            ax3.set_title(f'维度0分布 (μ={dim0_values.mean():.3f}, σ={dim0_values.std():.3f})',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_xlabel('维度0数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax3.grid(True, alpha=0.3, axis='y')
+
+            # 子图4: 维度1直方图
+            ax4 = target_fig.add_subplot(2, 2, 4)
+            dim1_values = latent_vectors[:, 1]
+            ax4.hist(dim1_values, bins=100, color='lightcoral', edgecolor='black', alpha=0.7)
+            ax4.set_title(f'维度1分布 (μ={dim1_values.mean():.3f}, σ={dim1_values.std():.3f})',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_xlabel('维度1数值', fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax4.set_ylabel('频数', fontsize=int(20*fontsize_scale), fontweight='bold')
             ax4.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            ax4.grid(True, alpha=0.3, axis='y')
 
             target_fig.tight_layout()
             target_canvas.draw()
@@ -1228,6 +1232,405 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                    transform=ax.transAxes, ha='center', va='center',
                    fontsize=int(20*fontsize_scale), fontweight='bold')
             target_canvas.draw()
+
+    def _plot_ae_latent_distribution(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None, color_param_idx=0):
+        """绘制AutoEncoder隐空间分布（PCA, t-SNE, UMAP）"""
+        import torch
+        import numpy as np
+        from sklearn.decomposition import PCA
+        from sklearn.manifold import TSNE
+        try:
+            import umap
+        except ImportError:
+            umap = None
+
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        data = rcs_data
+        if data is None and sys is not None and 'rcs_data' in sys:
+            data = sys['rcs_data']
+        if data is None:
+            data = getattr(self.gui, 'rcs_data', None)
+
+        # param_data
+        params = param_data
+        if params is None and sys is not None and 'param_data' in sys:
+            params = sys['param_data']
+        if params is None:
+            params = getattr(self.gui, 'param_data', None)
+            if params is not None:
+                log_msg(f"从GUI获取参数数据: {params.shape}")
+
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if data is None:
+            log_msg("错误: RCS数据未加载")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
+        # 获取字号缩放因子
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
+
+        try:
+            # 获取AutoEncoder组件
+            autoencoder = sys['autoencoder']
+            wavelet_transform = sys.get('wavelet_transform', None)
+            data_adapter = sys.get('data_adapter', None)
+            mode = sys.get('mode', 'direct')
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
+
+            # 编码所有数据到隐空间
+            with torch.no_grad():
+                sample_data = data
+
+                # 根据模式准备输入数据
+                if mode in ('wavelet', 'differentiable_wavelet'):
+                    rcs_tensor = torch.FloatTensor(sample_data).to(device)
+                    wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                    if data_adapter:
+                        wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                        input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = wavelet_coeffs
+                else:
+                    if data_adapter:
+                        input_adapted = data_adapter.adapt_rcs_data(sample_data)
+                        input_tensor = torch.FloatTensor(input_adapted).to(device)
+                    else:
+                        input_tensor = torch.FloatTensor(sample_data).to(device)
+
+                latent_vectors = autoencoder.encode(input_tensor)
+                latent_vectors = latent_vectors.cpu().numpy()
+
+            # 智能选择着色依据
+            color_values = None
+            color_label = "样本序号"
+            # 实际的9个设计参数名称
+            param_names = ["kw", "phi", "yita", "lam", "Ht", "Nc", "Theta", "R", "Beta"]
+
+            if params is not None and len(params) > 0:
+                sample_params = params[:len(latent_vectors)]
+                # 确保索引是整数
+                try:
+                    c_idx = int(color_param_idx)
+                except:
+                    c_idx = 0
+                
+                if sample_params.shape[1] > c_idx:
+                    color_values = sample_params[:, c_idx]
+                    param_name = param_names[c_idx] if c_idx < len(param_names) else f"参数{c_idx+1}"
+                    color_label = f"设计参数 {param_name}"
+                    log_msg(f"使用设计参数{c_idx+1}({param_name})着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+                else:
+                     log_msg(f"警告: 参数索引 {c_idx} 超出范围 (参数维度: {sample_params.shape[1]})")
+
+            if color_values is None:
+                # 如果没有参数数据，尝试使用RCS峰值
+                rcs_peak_values = np.max(sample_data.reshape(len(sample_data), -1), axis=1)
+                color_values = rcs_peak_values
+                color_label = "RCS峰值"
+                log_msg(f"未找到有效设计参数，回退使用RCS峰值着色 (范围: {color_values.min():.3f} - {color_values.max():.3f})")
+
+            # 降维可视化
+            target_fig.clear()
+
+            # 子图1: PCA降维
+            ax1 = target_fig.add_subplot(1, 3, 1)
+            pca = PCA(n_components=2)
+            latent_2d_pca = pca.fit_transform(latent_vectors)
+            scatter1 = ax1.scatter(latent_2d_pca[:, 0], latent_2d_pca[:, 1],
+                                c=color_values, cmap='viridis', alpha=0.7, s=50)
+            ax1.set_title('PCA降维',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax1.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})',
+                           fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax1.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})',
+                           fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax1.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            cbar1 = target_fig.colorbar(scatter1, ax=ax1)
+            cbar1.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+            cbar1.ax.tick_params(labelsize=int(14*fontsize_scale))
+
+            # 子图2: t-SNE降维
+            ax2 = target_fig.add_subplot(1, 3, 2)
+            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(latent_vectors)-1))
+            latent_2d_tsne = tsne.fit_transform(latent_vectors)
+            scatter2 = ax2.scatter(latent_2d_tsne[:, 0], latent_2d_tsne[:, 1],
+                       c=color_values, cmap='viridis', alpha=0.7, s=50)
+            ax2.set_title('t-SNE降维',
+                          fontsize=int(20*fontsize_scale), fontweight='bold')
+            ax2.set_xlabel('t-SNE1', fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax2.set_ylabel('t-SNE2', fontsize=int(18*fontsize_scale), fontweight='bold')
+            ax2.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+            cbar2 = target_fig.colorbar(scatter2, ax=ax2)
+            cbar2.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+            cbar2.ax.tick_params(labelsize=int(14*fontsize_scale))
+
+            # 子图3: UMAP降维
+            ax3 = target_fig.add_subplot(1, 3, 3)
+            if umap is not None:
+                reducer = umap.UMAP(n_components=2, random_state=42, n_neighbors=min(15, len(latent_vectors)-1))
+                latent_2d_umap = reducer.fit_transform(latent_vectors)
+                scatter3 = ax3.scatter(latent_2d_umap[:, 0], latent_2d_umap[:, 1],
+                           c=color_values, cmap='viridis', alpha=0.7, s=50)
+                ax3.set_title('UMAP降维',
+                              fontsize=int(20*fontsize_scale), fontweight='bold')
+                ax3.set_xlabel('UMAP1', fontsize=int(18*fontsize_scale), fontweight='bold')
+                ax3.set_ylabel('UMAP2', fontsize=int(18*fontsize_scale), fontweight='bold')
+                ax3.tick_params(axis='both', labelsize=int(16*fontsize_scale))
+                cbar3 = target_fig.colorbar(scatter3, ax=ax3)
+                cbar3.set_label(color_label, fontsize=int(16*fontsize_scale), fontweight='bold')
+                cbar3.ax.tick_params(labelsize=int(14*fontsize_scale))
+                log_msg("UMAP降维完成")
+            else:
+                ax3.text(0.5, 0.5, 'UMAP未安装\n请运行: pip install umap-learn',
+                        transform=ax3.transAxes, ha='center', va='center',
+                        fontsize=int(18*fontsize_scale), fontweight='bold')
+                ax3.set_title('UMAP降维 (未安装)',
+                              fontsize=int(20*fontsize_scale), fontweight='bold')
+                log_msg("警告: UMAP未安装，跳过UMAP降维")
+
+            target_fig.suptitle(f'隐空间分布可视化 (着色: {color_label})',
+                               fontsize=int(24*fontsize_scale), fontweight='bold')
+            target_fig.tight_layout(rect=[0, 0, 1, 0.96])
+            target_canvas.draw()
+
+        except Exception as e:
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'隐空间分布可视化失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
+            target_canvas.draw()
+            log_msg(f"错误: {str(e)}")
+
+    def _plot_ae_latent_interpolation(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, sample_id1='001', sample_id2='002'):
+        """绘制AutoEncoder隐空间插值可视化"""
+        import torch
+        import numpy as np
+
+        # 参数获取与回退
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        data = rcs_data if rcs_data is not None else getattr(self.gui, 'rcs_data', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if data is None:
+            log_msg("错误: RCS数据未加载")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
+        # 获取字号缩放因子
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
+
+        # 获取后处理选项（绝对值）
+        use_postprocess_abs_db = False
+        try:
+            if hasattr(self.gui, 'ae_postprocess_abs_db'):
+                use_postprocess_abs_db = self.gui.ae_postprocess_abs_db.get()
+            elif hasattr(self.gui, 'ae_extension') and hasattr(self.gui.ae_extension, 'postprocess_abs_db_var'):
+                use_postprocess_abs_db = self.gui.ae_extension.postprocess_abs_db_var.get()
+        except:
+            pass
+
+        try:
+            # 将样本ID转换为索引
+            try:
+                idx1 = int(sample_id1) - 1
+                idx2 = int(sample_id2) - 1
+            except:
+                log_msg(f"错误: 样本ID格式错误 ({sample_id1}, {sample_id2})")
+                return
+
+            if idx1 < 0 or idx1 >= len(data) or idx2 < 0 or idx2 >= len(data):
+                log_msg(f"错误: 样本ID超出范围 (有效范围: 1-{len(data)})")
+                return
+
+            # 获取AutoEncoder组件
+            autoencoder = sys['autoencoder']
+            wavelet_transform = sys.get('wavelet_transform', None)
+            data_adapter = sys.get('data_adapter', None)
+            mode = sys.get('mode', 'direct')
+
+            # 设置设备和评估模式
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            autoencoder.to(device).eval()
+
+            # 获取两个样本的RCS数据
+            rcs1 = data[idx1:idx1+1]
+            rcs2 = data[idx2:idx2+1]
+
+            # 编码到隐空间
+            with torch.no_grad():
+                # 准备输入数据（根据模式）
+                def prepare_input(rcs_sample):
+                    if mode in ('wavelet', 'differentiable_wavelet'):
+                        # Wavelet模式：RCS → 小波变换 → 标准化
+                        rcs_tensor = torch.FloatTensor(rcs_sample).to(device)
+                        wavelet_coeffs = wavelet_transform.forward_transform(rcs_tensor)
+                        if data_adapter:
+                            wavelet_coeffs_np = wavelet_coeffs.cpu().numpy()
+                            input_adapted = data_adapter.adapt_rcs_data(wavelet_coeffs_np)
+                            return torch.FloatTensor(input_adapted).to(device)
+                        else:
+                            return wavelet_coeffs
+                    else:
+                        # Direct模式：RCS → 标准化
+                        if data_adapter:
+                            input_adapted = data_adapter.adapt_rcs_data(rcs_sample)
+                            return torch.FloatTensor(input_adapted).to(device)
+                        else:
+                            return torch.FloatTensor(rcs_sample).to(device)
+
+                input1 = prepare_input(rcs1)
+                input2 = prepare_input(rcs2)
+
+                latent1 = autoencoder.encode(input1)
+                latent2 = autoencoder.encode(input2)
+
+                # 线性插值（5个步骤：0%, 25%, 50%, 75%, 100%）
+                alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
+                interpolated_latents = []
+                for alpha in alphas:
+                    latent_interp = (1 - alpha) * latent1 + alpha * latent2
+                    interpolated_latents.append(latent_interp)
+
+                # Decode所有插值向量
+                reconstructed_rcs_list = []
+                for latent_interp in interpolated_latents:
+                    decoded_output = autoencoder.decode(latent_interp)
+
+                    # 逆变换到RCS空间
+                    if mode in ('wavelet', 'differentiable_wavelet'):
+                        # Wavelet: 标准化小波系数 → 逆标准化 → 逆小波变换 → RCS
+                        if data_adapter:
+                            # 修复: inverse_adapt 接收 Tensor (不需要先转numpy)
+                            decoded_coeffs = data_adapter.inverse_adapt(decoded_output)
+                            decoded_coeffs_tensor = torch.FloatTensor(decoded_coeffs).to(device)
+                        else:
+                            decoded_coeffs_tensor = decoded_output
+                        reconstructed_rcs = wavelet_transform.inverse_transform(decoded_coeffs_tensor)
+                    else:
+                        # Direct: 标准化RCS → 逆标准化 → RCS
+                        if data_adapter:
+                            # 修复: inverse_adapt 接收 Tensor (不需要先转numpy)
+                            reconstructed_rcs = data_adapter.inverse_adapt(decoded_output)
+                            reconstructed_rcs = torch.FloatTensor(reconstructed_rcs).to(device)
+                        else:
+                            reconstructed_rcs = decoded_output
+
+                    # 确保是numpy array以便后续处理
+                    if isinstance(reconstructed_rcs, torch.Tensor):
+                        reconstructed_rcs_np = reconstructed_rcs.detach().cpu().numpy()
+                    else:
+                        reconstructed_rcs_np = reconstructed_rcs
+
+                    reconstructed_rcs_list.append(reconstructed_rcs_np)
+
+            # 可视化
+            target_fig.clear()
+
+            # 绘制5个插值步骤（2行5列，第一行theta=0度，第二行theta=90度）
+            for i, (alpha, rcs_recon) in enumerate(zip(alphas, reconstructed_rcs_list)):
+                # 提取第一个频率的RCS数据（假设是1.5GHz）
+                rcs_recon_2d = rcs_recon[0, :, :, 0]  # [91, 91]
+
+                # 应用绝对值后处理
+                if use_postprocess_abs_db:
+                    rcs_recon_2d = np.abs(rcs_recon_2d)
+
+                # 转换为dB
+                rcs_db = 10 * np.log10(rcs_recon_2d + 1e-10)
+
+                # 第一行：phi方向截面（theta=90度，即中心行）
+                ax1 = target_fig.add_subplot(2, len(alphas), i+1)
+
+                # 假设RCS数据维度为 91x91，对应 theta [45, 135], phi [-45, 45]
+                # 中心行对应 theta=90
+                center_row_idx = rcs_db.shape[0] // 2
+                phi_slice = rcs_db[center_row_idx, :]
+
+                # x轴坐标
+                phi_axis = np.linspace(-45, 45, len(phi_slice))
+
+                ax1.plot(phi_axis, phi_slice, linewidth=2)
+                ax1.set_title(f'α={alpha:.2f}\n(样本{sample_id1}→{sample_id2})',
+                             fontsize=int(12*fontsize_scale), fontweight='bold')
+                ax1.set_xlabel('φ (°)', fontsize=int(10*fontsize_scale))
+                ax1.set_ylabel('RCS (dB)', fontsize=int(10*fontsize_scale))
+                ax1.tick_params(axis='both', labelsize=int(8*fontsize_scale))
+                ax1.grid(True, alpha=0.3)
+
+                # 第二行：2D热图 (严格参照 plot_rcs_heatmap)
+                ax2 = target_fig.add_subplot(2, len(alphas), i+len(alphas)+1)
+
+                # 定义extent (与 plot_rcs_heatmap 一致)
+                # phi: -45 ~ 45, theta: 45 ~ 135
+                # extent y: [135, 45] (对应 plot_rcs_heatmap 的 ymin=135, ymax=45)
+                extent = [-45, 45, 135, 45]
+
+                im = ax2.imshow(rcs_db, cmap='jet', aspect='equal', extent=extent)
+
+                ax2.set_xlabel('φ (°)', fontsize=int(10*fontsize_scale))
+                ax2.set_ylabel('θ (°)', fontsize=int(10*fontsize_scale))
+                ax2.tick_params(axis='both', labelsize=int(8*fontsize_scale))
+
+                # 仅在最后一个子图添加colorbar
+                if i == len(alphas) - 1:
+                    cbar = target_fig.colorbar(im, ax=ax2)
+                    cbar.set_label('RCS (dB)', fontsize=int(10*fontsize_scale))
+                    cbar.ax.tick_params(labelsize=int(8*fontsize_scale))
+
+            target_fig.suptitle(f'隐空间插值: 样本{sample_id1} → 样本{sample_id2}',
+                               fontsize=int(24*fontsize_scale), fontweight='bold')
+            target_fig.tight_layout(rect=[0, 0, 1, 0.96])
+            target_canvas.draw()
+
+            log_msg(f"隐空间插值完成: 样本{sample_id1} → 样本{sample_id2} (共{len(alphas)}步)")
+
+        except Exception as e:
+            target_fig.clear()
+            ax = target_fig.add_subplot(1, 1, 1)
+            ax.text(0.5, 0.5, f'隐空间插值失败:\n{str(e)}',
+                   transform=ax.transAxes, ha='center', va='center',
+                   fontsize=int(20*fontsize_scale), fontweight='bold')
+            target_canvas.draw()
+            log_msg(f"错误: {str(e)}")
 
     def _plot_ae_reconstruction_quality(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
         """绘制AutoEncoder重建质量分析 - 使用统一重建接口"""
@@ -1820,8 +2223,15 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
                    transform=ax.transAxes, ha='center', va='center')
             target_canvas.draw()
 
-    def _plot_ae_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
-        """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数"""
+    def _plot_ae_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None, reconstruction_mode='auto'):
+        """绘制AutoEncoder对比图：原图、重构图、残差图 - 使用统一重建函数
+
+        Args:
+            reconstruction_mode: 重建模式选项
+                - 'auto': 根据training_mode自动选择（默认）
+                - 'ae_only': 强制使用纯AE重建（RCS → Encoder → Decoder → RCS）
+                - 'end_to_end': 强制从参数重建（参数 → ParameterMapper → Decoder → RCS）
+        """
         import numpy as np
 
         # 参数获取与回退
@@ -1908,22 +2318,44 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
 
             # 使用统一重建函数重建RCS
             print(f"\n【使用统一重建函数 - 模型{model_id_str}】")
+            print(f"  重建模式: {reconstruction_mode}")
+
+            # 根据 reconstruction_mode 决定 input_type
+            # - 'auto': 使用 'model_ids'，让 reconstruction_manager 根据 training_mode 自动决定
+            # - 'ae_only': 强制使用 'rcs'，从RCS重建
+            # - 'end_to_end': 强制使用 'params'，从参数重建
+            if reconstruction_mode == 'ae_only':
+                # 强制纯AE重建：从RCS数据
+                use_input_type = 'model_ids'
+                force_rcs_input = True
+            elif reconstruction_mode == 'end_to_end':
+                # 强制端到端重建：从参数
+                use_input_type = 'model_ids'
+                force_params_input = True
+            else:  # 'auto'
+                # 自动模式：使用 model_ids，让 reconstruction_manager 根据 training_mode 决定
+                use_input_type = 'model_ids'
+                force_rcs_input = False
+                force_params_input = False
+
             # 这里调用的是 self.gui._reconstruct_rcs，它已经被保留在 gui.py 中并委托给 ReconstructionManager
             # 或者我们可以直接调用 ReconstructionManager
             if hasattr(self.gui, 'reconstruction_manager'):
                 result = self.gui.reconstruction_manager._reconstruct_rcs(
                     input_data=None,
-                    input_type='model_ids',
+                    input_type=use_input_type,
                     model_ids=[model_id_str],
-                    return_latents=False
+                    return_latents=False,
+                    force_reconstruction_mode=reconstruction_mode  # 传递强制模式
                 )
             else:
                 # 回退到 gui 的方法 (虽然可能已被弃用，但在 gui.py 中我们保留了它作为代理)
                 result = self.gui._reconstruct_rcs(
                     input_data=None,
-                    input_type='model_ids',
+                    input_type=use_input_type,
                     model_ids=[model_id_str],
-                    return_latents=False
+                    return_latents=False,
+                    force_reconstruction_mode=reconstruction_mode
                 )
 
             predicted_rcs = result['reconstructed_rcs'][0]  # [91, 91, num_freq]
@@ -2368,3 +2800,227 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             messagebox.showerror("生成失败", error_msg)
             import traceback
             traceback.print_exc()
+
+    def _plot_ae_branch_comparison(self, ae_system=None, fig=None, canvas=None, log_callback=None, model_id=None, freq_str=None):
+        """
+        绘制Additive Dual-Branch AutoEncoder分支对比图
+        包含：原始RCS、高频分支、低频分支、叠加重建、频域分析
+
+        Args:
+            ae_system: AutoEncoder系统
+            fig: matplotlib figure
+            canvas: matplotlib canvas
+            log_callback: 日志回调函数
+            model_id: 模型ID
+            freq_str: 频率字符串（如 "1.5G"）
+        """
+        import numpy as np
+        import torch
+        from autoencoder.utils.plotting import plot_additive_branch_comparison
+        # rv (rcs_visual) is already imported at module level
+
+        # 参数获取
+        sys = ae_system if ae_system is not None else getattr(self.gui, 'ae_system', None)
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: AutoEncoder系统未初始化")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
+        # 检查模型是否是Additive Dual-Branch架构
+        autoencoder = sys.get('autoencoder', None)
+        if autoencoder is None:
+            log_msg("错误: AutoEncoder模型未加载")
+            return
+
+        # 检查是否有forward_with_branches方法
+        if not hasattr(autoencoder, 'forward_with_branches'):
+            log_msg("错误: 当前模型不是Additive Dual-Branch架构，无法分离分支输出")
+            messagebox.showwarning("架构不匹配", "分支对比功能仅支持Additive Dual-Branch架构的模型")
+            return
+
+        # 获取频率配置
+        mode = sys.get('mode', 'unknown')
+        wavelet_transform = sys.get('wavelet_transform', None)
+        data_adapter = sys.get('data_adapter', None)
+        config_info = sys.get('config_info', {})
+        frequency_labels = config_info.get('frequency_labels', [])
+
+        # 获取模型ID和频率
+        if model_id is None:
+            model_id = getattr(self.gui.visualization_tab, 'vis_model_var', tk.StringVar(value="001")).get()
+        if freq_str is None:
+            freq_str = getattr(self.gui.visualization_tab, 'vis_freq_var', tk.StringVar(value="1.5G")).get()
+
+        log_msg(f"\n开始生成分支对比图: 模型{model_id} @ {freq_str}")
+
+        try:
+            # 从文件读取原始RCS数据
+            data = rv.get_rcs_matrix(model_id, freq_str, self.gui.data_config['rcs_data_dir'])
+            original_rcs_linear = data['rcs_linear']  # [91, 91] or [49, 49]
+            phi_values = data['phi_values']
+            theta_values = data['theta_values']
+            freq_label = freq_str
+
+            # 根据mode处理输入数据
+            device = next(autoencoder.parameters()).device
+
+            # 频率标签格式转换（"1.5GHz" → "1.5G", "3.0GHz" → "3G"）
+            def normalize_freq_label(label):
+                """将频率标签转换为文件名格式"""
+                label = label.replace('GHz', 'G').replace('MHz', 'M')
+                # 移除小数点后多余的0 (3.0G → 3G)
+                if '.' in label:
+                    parts = label.split('.')
+                    if len(parts) == 2 and parts[1].startswith('0'):
+                        label = parts[0] + parts[1][1:]  # 3.0G → 3G
+                return label
+
+            if mode == 'wavelet':
+                # Wavelet模式: RCS → 小波变换 → 标准化 → [49, 49, num_freq*4]
+                log_msg("  模式: Wavelet (小波变换)")
+
+                # 准备多频率数据
+                rcs_data_multifreq = []
+                for fl in frequency_labels:
+                    fl_normalized = normalize_freq_label(fl)
+                    data_freq = rv.get_rcs_matrix(model_id, fl_normalized, self.gui.data_config['rcs_data_dir'])
+                    rcs_data_multifreq.append(data_freq['rcs_linear'])
+                rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
+
+                # 小波变换
+                wavelet_coeffs = wavelet_transform.forward_transform(rcs_data_multifreq)  # [49, 49, num_freq*4]
+
+                # 标准化（需要batch维度）
+                if data_adapter:
+                    # 增加batch维度: [49, 49, C] → [1, 49, 49, C]
+                    wavelet_coeffs_batch = np.expand_dims(wavelet_coeffs, axis=0)
+                    wavelet_input_batch = data_adapter.adapt_rcs_data(wavelet_coeffs_batch)
+                    # 去除batch维度: [1, 49, 49, C] → [49, 49, C]
+                    wavelet_input = wavelet_input_batch[0]
+                else:
+                    wavelet_input = wavelet_coeffs
+
+                # 转换为tensor并增加batch维度
+                input_tensor = torch.FloatTensor(wavelet_input).unsqueeze(0).to(device)  # [1, 49, 49, num_freq*4]
+
+            else:
+                # Direct模式: RCS → 标准化 → [91, 91, num_freq*2]
+                log_msg("  模式: Direct (直接RCS)")
+
+                # 准备多频率数据
+                rcs_data_multifreq = []
+                for fl in frequency_labels:
+                    fl_normalized = normalize_freq_label(fl)
+                    data_freq = rv.get_rcs_matrix(model_id, fl_normalized, self.gui.data_config['rcs_data_dir'])
+                    rcs_data_multifreq.append(data_freq['rcs_linear'])
+                rcs_data_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [91, 91, num_freq]
+
+                # 标准化（需要batch维度）
+                if data_adapter:
+                    # 增加batch维度: [91, 91, C] → [1, 91, 91, C]
+                    rcs_data_batch = np.expand_dims(rcs_data_multifreq, axis=0)
+                    rcs_input_batch = data_adapter.adapt_rcs_data(rcs_data_batch)
+                    # 去除batch维度: [1, 91, 91, C] → [91, 91, C]
+                    rcs_input = rcs_input_batch[0]
+                else:
+                    rcs_input = rcs_data_multifreq
+
+                # 转换为tensor并增加batch维度
+                input_tensor = torch.FloatTensor(rcs_input).unsqueeze(0).to(device)  # [1, 91, 91, num_freq*2]
+
+            # 使用forward_with_branches获取分支输出
+            log_msg("  正在分离高频和低频分支输出...")
+            with torch.no_grad():
+                recon, latent, recon_high, recon_smooth = autoencoder.forward_with_branches(input_tensor)
+
+            # 转换回numpy
+            recon = recon[0].cpu().numpy()  # [H, W, C]
+            recon_high = recon_high[0].cpu().numpy()
+            recon_smooth = recon_smooth[0].cpu().numpy()
+
+            # 逆变换到RCS空间
+            if mode == 'wavelet':
+                # Wavelet: 逆标准化 → 逆小波变换 → RCS
+                if data_adapter:
+                    recon = data_adapter.inverse_adapt(recon)
+                    recon_high = data_adapter.inverse_adapt(recon_high)
+                    recon_smooth = data_adapter.inverse_adapt(recon_smooth)
+
+                recon = wavelet_transform.inverse_transform(torch.FloatTensor(recon).unsqueeze(0).to(device))[0].cpu().numpy()
+                recon_high = wavelet_transform.inverse_transform(torch.FloatTensor(recon_high).unsqueeze(0).to(device))[0].cpu().numpy()
+                recon_smooth = wavelet_transform.inverse_transform(torch.FloatTensor(recon_smooth).unsqueeze(0).to(device))[0].cpu().numpy()
+            else:
+                # Direct: 逆标准化 → RCS
+                if data_adapter:
+                    recon = data_adapter.inverse_adapt(recon)
+                    recon_high = data_adapter.inverse_adapt(recon_high)
+                    recon_smooth = data_adapter.inverse_adapt(recon_smooth)
+
+            # 找到当前频率的索引（需要匹配标准化后的标签）
+            try:
+                # 将frequency_labels中的标签标准化后再匹配
+                normalized_labels = [normalize_freq_label(fl) for fl in frequency_labels]
+                freq_idx = normalized_labels.index(freq_str)
+            except ValueError:
+                freq_idx = 0
+                log_msg(f"  警告: 频率{freq_str}不在标签列表中，使用第一个频率")
+
+            # 获取权重和激活函数名称
+            alpha_high = autoencoder.alpha_high.item() if hasattr(autoencoder, 'alpha_high') else 1.0
+            alpha_smooth = autoencoder.alpha_smooth.item() if hasattr(autoencoder, 'alpha_smooth') else 1.0
+
+            # 获取激活函数类型
+            activation_high = getattr(autoencoder, 'activation_high_type', 'sin').upper()
+            activation_smooth = getattr(autoencoder, 'activation_smooth_type', 'tanh').upper()
+
+            log_msg(f"  分支权重: α({activation_high})={alpha_high:.3f}, β({activation_smooth})={alpha_smooth:.3f}")
+
+            # 绘制分支对比图
+            log_msg("  正在绘制分支对比图...")
+
+            # 准备原始RCS (多频率)
+            rcs_data_multifreq = []
+            for fl in frequency_labels:
+                fl_normalized = normalize_freq_label(fl)
+                data_freq = rv.get_rcs_matrix(model_id, fl_normalized, self.gui.data_config['rcs_data_dir'])
+                rcs_data_multifreq.append(data_freq['rcs_linear'])
+            original_rcs_multifreq = np.stack(rcs_data_multifreq, axis=-1)  # [H, W, num_freq]
+
+            # 调用绘图函数
+            plot_additive_branch_comparison(
+                original_rcs=original_rcs_multifreq,
+                recon_high=recon_high,
+                recon_smooth=recon_smooth,
+                recon_combined=recon,
+                freq_label=freq_label,
+                sample_id=model_id,
+                phi_range=(phi_values.min(), phi_values.max()),
+                theta_range=(theta_values.min(), theta_values.max()),
+                freq_idx=freq_idx,
+                alpha_high=alpha_high,
+                alpha_smooth=alpha_smooth,
+                activation_high_name=activation_high,
+                activation_smooth_name=activation_smooth,
+                figsize=(20, 10),
+                fontsize_scale=1.0,
+                fig=target_fig
+            )
+
+            target_canvas.draw()
+            log_msg("✅ 分支对比图绘制完成！")
+            log_msg(f"   - {activation_high}分支权重: {alpha_high:.3f}")
+            log_msg(f"   - {activation_smooth}分支权重: {alpha_smooth:.3f}")
+            log_msg(f"   - 已自动分析频域特征\n")
+
+        except Exception as e:
+            error_msg = f"绘制分支对比图失败: {str(e)}"
+            log_msg(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("绘制失败", error_msg)

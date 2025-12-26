@@ -11,7 +11,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from network_registry import BaseNetwork, BaseLoss, NetworkConfig, LossConfig, register_network, register_loss
+from .network_registry import BaseNetwork, BaseLoss, NetworkConfig, LossConfig, register_network, register_loss
 
 # ============================================================================
 # 1. 适配现有的小波网络到新框架
@@ -338,11 +338,11 @@ class FlexibleOutputNetwork(BaseNetwork):
             output_size *= dim
         return output_size <= 1000000  # 避免过大的输出
 
-if __name__ == "__main__":
-    # 演示如何使用
-    from network_registry import create_network, create_loss, list_available_networks, list_available_losses
-
-    print("=== 演示插件化网络架构 ===")
+if __name__ == '__main__':
+    # 简单的测试代码
+    from .network_registry import create_network, create_loss, list_available_networks, list_available_losses
+    
+    print("注册的网络:")
 
     # 列出所有可用网络
     list_available_networks()

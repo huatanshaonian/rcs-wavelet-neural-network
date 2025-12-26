@@ -21,9 +21,25 @@ from typing import Union
 
 
 class SinActivation(nn.Module):
-    """正弦激活函数"""
+    """
+    正弦激活函数 (SIREN)
+
+    完整的SIREN激活函数应该是 sin(omega_0 * x)，其中omega_0是频率缩放因子。
+
+    Args:
+        omega_0: 频率缩放因子 (默认: 1.0)
+                 - 1.0: 标准sin(x)，低频
+                 - 30.0: SIREN论文默认值，中频（平衡细节和稳定性）
+                 - 100+: 高频，学习精细细节（但训练不稳定）
+
+    参考: https://arxiv.org/abs/2006.09661
+    """
+    def __init__(self, omega_0: float = 1.0):
+        super().__init__()
+        self.omega_0 = omega_0
+
     def forward(self, x):
-        return torch.sin(x)
+        return torch.sin(self.omega_0 * x)
 
 
 class MishActivation(nn.Module):
@@ -66,8 +82,9 @@ def get_activation(activation: Union[str, nn.Module], inplace: bool = True) -> n
         'leaky_relu': lambda: nn.LeakyReLU(negative_slope=0.01, inplace=inplace),
         'elu': lambda: nn.ELU(alpha=1.0, inplace=inplace),
         'prelu': lambda: nn.PReLU(),
-        'sin': lambda: SinActivation(),
-        'sine': lambda: SinActivation(),  # 别名
+        'sin': lambda: SinActivation(omega_0=1.0),  # 标准sin(x)，保持向后兼容
+        'sine': lambda: SinActivation(omega_0=1.0),  # 别名
+        'siren': lambda: SinActivation(omega_0=30.0),  # 完整SIREN，omega_0=30.0
         'gelu': lambda: nn.GELU(),
         'swish': lambda: nn.SiLU(),
         'silu': lambda: nn.SiLU(),  # Swish的官方名称
@@ -122,6 +139,12 @@ def get_activation_name(activation: Union[str, nn.Module]) -> str:
         else:
             return 'relu'
     elif 'sin' in class_name:
+        # 根据omega_0区分sin和siren
+        if hasattr(activation, 'omega_0'):
+            if abs(activation.omega_0 - 30.0) < 1e-5:
+                return 'siren'
+            else:
+                return 'sin'
         return 'sin'
     elif 'gelu' in class_name:
         return 'gelu'
@@ -152,6 +175,7 @@ def list_available_activations() -> list:
         'elu',
         'prelu',
         'sin',
+        'siren',  # 完整SIREN (omega_0=30.0)
         'gelu',
         'swish',
         'tanh',
@@ -163,7 +187,8 @@ def list_available_activations() -> list:
 # 常用激活函数推荐
 RECOMMENDED_ACTIVATIONS = {
     'general': 'relu',           # 通用推荐
-    'periodic': 'sin',           # 周期性信号
+    'periodic': 'sin',           # 周期性信号（低频，omega_0=1.0）
+    'siren': 'siren',            # 完整SIREN（中频，omega_0=30.0，推荐用于MLP）
     'transformer': 'gelu',       # Transformer架构
     'smooth': 'swish',           # 平滑激活
     'deep_network': 'elu',       # 深层网络

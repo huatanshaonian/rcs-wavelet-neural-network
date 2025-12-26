@@ -13,6 +13,7 @@ import numpy as np
 from autoencoder.utils.adaptive_layers import get_structure_info
 from autoencoder.models.channel_attention import ChannelAttention, get_recommended_reduction
 from autoencoder.utils.activation_factory import get_activation, get_activation_name
+from autoencoder.models.base_autoencoder import BaseAutoEncoder
 
 
 def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int = 4) -> List[int]:
@@ -60,7 +61,7 @@ def calculate_intermediate_dims(input_dim: int, latent_dim: int, max_ratio: int 
     return dims
 
 
-class DirectAutoEncoder(nn.Module):
+class DirectAutoEncoder(BaseAutoEncoder):
     """
     直接处理RCS数据的CNN-AutoEncoder
     跳过小波变换，直接学习RCS特征
@@ -71,7 +72,8 @@ class DirectAutoEncoder(nn.Module):
                  num_frequencies: int = 2,
                  dropout_rate: float = 0.2,
                  use_channel_attention: bool = False,
-                 activation: str = 'relu'):
+                 activation: str = 'relu',
+                 output_activation: str = None):
         """
         初始化直接AutoEncoder
 
@@ -81,8 +83,9 @@ class DirectAutoEncoder(nn.Module):
             dropout_rate: Dropout比率
             use_channel_attention: 是否使用通道注意力机制 (默认: False)
             activation: 激活函数类型（'relu', 'sin', 'gelu', 'swish'等，默认: 'relu'）
+            output_activation: 输出激活函数 (None 或 'softplus'，用于物理约束)
         """
-        super().__init__()
+        super().__init__(output_activation=output_activation)
 
         self.latent_dim = latent_dim
         self.num_frequencies = num_frequencies
@@ -293,6 +296,9 @@ class DirectAutoEncoder(nn.Module):
 
         # 输出形状转换: [B, C, H, W] → [B, H, W, C]
         x = x.permute(0, 2, 3, 1)
+
+        # ✅ 应用输出激活（如果启用了物理约束）
+        x = self.apply_output_activation(x)
 
         return x
 

@@ -284,6 +284,12 @@ class DataManagementTab(ttk.Frame):
                 self.app.ae_extension._update_model_selection()
                 self.app.log_message("已更新小波分析模型选择列表")
 
+            # 同步更新 ae_system 中的数据引用
+            if hasattr(self.app, 'ae_system') and self.app.ae_system is not None:
+                self.app.ae_system['rcs_data'] = self.app.rcs_data
+                self.app.ae_system['param_data'] = self.app.param_data
+                self.app.log_message("已同步更新AutoEncoder系统中的数据引用")
+
             self.app.status_var.set("数据加载完成")
 
         except Exception as e:
@@ -548,6 +554,12 @@ class DataManagementTab(ttk.Frame):
             if hasattr(self.app, 'ae_extension') and self.app.ae_extension is not None:
                 self.app.ae_extension._update_model_selection()
                 self.app.log_message("已更新小波分析模型选择列表")
+
+            # 同步更新 ae_system 中的数据引用
+            if hasattr(self.app, 'ae_system') and self.app.ae_system is not None:
+                self.app.ae_system['rcs_data'] = self.app.rcs_data
+                self.app.ae_system['param_data'] = self.app.param_data
+                self.app.log_message("已同步更新AutoEncoder系统中的数据引用")
 
             self.app.status_var.set("数据重新读取完成")
 
