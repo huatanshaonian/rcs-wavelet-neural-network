@@ -1,6 +1,6 @@
 """
 训练管理器 (Controller)
-处理所有训练相关功能，委托具体任务给 AETrainer 和 LegacyTrainer
+处理所有训练相关功能，委托具体任务给 AETrainer
 """
 
 import numpy as np
@@ -11,13 +11,10 @@ from datetime import datetime
 from tkinter import messagebox
 import tkinter as tk
 
-# 导入新的 Trainer
-from gui_managers.trainers.legacy_trainer import LegacyTrainer
+# 导入AE Trainer
 from gui_managers.trainers.ae_trainer import AETrainer
 
-# 导入训练相关模块 (Config helpers need these)
-from training import CrossValidationTrainer, RCSDataset
-from wavelet_network import create_model, create_loss_function
+# 导入AutoEncoder相关模块
 from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
 
 
@@ -37,28 +34,8 @@ class TrainingManager:
         self.stop_training_flag = False
         self.training_thread = None
         
-        # 初始化 Trainers
-        self.legacy_trainer = LegacyTrainer(parent_gui)
+        # 初始化 AE Trainer
         self.ae_trainer = AETrainer(parent_gui)
-
-    # --- Legacy Training Delegation ---
-
-    def _train_model(self):
-        """训练模型（简单/交叉验证）"""
-        self.stop_training_flag = False
-        self.gui.stop_training_flag = False  # 确保重置GUI层面的停止标志
-        # LegacyTrainer directly accesses gui state, so just calling it is enough
-        self.legacy_trainer.train_model()
-
-    def _training_finished(self):
-        # 此方法被 LegacyTrainer 调用，或者作为 GUI 回调
-        self.legacy_trainer._training_finished()
-
-    def _set_random_seeds(self, seed=42):
-        self.legacy_trainer._set_random_seeds(seed)
-
-    def _initialize_cuda_safely(self):
-        self.legacy_trainer._initialize_cuda_safely()
 
     # --- AutoEncoder Training Delegation ---
 

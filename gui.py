@@ -75,19 +75,9 @@ from gui_managers.tabs.prediction_tab import PredictionTab
 
 # 导入项目模块
 try:
-    from wavelet_network import create_model, create_loss_function
     from autoencoder.utils.configurable_loss import create_loss_function as create_configurable_loss
-    from training import (CrossValidationTrainer, RCSDataLoader,
-                         create_training_config, create_data_config, RCSDataset)
-    from evaluation import RCSEvaluator, evaluate_model_with_visualizations
     from autoencoder.utils.data_cache import create_cache_manager
-
-    # 导入现代化的网络接口
-    try:
-        from modern_wavelet_network import get_available_networks, get_network_info, get_available_losses
-        MODERN_INTERFACE_AVAILABLE = True
-    except ImportError:
-        MODERN_INTERFACE_AVAILABLE = False
+    MODERN_INTERFACE_AVAILABLE = False  # 传统模型接口已移除
 except ImportError as e:
     print(f"导入错误: {e}")
     print("请确保所有模块文件都在当前目录下")
