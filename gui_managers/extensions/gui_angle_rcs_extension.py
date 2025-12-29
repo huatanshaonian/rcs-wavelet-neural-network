@@ -434,11 +434,7 @@ class AngleRCSExtension:
             trainer = AngleRCSTrainer(
                 model=self.angle_rcs_system['model'],
                 device=device,
-                learning_rate=self.angle_rcs_lr.get(),
-                weight_decay=self.angle_rcs_weight_decay.get(),
-                optimizer_type=self.angle_rcs_optimizer.get(),
-                scheduler_type=self.angle_rcs_scheduler.get(),
-                patience=self.angle_rcs_patience.get()
+                checkpoint_dir='./angle_rcs_checkpoints'
             )
 
             self._log("训练器配置:")
@@ -448,11 +444,16 @@ class AngleRCSExtension:
             self._log(f"  • Patience: {self.angle_rcs_patience.get()}")
             self._log("")
 
-            # 训练
+            # 训练（参数传给train方法）
             history = trainer.train(
                 train_loader=train_loader,
                 val_loader=val_loader,
                 epochs=self.angle_rcs_epochs.get(),
+                lr=self.angle_rcs_lr.get(),
+                optimizer_type=self.angle_rcs_optimizer.get(),
+                scheduler_type=self.angle_rcs_scheduler.get(),
+                patience=self.angle_rcs_patience.get(),
+                weight_decay=self.angle_rcs_weight_decay.get(),
                 log_callback=self._log  # 传递日志回调
             )
 

@@ -24,7 +24,8 @@
       "Bash(低频:YY%\"\n   - 添加注释说明避免硬编码假设\n\n技术细节：\n- 数据流100%正确（已验证）：decoder_high使用sin → 产生高频，decoder_smooth使用relu → 产生低频\n- 仅修改可视化标签，不改变任何数据处理逻辑\n- 新标签客观中立，显示实际测量的能量分布，便于用户分析\n\n预期效果：\n- SIN分支将显示：高频:75%+ | 低频:25%-（符合物理直觉）\n- RELU分支将显示：高频:15%- | 低频:85%+（符合物理直觉）\n- 用户不再困惑，标签准确反映真实物理特性\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git rm:*)",
       "Bash(tree:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

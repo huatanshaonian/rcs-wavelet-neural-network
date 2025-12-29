@@ -275,6 +275,7 @@ class AngleRCSTrainer:
               patience: int = 50,
               weight_decay: float = 1e-5,
               print_every: int = 10,
+              log_callback=None,
               **kwargs) -> Dict:
         """
         完整训练流程
@@ -289,14 +290,22 @@ class AngleRCSTrainer:
             patience: Early Stopping patience
             weight_decay: 权重衰减
             print_every: 打印频率
+            log_callback: 日志回调函数（可选）
             **kwargs: 其他参数
 
         返回：
             训练历史字典
         """
-        print("=" * 80)
-        print("开始训练 AngleRCSNetwork")
-        print("=" * 80)
+        # 定义打印函数
+        def log(message):
+            if log_callback:
+                log_callback(message)
+            else:
+                print(message)
+
+        log("=" * 80)
+        log("开始训练 AngleRCSNetwork")
+        log("=" * 80)
 
         # 创建优化器和调度器
         optimizer, scheduler = self._create_optimizer_and_scheduler(
@@ -323,13 +332,13 @@ class AngleRCSTrainer:
         best_epoch = 0
 
         # 训练循环
-        print(f"\n训练配置:")
-        print(f"  Epochs: {epochs}")
-        print(f"  Train batches: {len(train_loader)}")
-        print(f"  Val batches: {len(val_loader)}")
-        print(f"  Patience: {patience}")
-        print(f"  Device: {self.device}")
-        print("")
+        log(f"\n训练配置:")
+        log(f"  Epochs: {epochs}")
+        log(f"  Train batches: {len(train_loader)}")
+        log(f"  Val batches: {len(val_loader)}")
+        log(f"  Patience: {patience}")
+        log(f"  Device: {self.device}")
+        log("")
 
         start_time = time.time()
 
