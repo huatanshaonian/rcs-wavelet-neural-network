@@ -75,6 +75,7 @@ class AngleRCSExtension:
         self.angle_rcs_use_subset = tk.BooleanVar(value=False)  # 是否使用子集
         self.angle_rcs_subset_size = tk.IntVar(value=300000)  # 子集大小
         self.angle_rcs_normalize_params = tk.BooleanVar(value=True)  # 是否标准化参数
+        self.angle_rcs_num_workers = tk.IntVar(value=4)  # DataLoader并行工作进程数
 
     def extend_angle_rcs_tab(self):
         """扩展Angle-based RCS标签页"""
@@ -268,6 +269,11 @@ class AngleRCSExtension:
         self.subset_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(5, 0))
         self.subset_entry.config(state='disabled')  # 初始禁用
 
+        # DataLoader并行进程数
+        ttk.Label(data_frame, text="并行进程数:").grid(row=4, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(data_frame, textvariable=self.angle_rcs_num_workers, width=8).grid(row=4, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(data_frame, text="(0-8, 推荐4)").grid(row=4, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
+
         # 数据说明
         info_text = """
 数据点数量：
@@ -277,9 +283,10 @@ class AngleRCSExtension:
 采样策略：
 • 全局混合采样（80-20划分）
 • 支持子集训练（快速验证）
+• 并行进程数提升GPU利用率
 """
         ttk.Label(data_frame, text=info_text, justify=tk.LEFT,
-                 font=('Courier', 8), foreground="gray").grid(row=4, column=0, columnspan=3, sticky="w", pady=(5, 0))
+                 font=('Courier', 8), foreground="gray").grid(row=5, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
         # 4. 控制按钮组
         control_group = ttk.LabelFrame(right_column, text="🎮 控制")
@@ -452,7 +459,7 @@ class AngleRCSExtension:
                 random_seed=42,
                 train_subset_size=train_subset_size,
                 normalize_params=self.angle_rcs_normalize_params.get(),
-                num_workers=0
+                num_workers=self.angle_rcs_num_workers.get()
             )
 
             self._log(f"训练集: {len(train_loader)} batches")
