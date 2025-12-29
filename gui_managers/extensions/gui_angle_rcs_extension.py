@@ -96,13 +96,13 @@ class AngleRCSExtension:
         main_container = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
         main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 左侧面板：配置和控制
+        # 左侧面板：配置和控制（增加宽度以避免遮挡）
         left_panel = ttk.Frame(main_container)
-        main_container.add(left_panel, weight=1)
+        main_container.add(left_panel, weight=3)
 
         # 右侧面板：状态和结果
         right_panel = ttk.Frame(main_container)
-        main_container.add(right_panel, weight=2)
+        main_container.add(right_panel, weight=4)
 
         # 构建左侧面板
         self._create_left_panel(left_panel)
