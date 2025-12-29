@@ -12,14 +12,15 @@
 """
 
 # 设置UTF-8编码（Windows兼容）
-import sys
-import io
-if sys.platform == 'win32':
-    # 检查sys.stdout是否有buffer属性（避免GUI环境中的重定向问题）
-    if hasattr(sys.stdout, 'buffer'):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    if hasattr(sys.stderr, 'buffer'):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# 注意：GUI环境会自动处理编码，所以这里暂时注释掉
+# import sys
+# import io
+# if sys.platform == 'win32':
+#     # 检查sys.stdout是否有buffer属性（避免GUI环境中的重定向问题）
+#     if hasattr(sys.stdout, 'buffer'):
+#         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+#     if hasattr(sys.stderr, 'buffer'):
+#         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 import torch
 import torch.nn as nn
