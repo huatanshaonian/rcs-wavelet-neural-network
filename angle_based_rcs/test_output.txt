@@ -1,0 +1,51 @@
+================================================================================
+angle_based_rcs 模块完整单元测试
+================================================================================
+
+================================================================================
+测试 AngleEncoder
+================================================================================
+输出维度: 64
+参数量: 0 (应为0)
+输入: θ=[45.0, 90.0, 135.0], φ=[-45.0, 0.0, 45.0]
+输出形状: torch.Size([3, 64]) (期望: [3, 64])
+输出范围: [-1.000, 1.000]
+θ梯度存在: True
+φ梯度存在: True
+[PASS] AngleEncoder测试通过
+
+================================================================================
+测试 FrequencyEncoder
+================================================================================
+输出维度: 3
+频率映射: {0: '1.5GHz', 1: '3.0GHz', 2: '6.0GHz'}
+输入索引: [0, 1, 2, 1, 0]
+输出形状: torch.Size([5, 3]) (期望: [5, 3])
+正交性验证: 通过
+[PASS] FrequencyEncoder测试通过
+
+================================================================================
+测试 ParameterEncoder
+================================================================================
+参数量: 9,152
+参数形状: torch.Size([4, 9])
+频率编码形状: torch.Size([4, 3])
+输出嵌入形状: torch.Size([4, 128]) (期望: [4, 128])
+输出范围: [-1.110, 1.111]
+参数梯度存在: True
+Traceback (most recent call last):
+  File "G:\feko_data\wavelet\angle_based_rcs\test_all_modules.py", line 226, in <module>
+    test_param_encoder()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "G:\feko_data\wavelet\angle_based_rcs\test_all_modules.py", line 113, in test_param_encoder
+    print("\u2705 ParameterEncoder测试通过")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'gbk' codec can't encode character '\u2705' in position 0: illegal multibyte sequence
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "G:\feko_data\wavelet\angle_based_rcs\test_all_modules.py", line 236, in <module>
+    print(f"\n\u274c 测试失败: {e}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'gbk' codec can't encode character '\u274c' in position 2: illegal multibyte sequence

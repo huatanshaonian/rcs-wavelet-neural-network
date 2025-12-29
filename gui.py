@@ -1828,6 +1828,8 @@ def main():
     except Exception as e:
         print(f"⚠ 批量实验扩展初始化失败: {str(e)}")
 
+    # 注意：Angle-based RCS扩展已移动到main.py中集成
+
     # 运行主循环
     root.mainloop()
 

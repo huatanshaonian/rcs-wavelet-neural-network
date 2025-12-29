@@ -240,6 +240,19 @@ class RCSWaveletApp:
             except Exception as e:
                 print(f"⚠️ 批量实验扩展初始化失败: {str(e)}")
 
+            # 7. 集成Angle-based RCS扩展功能
+            try:
+                from gui_managers.extensions.gui_angle_rcs_extension import AngleRCSExtension
+                print("正在集成Angle-based RCS扩展...")
+                app.angle_rcs_extension = AngleRCSExtension(app)
+                app.angle_rcs_extension.extend_angle_rcs_tab()
+                print("✅ Angle-based RCS扩展已加载")
+
+            except ImportError as ext_e:
+                print(f"⚠️ Angle-based RCS扩展加载失败: {ext_e}")
+            except Exception as e:
+                print(f"⚠️ Angle-based RCS扩展初始化失败: {str(e)}")
+
             # 显示启动信息
             if hasattr(app, 'log_message'):
                 startup_message = '''🎊 增强版GUI启动成功！
@@ -247,6 +260,7 @@ class RCSWaveletApp:
 新增功能:
 ✨ 双模式AutoEncoder支持
 ✨ 批量对比实验系统
+✨ Angle-based RCS单点预测 (NeRF-like架构)
 ✨ 性能对比分析
 ✨ 小波变换可视化
 ✨ 优化的用户界面
@@ -254,8 +268,9 @@ class RCSWaveletApp:
 使用步骤:
 1. 切换到AutoEncoder标签页 - 配置和训练模型
 2. 切换到批量实验标签页 - 自动化超参数搜索
-3. 选择模式 (小波增强/直接模式)
-4. 加载数据并运行实验
+3. 切换到Angle-based RCS标签页 - 单点RCS预测训练
+4. 选择模式 (小波增强/直接模式)
+5. 加载数据并运行实验
 
 享受使用吧！🚀'''
 
