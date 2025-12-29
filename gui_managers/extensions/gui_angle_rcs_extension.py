@@ -328,8 +328,12 @@ class AngleRCSExtension:
         try:
             from angle_based_rcs.models.angle_rcs_network import AngleRCSNetwork
 
-            # 获取配置
-            num_frequencies = len(self.main_gui.frequency_labels)  # 从主GUI获取频率数量
+            # 获取频率数量
+            if not hasattr(self.main_gui, 'rcs_data') or self.main_gui.rcs_data is None:
+                messagebox.showwarning("警告", "请先加载数据！")
+                return
+
+            num_frequencies = self.main_gui.rcs_data.shape[-1]  # 从RCS数据形状获取频率数量
 
             # 创建模型
             model = AngleRCSNetwork(
