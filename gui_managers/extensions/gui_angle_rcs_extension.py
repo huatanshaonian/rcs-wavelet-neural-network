@@ -64,6 +64,12 @@ class AngleRCSExtension:
         self.angle_rcs_patience = tk.IntVar(value=50)  # Early stopping patience
         self.angle_rcs_weight_decay = tk.DoubleVar(value=1e-5)  # 权重衰减
 
+        # 学习率调度器详细配置（从AE复用）
+        self.angle_rcs_min_lr = tk.DoubleVar(value=1e-6)  # 最小学习率
+        self.angle_rcs_restart_period = tk.IntVar(value=50)  # CosineRestart重启周期
+        self.angle_rcs_num_lr_stages = tk.IntVar(value=3)  # multi_stage阶段数
+        self.angle_rcs_lr_decay_factor = tk.DoubleVar(value=0.1)  # multi_stage LR衰减因子
+
         # 数据配置
         self.angle_rcs_train_split = tk.DoubleVar(value=0.8)  # 训练集比例
         self.angle_rcs_use_subset = tk.BooleanVar(value=False)  # 是否使用子集
@@ -180,32 +186,58 @@ class AngleRCSExtension:
         ttk.Label(training_frame, text="批次大小:").grid(row=0, column=2, sticky="w", padx=(10, 0))
         ttk.Entry(training_frame, textvariable=self.angle_rcs_batch_size, width=8).grid(row=0, column=3, sticky="w")
 
-        # 学习率
-        ttk.Label(training_frame, text="学习率:").grid(row=1, column=0, sticky="w", pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.angle_rcs_lr, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
+        # 优化器
+        ttk.Label(training_frame, text="优化器:").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        optimizer_combo = ttk.Combobox(training_frame, textvariable=self.angle_rcs_optimizer,
+                                      values=["adam", "adamw", "sgd", "lbfgs"],
+                                      state="readonly", width=12)
+        optimizer_combo.grid(row=1, column=1, sticky="w", pady=(5, 0))
 
         # 权重衰减
         ttk.Label(training_frame, text="权重衰减:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
         ttk.Entry(training_frame, textvariable=self.angle_rcs_weight_decay, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
 
-        # 优化器
-        ttk.Label(training_frame, text="优化器:").grid(row=2, column=0, sticky="w", pady=(5, 0))
-        optimizer_combo = ttk.Combobox(training_frame, textvariable=self.angle_rcs_optimizer,
-                                      values=["adam", "adamw", "sgd", "lbfgs"],
-                                      state="readonly", width=12)
-        optimizer_combo.grid(row=2, column=1, columnspan=3, sticky="ew", pady=(5, 0))
-
-        # 学习率调度器
-        ttk.Label(training_frame, text="调度器:").grid(row=3, column=0, sticky="w", pady=(5, 0))
-        scheduler_combo = ttk.Combobox(training_frame, textvariable=self.angle_rcs_scheduler,
-                                      values=["constant", "cosine", "cosine_restart", "adaptive"],
-                                      state="readonly", width=12)
-        scheduler_combo.grid(row=3, column=1, columnspan=3, sticky="ew", pady=(5, 0))
-
         # Patience
-        ttk.Label(training_frame, text="Patience:").grid(row=4, column=0, sticky="w", pady=(5, 0))
-        ttk.Entry(training_frame, textvariable=self.angle_rcs_patience, width=8).grid(row=4, column=1, sticky="w", pady=(5, 0))
-        ttk.Label(training_frame, text="(Early Stopping)").grid(row=4, column=2, columnspan=2, sticky="w", padx=(5, 0), pady=(5, 0))
+        ttk.Label(training_frame, text="Patience:").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(training_frame, textvariable=self.angle_rcs_patience, width=8).grid(row=2, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(training_frame, text="(Early Stopping)").grid(row=2, column=2, columnspan=2, sticky="w", padx=(5, 0), pady=(5, 0))
+
+        # === 学习率调度配置组（从AE复用）===
+        lr_group = ttk.LabelFrame(left_column, text="📈 学习率调度配置")
+        lr_group.pack(fill=tk.X, pady=(0, 10))
+
+        lr_frame = ttk.Frame(lr_group)
+        lr_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 第一行：调度策略
+        ttk.Label(lr_frame, text="调度策略:").grid(row=0, column=0, sticky="w")
+        lr_scheduler_combo = ttk.Combobox(lr_frame, textvariable=self.angle_rcs_scheduler,
+                                        values=['constant', 'cosine', 'cosine_restart', 'adaptive',
+                                                'multi_stage', 'adaptive_multi_stage'],
+                                        state="readonly", width=18)
+        lr_scheduler_combo.grid(row=0, column=1, columnspan=3, sticky="ew")
+
+        # 第二行：初始学习率和最小学习率
+        ttk.Label(lr_frame, text="初始学习率:").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.angle_rcs_lr, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(lr_frame, text="最小学习率:").grid(row=1, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.angle_rcs_min_lr, width=8).grid(row=1, column=3, sticky="w", pady=(5, 0))
+
+        # 第三行：重启周期和阶段数
+        ttk.Label(lr_frame, text="重启周期:").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.angle_rcs_restart_period, width=8).grid(row=2, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(lr_frame, text="阶段数:").grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.angle_rcs_num_lr_stages, width=8).grid(row=2, column=3, sticky="w", pady=(5, 0))
+
+        # 第四行：学习率衰减因子（用于multi_stage策略）
+        ttk.Label(lr_frame, text="LR衰减因子:").grid(row=3, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(lr_frame, textvariable=self.angle_rcs_lr_decay_factor, width=8).grid(row=3, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(lr_frame, text="(multi_stage专用)", font=("", 8)).grid(row=3, column=2, columnspan=2, sticky="w", padx=(5, 0), pady=(5, 0))
+
+        # 第五行：multi_stage说明
+        info_label = ttk.Label(lr_frame, text="💡 multi_stage: patience耗尽时降低LR，patience线性增长(30→60→90)",
+                               font=("", 8), foreground="gray")
+        info_label.grid(row=4, column=0, columnspan=4, sticky="w", pady=(5, 0))
 
         # === 右列配置组 ===
 
@@ -454,7 +486,11 @@ class AngleRCSExtension:
                 scheduler_type=self.angle_rcs_scheduler.get(),
                 patience=self.angle_rcs_patience.get(),
                 weight_decay=self.angle_rcs_weight_decay.get(),
-                log_callback=self._log  # 传递日志回调
+                log_callback=self._log,  # 传递日志回调
+                # 学习率调度器详细参数（从AE复用）
+                restart_period=self.angle_rcs_restart_period.get(),  # CosineRestart重启周期
+                num_lr_stages=self.angle_rcs_num_lr_stages.get(),  # multi_stage阶段数
+                lr_decay_factor=self.angle_rcs_lr_decay_factor.get()  # multi_stage LR衰减因子
             )
 
             # 保存训练历史

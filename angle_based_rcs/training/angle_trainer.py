@@ -120,6 +120,7 @@ class AngleRCSTrainer:
                                         scheduler_type: str = 'cosine',
                                         weight_decay: float = 1e-5,
                                         epochs: int = 200,
+                                        log_fn=None,
                                         **kwargs) -> Tuple[optim.Optimizer, optim.lr_scheduler._LRScheduler]:
         """
         创建优化器和学习率调度器（复用ae_trainer.py的逻辑）
@@ -127,14 +128,19 @@ class AngleRCSTrainer:
         参数：
             lr: 学习率
             optimizer_type: 优化器类型 ('adam', 'adamw', 'sgd', 'lbfgs')
-            scheduler_type: 调度器类型 ('constant', 'cosine', 'adaptive')
+            scheduler_type: 调度器类型 ('constant', 'cosine', 'cosine_restart', 'adaptive', 'multi_stage', 'adaptive_multi_stage')
             weight_decay: 权重衰减
             epochs: 总epoch数（用于cosine scheduler）
+            log_fn: 日志函数（可选）
             **kwargs: 其他参数
 
         返回：
             optimizer, scheduler
         """
+        # 如果没有log_fn，使用print
+        if log_fn is None:
+            log_fn = print
+
         params = self.model.parameters()
 
         # 创建优化器
@@ -169,6 +175,22 @@ class AngleRCSTrainer:
         elif scheduler_type == 'adaptive':
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
             log_fn(f"✅ 调度器: ReduceLROnPlateau (patience=10)")
+        elif scheduler_type in ['multi_stage', 'adaptive_multi_stage']:
+            # 多阶段学习率调度器（从AE复用）
+            from autoencoder.training.multi_stage_scheduler import create_patience_driven_scheduler
+            num_stages = kwargs.get('num_lr_stages', 3)
+            lr_decay = kwargs.get('lr_decay_factor', 0.1)
+            patience = kwargs.get('patience', 50)
+
+            scheduler = create_patience_driven_scheduler(
+                optimizer,
+                initial_lr=lr,
+                num_stages=num_stages,
+                lr_decay_factor=lr_decay,
+                initial_patience=patience,
+                verbose=True
+            )
+            log_fn(f"✅ 调度器: {scheduler_type} (阶段数={num_stages}, LR衰减={lr_decay}, 初始patience={patience})")
         else:
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda e: 1.0)
             log_fn(f"✅ 调度器: Constant")
@@ -314,6 +336,7 @@ class AngleRCSTrainer:
             scheduler_type=scheduler_type,
             weight_decay=weight_decay,
             epochs=epochs,
+            patience=patience,  # 传递patience给multi_stage调度器
             log_fn=log,  # 传递log函数
             **kwargs
         )
