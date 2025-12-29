@@ -100,11 +100,11 @@ class AngleRCSExtension:
 
         # 左侧面板：配置和控制（增加宽度以避免遮挡）
         left_panel = ttk.Frame(main_container)
-        main_container.add(left_panel, weight=3)
+        main_container.add(left_panel, weight=1)
 
         # 右侧面板：状态和结果
         right_panel = ttk.Frame(main_container)
-        main_container.add(right_panel, weight=4)
+        main_container.add(right_panel, weight=1)
 
         # 构建左侧面板
         self._create_left_panel(left_panel)
