@@ -379,7 +379,7 @@ class AngleRCSTrainer:
             # 打印进度
             if epoch % print_every == 0 or epoch == 1:
                 epoch_time = time.time() - epoch_start
-                print(f"Epoch [{epoch:3d}/{epochs}] | "
+                log(f"Epoch [{epoch:3d}/{epochs}] | "
                       f"Train Loss: {train_loss:.6f} | "
                       f"Val Loss: {val_loss:.6f} | "
                       f"LR: {current_lr:.2e} | "
@@ -398,13 +398,13 @@ class AngleRCSTrainer:
             print(f"\n恢复最佳模型 (Epoch {best_epoch}, Val Loss: {best_val_loss:.6f})")
             self.model.load_state_dict(best_model_state['model_state_dict'])
 
-        print("=" * 80)
-        print(f"训练完成!")
-        print(f"  总耗时: {total_time/60:.2f}分钟")
-        print(f"  最佳Epoch: {best_epoch}/{epoch}")
-        print(f"  最佳验证损失: {best_val_loss:.6f}")
-        print(f"  最终训练损失: {train_loss:.6f}")
-        print("=" * 80)
+        log("=" * 80)
+        log(f"训练完成!")
+        log(f"  总耗时: {total_time/60:.2f}分钟")
+        log(f"  最佳Epoch: {best_epoch}/{epoch}")
+        log(f"  最佳验证损失: {best_val_loss:.6f}")
+        log(f"  最终训练损失: {train_loss:.6f}")
+        log("=" * 80)
 
         # 保存最终checkpoint
         self.save_checkpoint('final_model.pth', best_model_state)
@@ -444,9 +444,9 @@ class AngleRCSTrainer:
 
 
 if __name__ == "__main__":
-    print("=" * 80)
+    log("=" * 80)
     print("AngleRCSTrainer 测试")
-    print("=" * 80)
+    log("=" * 80)
 
     # 创建模型
     print("\n[Test 1] 创建模型")
@@ -491,7 +491,7 @@ if __name__ == "__main__":
     print(f"  Train losses: {[f'{x:.6f}' for x in history['train_losses']]}")
     print(f"  Val losses: {[f'{x:.6f}' for x in history['val_losses']]}")
     print(f"  最佳epoch: {history['best_epoch']}")
-    print(f"  最佳验证损失: {history['best_val_loss']:.6f}")
+    log(f"  最佳验证损失: {history['best_val_loss']:.6f}")
 
     # 清理测试文件
     import shutil
@@ -501,4 +501,4 @@ if __name__ == "__main__":
 
     print("\n" + "=" * 80)
     print("[PASS] AngleRCSTrainer测试通过!")
-    print("=" * 80)
+    log("=" * 80)
