@@ -296,7 +296,7 @@ class AngleRCSTrainer:
               scheduler_type: str = 'cosine',
               patience: int = 50,
               weight_decay: float = 1e-5,
-              print_every: int = 10,
+              print_every: int = 5,
               log_callback=None,
               **kwargs) -> Dict:
         """
@@ -411,15 +411,15 @@ class AngleRCSTrainer:
 
             # Early Stopping检查
             if early_stopping(val_loss, epoch):
-                log_fn(f"\n早停触发! 最佳epoch: {early_stopping.best_epoch}, "
-                      f"最佳验证损失: {early_stopping.best_score:.6f}")
+                log(f"\n早停触发! 最佳epoch: {early_stopping.best_epoch}, "
+                    f"最佳验证损失: {early_stopping.best_score:.6f}")
                 break
 
         total_time = time.time() - start_time
 
         # 恢复最佳模型
         if best_model_state is not None:
-            log_fn(f"\n恢复最佳模型 (Epoch {best_epoch}, Val Loss: {best_val_loss:.6f})")
+            log(f"\n恢复最佳模型 (Epoch {best_epoch}, Val Loss: {best_val_loss:.6f})")
             self.model.load_state_dict(best_model_state['model_state_dict'])
 
         log("=" * 80)
