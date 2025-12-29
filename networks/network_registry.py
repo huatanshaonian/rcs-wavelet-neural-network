@@ -10,6 +10,7 @@ from typing import Dict, Any, Tuple, Optional, List
 from dataclasses import dataclass
 import importlib
 import inspect
+import os
 
 @dataclass
 class NetworkConfig:
@@ -138,7 +139,12 @@ class NetworkRegistry:
             return network_class
 
         cls._networks[name] = network_class
-        print(f"Registered network: {name} - {network_class.get_description()}")
+
+        # 只在主进程中打印（避免DataLoader多进程重复输出）
+        # PyTorch DataLoader子进程会设置TORCH_WORKER_ID环境变量
+        if 'TORCH_WORKER_ID' not in os.environ:
+            print(f"Registered network: {name} - {network_class.get_description()}")
+
         return network_class
 
     @classmethod
@@ -153,7 +159,11 @@ class NetworkRegistry:
             return loss_class
 
         cls._losses[name] = loss_class
-        print(f"Registered loss: {name}")
+
+        # 只在主进程中打印（避免DataLoader多进程重复输出）
+        if 'TORCH_WORKER_ID' not in os.environ:
+            print(f"Registered loss: {name}")
+
         return loss_class
 
     @classmethod
