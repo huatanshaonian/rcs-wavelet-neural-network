@@ -314,10 +314,14 @@ class AngleRCSExtension:
             self.subset_entry.config(state='disabled')
 
     def _log(self, message):
-        """输出日志到日志框"""
+        """输出日志到日志框和控制台"""
+        # 输出到GUI日志框
         self.log_text.insert(tk.END, message + "\n")
         self.log_text.see(tk.END)
         self.log_text.update()
+
+        # 同时输出到控制台（方便排查问题）
+        print(f"[Angle-RCS] {message}")
 
     def _create_model(self):
         """创建Angle-based RCS模型"""
