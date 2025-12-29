@@ -201,7 +201,10 @@ class AngleRCSTrainer:
                      train_loader: DataLoader,
                      optimizer: optim.Optimizer,
                      criterion: nn.Module,
-                     is_lbfgs: bool = False) -> float:
+                     is_lbfgs: bool = False,
+                     epoch: int = 0,
+                     log_fn=None,
+                     print_batch_every: int = 500) -> float:
         """
         训练一个epoch
 
@@ -210,6 +213,9 @@ class AngleRCSTrainer:
             optimizer: 优化器
             criterion: 损失函数
             is_lbfgs: 是否使用L-BFGS
+            epoch: 当前epoch数（用于日志）
+            log_fn: 日志函数
+            print_batch_every: 每隔多少batch输出一次进度
 
         返回：
             平均训练损失
@@ -217,8 +223,9 @@ class AngleRCSTrainer:
         self.model.train()
         total_loss = 0.0
         total_samples = 0
+        num_batches = len(train_loader)
 
-        for batch in train_loader:
+        for batch_idx, batch in enumerate(train_loader, 1):
             theta = batch['theta'].to(self.device)
             phi = batch['phi'].to(self.device)
             params = batch['params'].to(self.device)
@@ -249,6 +256,13 @@ class AngleRCSTrainer:
                 total_loss += loss.item() * batch_size
 
             total_samples += batch_size
+
+            # 定期输出batch进度（避免长时间无输出）
+            if log_fn and print_batch_every > 0 and batch_idx % print_batch_every == 0:
+                current_avg_loss = total_loss / total_samples
+                progress_pct = 100.0 * batch_idx / num_batches
+                log_fn(f"  Epoch {epoch} - Batch [{batch_idx:4d}/{num_batches}] ({progress_pct:5.1f}%) | "
+                       f"Avg Loss: {current_avg_loss:.6f}")
 
         return total_loss / total_samples
 
@@ -369,8 +383,9 @@ class AngleRCSTrainer:
         for epoch in range(1, epochs + 1):
             epoch_start = time.time()
 
-            # 训练
-            train_loss = self._train_epoch(train_loader, optimizer, criterion, is_lbfgs)
+            # 训练（传递epoch和log函数用于batch进度输出）
+            train_loss = self._train_epoch(train_loader, optimizer, criterion, is_lbfgs,
+                                          epoch=epoch, log_fn=log, print_batch_every=500)
 
             # 验证
             val_loss = self._validate_epoch(val_loader, criterion)
