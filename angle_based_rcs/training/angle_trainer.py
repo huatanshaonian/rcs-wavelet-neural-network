@@ -140,38 +140,38 @@ class AngleRCSTrainer:
         # 创建优化器
         if optimizer_type == 'adam':
             optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
-            print(f"✅ 优化器: Adam (lr={lr:.2e}, wd={weight_decay:.2e})")
+            log_fn(f"✅ 优化器: Adam (lr={lr:.2e}, wd={weight_decay:.2e})")
         elif optimizer_type == 'adamw':
             optimizer = optim.AdamW(params, lr=lr, weight_decay=weight_decay)
-            print(f"✅ 优化器: AdamW (lr={lr:.2e}, wd={weight_decay:.2e})")
+            log_fn(f"✅ 优化器: AdamW (lr={lr:.2e}, wd={weight_decay:.2e})")
         elif optimizer_type == 'sgd':
             momentum = kwargs.get('momentum', 0.9)
             optimizer = optim.SGD(params, lr=lr, momentum=momentum, weight_decay=weight_decay)
-            print(f"✅ 优化器: SGD (lr={lr:.2e}, momentum={momentum}, wd={weight_decay:.2e})")
+            log_fn(f"✅ 优化器: SGD (lr={lr:.2e}, momentum={momentum}, wd={weight_decay:.2e})")
         elif optimizer_type == 'lbfgs':
             max_iter = kwargs.get('lbfgs_max_iter', 20)
             history_size = kwargs.get('lbfgs_history_size', 100)
             optimizer = optim.LBFGS(params, lr=lr, max_iter=max_iter, history_size=history_size)
-            print(f"✅ 优化器: L-BFGS (lr={lr:.2e}, max_iter={max_iter}, history_size={history_size})")
-            print(f"⚠️ L-BFGS需要闭包，训练循环已自动适配")
+            log_fn(f"✅ 优化器: L-BFGS (lr={lr:.2e}, max_iter={max_iter}, history_size={history_size})")
+            log_fn(f"⚠️ L-BFGS需要闭包，训练循环已自动适配")
         else:
             optimizer = optim.Adam(params, lr=lr, weight_decay=weight_decay)
-            print(f"⚠️ 未知优化器 '{optimizer_type}'，默认使用Adam")
+            log_fn(f"⚠️ 未知优化器 '{optimizer_type}'，默认使用Adam")
 
         # 创建学习率调度器
         if scheduler_type == 'cosine':
             scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr * 0.01)
-            print(f"✅ 调度器: CosineAnnealingLR (T_max={epochs})")
+            log_fn(f"✅ 调度器: CosineAnnealingLR (T_max={epochs})")
         elif scheduler_type == 'cosine_restart':
             T_0 = kwargs.get('restart_period', 50)
             scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=T_0)
-            print(f"✅ 调度器: CosineAnnealingWarmRestarts (T_0={T_0})")
+            log_fn(f"✅ 调度器: CosineAnnealingWarmRestarts (T_0={T_0})")
         elif scheduler_type == 'adaptive':
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
-            print(f"✅ 调度器: ReduceLROnPlateau (patience=10)")
+            log_fn(f"✅ 调度器: ReduceLROnPlateau (patience=10)")
         else:
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda e: 1.0)
-            print(f"✅ 调度器: Constant")
+            log_fn(f"✅ 调度器: Constant")
 
         return optimizer, scheduler
 
@@ -314,6 +314,7 @@ class AngleRCSTrainer:
             scheduler_type=scheduler_type,
             weight_decay=weight_decay,
             epochs=epochs,
+            log_fn=log,  # 传递log函数
             **kwargs
         )
 
@@ -387,7 +388,7 @@ class AngleRCSTrainer:
 
             # Early Stopping检查
             if early_stopping(val_loss, epoch):
-                print(f"\n早停触发! 最佳epoch: {early_stopping.best_epoch}, "
+                log_fn(f"\n早停触发! 最佳epoch: {early_stopping.best_epoch}, "
                       f"最佳验证损失: {early_stopping.best_score:.6f}")
                 break
 
@@ -395,7 +396,7 @@ class AngleRCSTrainer:
 
         # 恢复最佳模型
         if best_model_state is not None:
-            print(f"\n恢复最佳模型 (Epoch {best_epoch}, Val Loss: {best_val_loss:.6f})")
+            log_fn(f"\n恢复最佳模型 (Epoch {best_epoch}, Val Loss: {best_val_loss:.6f})")
             self.model.load_state_dict(best_model_state['model_state_dict'])
 
         log("=" * 80)
@@ -428,7 +429,7 @@ class AngleRCSTrainer:
 
         filepath = os.path.join(self.checkpoint_dir, filename)
         torch.save(state_dict, filepath)
-        print(f"✅ Checkpoint保存: {filepath}")
+        log_fn(f"✅ Checkpoint保存: {filepath}")
 
     def load_checkpoint(self, filename: str):
         """加载checkpoint"""
@@ -439,27 +440,27 @@ class AngleRCSTrainer:
         if 'history' in checkpoint:
             self.history = checkpoint['history']
 
-        print(f"✅ Checkpoint加载: {filepath}")
+        log_fn(f"✅ Checkpoint加载: {filepath}")
         return checkpoint
 
 
 if __name__ == "__main__":
     log("=" * 80)
-    print("AngleRCSTrainer 测试")
+    log_fn("AngleRCSTrainer 测试")
     log("=" * 80)
 
     # 创建模型
-    print("\n[Test 1] 创建模型")
+    log_fn("\n[Test 1] 创建模型")
     model = AngleRCSNetwork(num_frequencies=3, angle_L=16, activation='sin')
     param_stats = model.count_parameters()
-    print(f"模型参数: {param_stats['total']:,}")
+    log_fn(f"模型参数: {param_stats['total']:,}")
 
     # 创建训练器
-    print("\n[Test 2] 创建训练器")
+    log_fn("\n[Test 2] 创建训练器")
     trainer = AngleRCSTrainer(model, device='cpu', checkpoint_dir='./test_checkpoints')
 
     # 创建模拟数据
-    print("\n[Test 3] 创建模拟数据")
+    log_fn("\n[Test 3] 创建模拟数据")
     rcs_data = np.random.rand(200, 91, 91, 3) * 0.5
     param_data = np.random.randn(200, 9)
 
@@ -471,11 +472,11 @@ if __name__ == "__main__":
         normalize_params=True
     )
 
-    print(f"训练批次: {len(train_loader)}")
-    print(f"验证批次: {len(val_loader)}")
+    log_fn(f"训练批次: {len(train_loader)}")
+    log_fn(f"验证批次: {len(val_loader)}")
 
     # 训练（少量epoch测试）
-    print("\n[Test 4] 训练测试（5 epochs）")
+    log_fn("\n[Test 4] 训练测试（5 epochs）")
     history = trainer.train(
         train_loader=train_loader,
         val_loader=val_loader,
@@ -487,18 +488,18 @@ if __name__ == "__main__":
         print_every=1
     )
 
-    print(f"\n训练历史:")
-    print(f"  Train losses: {[f'{x:.6f}' for x in history['train_losses']]}")
-    print(f"  Val losses: {[f'{x:.6f}' for x in history['val_losses']]}")
-    print(f"  最佳epoch: {history['best_epoch']}")
+    log_fn(f"\n训练历史:")
+    log_fn(f"  Train losses: {[f'{x:.6f}' for x in history['train_losses']]}")
+    log_fn(f"  Val losses: {[f'{x:.6f}' for x in history['val_losses']]}")
+    log_fn(f"  最佳epoch: {history['best_epoch']}")
     log(f"  最佳验证损失: {history['best_val_loss']:.6f}")
 
     # 清理测试文件
     import shutil
     if os.path.exists('./test_checkpoints'):
         shutil.rmtree('./test_checkpoints')
-        print("\n✅ 测试checkpoint已清理")
+        log_fn("\n✅ 测试checkpoint已清理")
 
-    print("\n" + "=" * 80)
-    print("[PASS] AngleRCSTrainer测试通过!")
+    log_fn("\n" + "=" * 80)
+    log_fn("[PASS] AngleRCSTrainer测试通过!")
     log("=" * 80)
