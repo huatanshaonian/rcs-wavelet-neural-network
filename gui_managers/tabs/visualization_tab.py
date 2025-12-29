@@ -37,7 +37,8 @@ class VisualizationTab(ttk.Frame):
         # 可视化UI变量
         self.vis_model_var = tk.StringVar(value="001")
         self.vis_aux_model_var = tk.StringVar(value="002")  # 辅助样本ID（用于插值）
-        self.vis_freq_var = tk.StringVar(value="1.5G")
+        self.vis_freq_var = tk.StringVar(value="1.5G")  # AE频率选择
+        self.vis_ab_freq_var = tk.StringVar(value="1.5G")  # Angle-based频率选择（独立）
         self.fontsize_scale_var = tk.DoubleVar(value=1.0)
         self.vis_type_var = tk.StringVar(value="2D热图")
         self.color_param_var = tk.StringVar(value="参数1(kw)")  # 隐空间分布着色参数
@@ -65,21 +66,27 @@ class VisualizationTab(ttk.Frame):
         ttk.Label(control_frame, text="模型ID:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
         ttk.Entry(control_frame, textvariable=self.vis_model_var, width=10).grid(row=0, column=1, padx=5, pady=2)
 
-        # 频率选择
-        ttk.Label(control_frame, text="频率:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
+        # 频率选择（AE）
+        ttk.Label(control_frame, text="AE频率:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
         freq_combo = ttk.Combobox(control_frame, textvariable=self.vis_freq_var,
                                  values=["1.5G", "3G", "6G"], state="readonly", width=8)
         freq_combo.grid(row=0, column=3, padx=5, pady=2)
 
+        # 频率选择（Angle-based，独立）
+        ttk.Label(control_frame, text="AB频率:").grid(row=0, column=4, sticky=tk.W, padx=5, pady=2)
+        ab_freq_combo = ttk.Combobox(control_frame, textvariable=self.vis_ab_freq_var,
+                                     values=["1.5G", "3G", "6G"], state="readonly", width=8)
+        ab_freq_combo.grid(row=0, column=5, padx=5, pady=2)
+
         # 保存图片按钮
         ttk.Button(control_frame, text="💾 保存图片", command=self.save_current_visualization,
-                  width=12).grid(row=0, column=4, padx=5, pady=2)
+                  width=12).grid(row=0, column=6, padx=5, pady=2)
 
         # 字号缩放因子
-        ttk.Label(control_frame, text="字号缩放:").grid(row=0, column=5, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(control_frame, text="字号缩放:").grid(row=0, column=7, sticky=tk.W, padx=5, pady=2)
         fontsize_entry = ttk.Entry(control_frame, textvariable=self.fontsize_scale_var, width=6)
-        fontsize_entry.grid(row=0, column=6, padx=5, pady=2)
-        ttk.Label(control_frame, text="(0.5-3.0)").grid(row=0, column=7, sticky=tk.W, padx=0, pady=2)
+        fontsize_entry.grid(row=0, column=8, padx=5, pady=2)
+        ttk.Label(control_frame, text="(0.5-3.0)").grid(row=0, column=9, sticky=tk.W, padx=0, pady=2)
 
         # 可视化类型选择
         ttk.Label(control_frame, text="图表类型:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
@@ -136,6 +143,9 @@ class VisualizationTab(ttk.Frame):
 
             # 检查模型可用性
             has_ae_model = hasattr(self.app, 'ae_system') and self.app.ae_system is not None
+            has_angle_model = (hasattr(self.app, 'angle_rcs_extension') and
+                             hasattr(self.app.angle_rcs_extension, 'angle_rcs_system') and
+                             self.app.angle_rcs_extension.angle_rcs_system is not None)
 
             # 分类处理：全局统计图表 vs AutoEncoder特定图表
             if chart_type == "统计对比":
@@ -183,8 +193,22 @@ class VisualizationTab(ttk.Frame):
                 freq = self.vis_freq_var.get()
 
                 if chart_type == "对比图":
-                    if has_ae_model:
+                    # 自动路由：优先AE，其次angle-based，最后传统模型
+                    if has_ae_model and has_angle_model:
+                        # 两个模型都有，弹出选择对话框
+                        choice = messagebox.askquestion("选择模型类型",
+                                                       "检测到AutoEncoder和Angle-based两个模型。\n\n"
+                                                       "点击'是'使用AutoEncoder\n"
+                                                       "点击'否'使用Angle-based",
+                                                       icon='question')
+                        if choice == 'yes':
+                            self._plot_ae_comparison()
+                        else:
+                            self._plot_angle_comparison()
+                    elif has_ae_model:
                         self._plot_ae_comparison()
+                    elif has_angle_model:
+                        self._plot_angle_comparison()
                     else:
                         self._plot_comparison(model_id)
                 elif chart_type == "小波系数对比":
@@ -307,6 +331,19 @@ class VisualizationTab(ttk.Frame):
         else:
             self.app.log_message("警告: VisualizationManager未初始化，无法绘制AutoEncoder训练进度可视化。" )
 
+    def _plot_angle_comparison(self):
+        """绘制Angle-based RCS对比图"""
+        if hasattr(self.app, 'visualization_manager') and self.app.visualization_manager is not None:
+            # 获取angle_rcs_system
+            angle_system = None
+            if hasattr(self.app, 'angle_rcs_extension'):
+                angle_system = self.app.angle_rcs_extension.angle_rcs_system
+
+            return self.app.visualization_manager._plot_angle_rcs_comparison(
+                angle_system, self.vis_fig, self.vis_canvas, self.app.log_message,
+                self.app.rcs_data, self.app.param_data)
+        else:
+            self.app.log_message("警告: VisualizationManager未初始化，无法绘制Angle-based对比图。")
 
     def _plot_autoencoder_prediction_visualization(self, chart_type, freq):
         """使用AutoEncoder进行预测可视化"""

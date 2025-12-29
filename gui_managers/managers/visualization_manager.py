@@ -2558,6 +2558,150 @@ GPU显存峰值: {gpu_peak:.2f} GB"""
             import traceback
             traceback.print_exc()
 
+    def _plot_angle_rcs_comparison(self, angle_system=None, fig=None, canvas=None, log_callback=None, rcs_data=None, param_data=None):
+        """绘制Angle-based RCS对比图：原图、重构图、残差图
+
+        Args:
+            angle_system: Angle-based RCS系统对象（包含model）
+            fig: matplotlib图形对象
+            canvas: tkinter画布
+            log_callback: 日志回调函数
+            rcs_data: RCS数据 [N, 91, 91, num_freq]
+            param_data: 参数数据 [N, 9]
+        """
+        import numpy as np
+        from tkinter import messagebox
+
+        # 参数获取与回退
+        sys = angle_system if angle_system is not None else None
+        if sys is None and hasattr(self.gui, 'angle_rcs_extension'):
+            sys = self.gui.angle_rcs_extension.angle_rcs_system
+
+        target_fig = fig if fig is not None else getattr(self.gui, 'vis_fig', None)
+        target_canvas = canvas if canvas is not None else getattr(self.gui, 'vis_canvas', None)
+        log_msg = log_callback if log_callback is not None else getattr(self.gui, 'log_message', print)
+
+        if sys is None:
+            log_msg("错误: Angle-based RCS系统未初始化")
+            messagebox.showerror("错误", "Angle-based RCS模型未加载！\n请先训练或加载模型。")
+            return
+        if target_fig is None or target_canvas is None:
+            log_msg("错误: 无法获取绘图目标")
+            return
+
+        # 获取字号缩放因子
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                fontsize_scale = self.gui.visualization_tab.fontsize_scale_var.get()
+            elif hasattr(self.gui, 'fontsize_scale_var'):
+                fontsize_scale = self.gui.fontsize_scale_var.get()
+            else:
+                fontsize_scale = 1.0
+            fontsize_scale = max(0.5, min(3.0, fontsize_scale))
+        except:
+            fontsize_scale = 1.0
+
+        # 获取数据（统一从GUI读取）
+        current_rcs_data = rcs_data if rcs_data is not None else getattr(self.gui, 'rcs_data', None)
+        current_param_data = param_data if param_data is not None else getattr(self.gui, 'param_data', None)
+
+        if current_rcs_data is None or current_param_data is None:
+            log_msg("错误: RCS数据或参数数据未加载")
+            messagebox.showerror("错误", "请先加载RCS数据和参数数据！")
+            return
+
+        # 获取用户输入的模型ID和频率（angle-based有独立的频率选择框）
+        try:
+            if hasattr(self.gui, 'visualization_tab'):
+                model_id_str = self.gui.visualization_tab.vis_model_var.get()
+                # angle-based使用独立的频率选择框
+                if hasattr(self.gui.visualization_tab, 'vis_ab_freq_var'):
+                    freq_str = self.gui.visualization_tab.vis_ab_freq_var.get()
+                else:
+                    freq_str = self.gui.visualization_tab.vis_freq_var.get()  # 回退到AE的频率框
+            else:
+                model_id_str = "001"
+                freq_str = "1.5G"
+        except:
+            model_id_str = "001"
+            freq_str = "1.5G"
+
+        try:
+            # 从文件读取原始RCS数据（与AE保持一致）
+            import rcs_viewer as rv
+            data = rv.get_rcs_matrix(model_id_str, freq_str, self.gui.data_config['rcs_data_dir'])
+            true_rcs_linear = data['rcs_linear']  # 线性值 [91, 91]
+            true_rcs_db = data['rcs_db']  # dB值 [91, 91]
+            phi_values = data['phi_values']
+            theta_values = data['theta_values']
+
+            # 使用angle-based重建函数重建RCS
+            print(f"\n【Angle-based RCS重建 - 模型{model_id_str}】")
+            print(f"  频率: {freq_str}")
+
+            # 获取模型和设备
+            model = sys.get('model', None)
+            if model is None:
+                raise ValueError("angle_rcs_system中未找到model")
+
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+            # 频率映射
+            freq_map = {"1.5G": 0, "3G": 1, "6G": 2}
+            freq_idx = freq_map.get(freq_str, 0)
+
+            # 样本索引（模型ID转整数，001->0, 002->1, ...）
+            sample_idx = int(model_id_str) - 1
+
+            # 调用重建函数
+            from angle_based_rcs.utils.reconstruction import reconstruct_rcs_grid
+
+            pred_rcs = reconstruct_rcs_grid(
+                model=model,
+                sample_idx=sample_idx,
+                freq_idx=freq_idx,
+                param_data=current_param_data,
+                device=device,
+                theta_range=(theta_values.min(), theta_values.max()),
+                phi_range=(phi_values.min(), phi_values.max()),
+                grid_size=91
+            )
+
+            print(f"重建RCS形状: {pred_rcs.shape}")
+            print(f"重建RCS范围: [{pred_rcs.min():.6e}, {pred_rcs.max():.6e}]")
+
+            # 使用统一绘图函数（与AE完全一致）
+            from autoencoder.utils.plotting import plot_rcs_comparison
+
+            # 计算角度范围
+            phi_range = (phi_values.min(), phi_values.max())
+            theta_range = (theta_values.min(), theta_values.max())
+
+            # 调用统一绘图函数（复用GUI的figure）
+            plot_rcs_comparison(
+                true_rcs=true_rcs_linear,  # 线性值
+                pred_rcs=pred_rcs,          # 线性值
+                freq_label=freq_str,
+                model_id=model_id_str,
+                phi_range=phi_range,
+                theta_range=theta_range,
+                fontsize_scale=fontsize_scale,
+                fig=target_fig  # 复用GUI的figure
+            )
+
+            # 添加模型类型信息到总标题
+            if hasattr(target_fig, '_suptitle') and target_fig._suptitle:
+                current_title = target_fig._suptitle.get_text()
+                target_fig.suptitle(f'{current_title}\n(Angle-based RCS预测)',
+                                   fontsize=int(24*fontsize_scale), fontweight='bold')
+
+            target_canvas.draw()
+
+        except Exception as e:
+            messagebox.showerror("错误", f"无法生成Angle-based对比图: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
     def save_current_visualization(self):
         """保存当前显示的可视化图表到results文件夹"""
         import os
