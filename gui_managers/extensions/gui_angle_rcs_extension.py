@@ -434,13 +434,13 @@ class AngleRCSExtension:
                 messagebox.showwarning("警告", "请先在主界面加载RCS数据！")
                 return
 
-            if not hasattr(self.main_gui, 'parameters') or self.main_gui.parameters is None:
+            if not hasattr(self.main_gui, 'param_data') or self.main_gui.param_data is None:
                 messagebox.showwarning("警告", "请先在主界面加载设计参数！")
                 return
 
             # 保存原始数据引用（用于可视化测试）
             self.rcs_data = self.main_gui.rcs_data
-            self.param_data = self.main_gui.parameters
+            self.param_data = self.main_gui.param_data
 
             # 获取配置
             num_frequencies = self.angle_rcs_system['num_frequencies']
