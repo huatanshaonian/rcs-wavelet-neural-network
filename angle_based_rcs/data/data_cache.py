@@ -135,7 +135,8 @@ class AngleRCSDataCache:
         cache_path = self.get_cache_path(cache_key, split)
 
         # 加载并转移到目标设备
-        data_dict = torch.load(cache_path, map_location=device)
+        # weights_only=False: 允许加载包含numpy数组的缓存文件（本地生成，可信任）
+        data_dict = torch.load(cache_path, map_location=device, weights_only=False)
 
         file_size_mb = cache_path.stat().st_size / (1024 * 1024)
         print(f"[AngleRCSDataCache] 缓存已加载: {cache_path.name} ({file_size_mb:.1f} MB)")
