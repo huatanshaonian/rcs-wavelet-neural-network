@@ -181,8 +181,8 @@ class VisualizationTab(ttk.Frame):
                     self._plot_spherical(model_id, freq)
             else:
                 # 对比图、差值分析、相关性分析 - 需要模型预测
-                if not has_traditional_model and not has_ae_model:
-                    messagebox.showwarning("警告", "请先训练或加载模型")
+                if not has_ae_model and not has_angle_model:
+                    messagebox.showwarning("警告", "请先训练或加载模型（AutoEncoder或Angle-based RCS）")
                     return
 
                 model_id = self.vis_model_var.get()
