@@ -225,14 +225,29 @@ class AngleRCSTrainer:
         total_samples = 0
         num_batches = len(train_loader)
 
+        # 检测GPU预加载模式（仅第一个batch检测一次）
+        gpu_preloaded = None
+
         for batch_idx, batch in enumerate(train_loader, 1):
-            # GPU预加载模式：数据已在GPU，直接使用（避免冗余.to()调用）
-            # 常规模式：需要移动到device
-            theta = batch['theta'] if batch['theta'].device == self.device else batch['theta'].to(self.device)
-            phi = batch['phi'] if batch['phi'].device == self.device else batch['phi'].to(self.device)
-            params = batch['params'] if batch['params'].device == self.device else batch['params'].to(self.device)
-            freq_idx = batch['freq_idx'] if batch['freq_idx'].device == self.device else batch['freq_idx'].to(self.device)
-            target_rcs = batch['target_rcs'] if batch['target_rcs'].device == self.device else batch['target_rcs'].to(self.device)
+            # 首次迭代时检测GPU预加载模式
+            if gpu_preloaded is None:
+                gpu_preloaded = (batch['theta'].device.type == 'cuda')
+
+            # 数据移动优化：GPU预加载模式直接使用，常规模式才.to(device)
+            if gpu_preloaded:
+                # 数据已在GPU，零拷贝直接使用
+                theta = batch['theta']
+                phi = batch['phi']
+                params = batch['params']
+                freq_idx = batch['freq_idx']
+                target_rcs = batch['target_rcs']
+            else:
+                # 常规模式：需要移动到device
+                theta = batch['theta'].to(self.device)
+                phi = batch['phi'].to(self.device)
+                params = batch['params'].to(self.device)
+                freq_idx = batch['freq_idx'].to(self.device)
+                target_rcs = batch['target_rcs'].to(self.device)
 
             batch_size = theta.size(0)
 
@@ -255,16 +270,25 @@ class AngleRCSTrainer:
                 loss.backward()
                 optimizer.step()
 
-                total_loss += loss.item() * batch_size
+                # 延迟同步优化：不是每个batch都调用loss.item()
+                # 累积loss tensor，定期同步（减少GPU-CPU同步次数）
+                total_loss += loss.detach() * batch_size
 
             total_samples += batch_size
 
-            # 定期输出batch进度（避免长时间无输出）
+            # 定期输出batch进度（此时才同步loss）
             if log_fn and print_batch_every > 0 and batch_idx % print_batch_every == 0:
+                # 仅在需要输出时同步
+                if isinstance(total_loss, torch.Tensor):
+                    total_loss = total_loss.item()
                 current_avg_loss = total_loss / total_samples
                 progress_pct = 100.0 * batch_idx / num_batches
                 log_fn(f"  Epoch {epoch} - Batch [{batch_idx:4d}/{num_batches}] ({progress_pct:5.1f}%) | "
                        f"Avg Loss: {current_avg_loss:.6f}")
+
+        # 最终同步（如果还未同步）
+        if isinstance(total_loss, torch.Tensor):
+            total_loss = total_loss.item()
 
         return total_loss / total_samples
 
@@ -285,23 +309,43 @@ class AngleRCSTrainer:
         total_loss = 0.0
         total_samples = 0
 
+        # 检测GPU预加载模式（仅第一个batch检测一次）
+        gpu_preloaded = None
+
         with torch.no_grad():
             for batch in val_loader:
-                # GPU预加载模式：数据已在GPU，直接使用（避免冗余.to()调用）
-                # 常规模式：需要移动到device
-                theta = batch['theta'] if batch['theta'].device == self.device else batch['theta'].to(self.device)
-                phi = batch['phi'] if batch['phi'].device == self.device else batch['phi'].to(self.device)
-                params = batch['params'] if batch['params'].device == self.device else batch['params'].to(self.device)
-                freq_idx = batch['freq_idx'] if batch['freq_idx'].device == self.device else batch['freq_idx'].to(self.device)
-                target_rcs = batch['target_rcs'] if batch['target_rcs'].device == self.device else batch['target_rcs'].to(self.device)
+                # 首次迭代时检测GPU预加载模式
+                if gpu_preloaded is None:
+                    gpu_preloaded = (batch['theta'].device.type == 'cuda')
+
+                # 数据移动优化：GPU预加载模式直接使用，常规模式才.to(device)
+                if gpu_preloaded:
+                    # 数据已在GPU，零拷贝直接使用
+                    theta = batch['theta']
+                    phi = batch['phi']
+                    params = batch['params']
+                    freq_idx = batch['freq_idx']
+                    target_rcs = batch['target_rcs']
+                else:
+                    # 常规模式：需要移动到device
+                    theta = batch['theta'].to(self.device)
+                    phi = batch['phi'].to(self.device)
+                    params = batch['params'].to(self.device)
+                    freq_idx = batch['freq_idx'].to(self.device)
+                    target_rcs = batch['target_rcs'].to(self.device)
 
                 batch_size = theta.size(0)
 
                 rcs_pred = self.model(theta, phi, params, freq_idx).squeeze()
                 loss = criterion(rcs_pred, target_rcs)
 
-                total_loss += loss.item() * batch_size
+                # 延迟同步：累积loss tensor
+                total_loss += loss.detach() * batch_size
                 total_samples += batch_size
+
+        # 最终同步
+        if isinstance(total_loss, torch.Tensor):
+            total_loss = total_loss.item()
 
         return total_loss / total_samples
 
