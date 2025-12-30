@@ -114,6 +114,9 @@ class AngleRCSTrainer:
             'learning_rate': []
         }
 
+        # 停止标志
+        self.stop_flag = False
+
     def _create_optimizer_and_scheduler(self,
                                         lr: float = 1e-4,
                                         optimizer_type: str = 'adam',
@@ -391,6 +394,9 @@ class AngleRCSTrainer:
         log("开始训练 AngleRCSNetwork")
         log("=" * 80)
 
+        # 重置停止标志
+        self.reset_stop_flag()
+
         # 创建优化器和调度器
         optimizer, scheduler = self._create_optimizer_and_scheduler(
             lr=lr,
@@ -429,6 +435,11 @@ class AngleRCSTrainer:
         start_time = time.time()
 
         for epoch in range(1, epochs + 1):
+            # 检查停止标志
+            if self.stop_flag:
+                log(f"\n⏹️ 用户请求停止训练 (Epoch {epoch}/{epochs})")
+                break
+
             epoch_start = time.time()
 
             # 训练（传递epoch和log函数用于batch进度输出）
@@ -528,6 +539,22 @@ class AngleRCSTrainer:
 
         log_fn(f"✅ Checkpoint加载: {filepath}")
         return checkpoint
+
+    def stop(self):
+        """
+        停止训练
+
+        设置停止标志，训练循环会在下一个epoch开始前检查并退出。
+        """
+        self.stop_flag = True
+
+    def reset_stop_flag(self):
+        """
+        重置停止标志
+
+        在开始新的训练前调用，确保停止标志为False。
+        """
+        self.stop_flag = False
 
 
 if __name__ == "__main__":

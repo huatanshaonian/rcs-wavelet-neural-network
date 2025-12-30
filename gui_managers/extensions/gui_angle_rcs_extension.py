@@ -43,6 +43,7 @@ class AngleRCSExtension:
         self.training_history = None
         self.training_thread = None
         self.is_training = False
+        self.trainer = None  # 训练器引用（用于停止训练）
 
         # 数据加载相关
         self.train_loader = None
@@ -531,7 +532,7 @@ class AngleRCSExtension:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             self._log(f"使用设备: {device}")
 
-            trainer = AngleRCSTrainer(
+            self.trainer = AngleRCSTrainer(
                 model=self.angle_rcs_system['model'],
                 device=device,
                 checkpoint_dir='./angle_rcs_checkpoints'
@@ -545,7 +546,7 @@ class AngleRCSExtension:
             self._log("")
 
             # 训练（参数传给train方法）
-            history = trainer.train(
+            history = self.trainer.train(
                 train_loader=self.train_loader,
                 val_loader=self.val_loader,
                 epochs=self.angle_rcs_epochs.get(),
@@ -587,8 +588,22 @@ class AngleRCSExtension:
             messagebox.showinfo("提示", "当前没有正在进行的训练")
             return
 
-        # TODO: 实现训练停止逻辑
-        messagebox.showinfo("提示", "训练停止功能待实现")
+        if self.trainer is None:
+            messagebox.showwarning("警告", "训练器未初始化")
+            return
+
+        # 请求用户确认
+        result = messagebox.askyesno(
+            "确认停止",
+            "确定要停止训练吗？\n\n"
+            "当前epoch将完成后停止，\n"
+            "已完成的最佳模型会被保留。"
+        )
+
+        if result:
+            self._log("⏹️ 用户请求停止训练...")
+            self.trainer.stop()
+            self._log("已发送停止信号，等待当前epoch完成...")
 
     def _save_model(self):
         """保存模型"""
