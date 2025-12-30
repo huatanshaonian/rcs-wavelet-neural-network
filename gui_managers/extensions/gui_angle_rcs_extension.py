@@ -75,7 +75,7 @@ class AngleRCSExtension:
         self.angle_rcs_use_subset = tk.BooleanVar(value=False)  # 是否使用子集
         self.angle_rcs_subset_size = tk.IntVar(value=300000)  # 子集大小
         self.angle_rcs_normalize_params = tk.BooleanVar(value=True)  # 是否标准化参数
-        self.angle_rcs_preload_gpu = tk.BooleanVar(value=False)  # 是否预加载数据到GPU
+        self.angle_rcs_preload_gpu = tk.BooleanVar(value=True)  # 是否预加载数据到GPU（默认开启）
 
     def extend_angle_rcs_tab(self):
         """扩展Angle-based RCS标签页"""
