@@ -268,9 +268,40 @@ def create_dataloaders(
         actual_pin_memory = False  # 数据已在GPU，不需要pin_memory
         print(f"[create_dataloaders] 启用GPU预加载模式")
         print(f"[create_dataloaders] 自动设置: num_workers=0, pin_memory=False")
+
+        # GPU-aware collate_fn: 避免CPU-GPU传输
+        def gpu_collate_fn(batch):
+            """
+            GPU-aware collate函数
+
+            当数据已在GPU时，直接在GPU上合并batch，避免默认collate_fn的CPU-GPU传输。
+
+            默认collate_fn问题：
+            - 在CPU上执行torch.stack() → GPU数据会被拷贝到CPU
+            - 然后trainer._train_epoch再调用.to(device) → 又拷贝回GPU
+            - 每个batch都有2次CPU-GPU传输！
+
+            GPU collate解决方案：
+            - 数据已在GPU → 直接在GPU上stack → 返回GPU tensor
+            - 训练循环无需.to(device)调用
+            """
+            # 提取所有键
+            keys = batch[0].keys()
+
+            # 对每个键进行stack（在GPU上）
+            collated = {}
+            for key in keys:
+                values = [item[key] for item in batch]
+                # 直接stack，数据已在GPU，不会触发CPU传输
+                collated[key] = torch.stack(values, dim=0)
+
+            return collated
+
+        actual_collate_fn = gpu_collate_fn
     else:
         actual_num_workers = num_workers
         actual_pin_memory = True if torch.cuda.is_available() else False
+        actual_collate_fn = None  # 使用默认collate_fn
 
     # 创建数据集
     train_dataset = AngleRCSDataset(
@@ -298,6 +329,7 @@ def create_dataloaders(
         shuffle=True,
         num_workers=actual_num_workers,
         pin_memory=actual_pin_memory,
+        collate_fn=actual_collate_fn,  # 使用GPU-aware collate
         drop_last=True  # 丢弃最后不完整的batch
     )
 
@@ -307,6 +339,7 @@ def create_dataloaders(
         shuffle=False,
         num_workers=actual_num_workers,
         pin_memory=actual_pin_memory,
+        collate_fn=actual_collate_fn,  # 使用GPU-aware collate
         drop_last=False  # 测试集保留所有数据
     )
 

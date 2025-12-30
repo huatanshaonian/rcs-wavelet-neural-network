@@ -226,11 +226,13 @@ class AngleRCSTrainer:
         num_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader, 1):
-            theta = batch['theta'].to(self.device)
-            phi = batch['phi'].to(self.device)
-            params = batch['params'].to(self.device)
-            freq_idx = batch['freq_idx'].to(self.device)
-            target_rcs = batch['target_rcs'].to(self.device)
+            # GPU预加载模式：数据已在GPU，直接使用（避免冗余.to()调用）
+            # 常规模式：需要移动到device
+            theta = batch['theta'] if batch['theta'].device == self.device else batch['theta'].to(self.device)
+            phi = batch['phi'] if batch['phi'].device == self.device else batch['phi'].to(self.device)
+            params = batch['params'] if batch['params'].device == self.device else batch['params'].to(self.device)
+            freq_idx = batch['freq_idx'] if batch['freq_idx'].device == self.device else batch['freq_idx'].to(self.device)
+            target_rcs = batch['target_rcs'] if batch['target_rcs'].device == self.device else batch['target_rcs'].to(self.device)
 
             batch_size = theta.size(0)
 
@@ -285,11 +287,13 @@ class AngleRCSTrainer:
 
         with torch.no_grad():
             for batch in val_loader:
-                theta = batch['theta'].to(self.device)
-                phi = batch['phi'].to(self.device)
-                params = batch['params'].to(self.device)
-                freq_idx = batch['freq_idx'].to(self.device)
-                target_rcs = batch['target_rcs'].to(self.device)
+                # GPU预加载模式：数据已在GPU，直接使用（避免冗余.to()调用）
+                # 常规模式：需要移动到device
+                theta = batch['theta'] if batch['theta'].device == self.device else batch['theta'].to(self.device)
+                phi = batch['phi'] if batch['phi'].device == self.device else batch['phi'].to(self.device)
+                params = batch['params'] if batch['params'].device == self.device else batch['params'].to(self.device)
+                freq_idx = batch['freq_idx'] if batch['freq_idx'].device == self.device else batch['freq_idx'].to(self.device)
+                target_rcs = batch['target_rcs'] if batch['target_rcs'].device == self.device else batch['target_rcs'].to(self.device)
 
                 batch_size = theta.size(0)
 
