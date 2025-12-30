@@ -413,8 +413,6 @@ class AngleRCSExtension:
             self._log(f"  • 总参数量: {param_count:,}")
             self._log("")
 
-            messagebox.showinfo("成功", f"模型创建成功！\n参数量: {param_count:,}")
-
         except Exception as e:
             error_msg = f"模型创建失败: {str(e)}"
             self._log(f"❌ {error_msg}")
@@ -487,8 +485,6 @@ class AngleRCSExtension:
             self._log(f"  • 训练批次数: {train_batches:,}")
             self._log(f"  • 验证批次数: {val_batches:,}")
             self._log("")
-
-            messagebox.showinfo("成功", f"数据加载成功！\n训练样本: {total_train:,}\n验证样本: {total_val:,}")
 
         except Exception as e:
             import traceback

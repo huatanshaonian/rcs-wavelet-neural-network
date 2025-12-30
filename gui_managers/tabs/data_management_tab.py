@@ -160,8 +160,10 @@ class DataManagementTab(ttk.Frame):
         cache_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 缓存控制按钮
-        ttk.Button(cache_frame, text="查看缓存信息", command=self.show_cache_info).pack(side=tk.LEFT, padx=5)
-        ttk.Button(cache_frame, text="清除所有缓存", command=self.clear_cache).pack(side=tk.LEFT, padx=5)
+        ttk.Button(cache_frame, text="查看数据缓存", command=self.show_cache_info).pack(side=tk.LEFT, padx=5)
+        ttk.Button(cache_frame, text="查看GPU缓存", command=self.show_gpu_cache_info).pack(side=tk.LEFT, padx=5)
+        ttk.Button(cache_frame, text="清除数据缓存", command=self.clear_cache).pack(side=tk.LEFT, padx=5)
+        ttk.Button(cache_frame, text="清除GPU缓存", command=self.clear_gpu_cache).pack(side=tk.LEFT, padx=5)
         ttk.Button(cache_frame, text="强制重新读取", command=self.force_reload_data).pack(side=tk.LEFT, padx=5)
 
         # 缓存说明
@@ -749,5 +751,115 @@ class DataManagementTab(ttk.Frame):
 
         except Exception as e:
             error_msg = f"GPU内存清理失败: {str(e)}"
+            self.app.log_message(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def show_gpu_cache_info(self):
+        """显示GPU缓存信息（Angle-based RCS数据缓存）"""
+        try:
+            from angle_based_rcs.data import AngleRCSDataCache
+
+            # 创建缓存管理器
+            cache_manager = AngleRCSDataCache()
+
+            # 获取缓存信息
+            cache_info = cache_manager.get_cache_info()
+
+            # 创建新窗口显示缓存信息
+            cache_window = tk.Toplevel(self.app.root)
+            cache_window.title("GPU缓存信息 (Angle-based RCS)")
+            cache_window.geometry("800x600")
+            cache_window.resizable(True, True)
+
+            # 创建文本区域
+            cache_text = scrolledtext.ScrolledText(cache_window, wrap=tk.WORD, font=("Consolas", 10))
+            cache_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+            # 显示缓存信息
+            info_text = "=" * 80 + "\n"
+            info_text += "GPU缓存信息 (Angle-based RCS Dataset)\n"
+            info_text += "=" * 80 + "\n\n"
+
+            info_text += f"缓存目录: angle_rcs_cache/\n"
+            info_text += f"缓存文件数: {cache_info['num_files']}\n"
+            info_text += f"总大小: {cache_info['total_size_mb']:.1f} MB\n\n"
+
+            if cache_info['num_files'] == 0:
+                info_text += "暂无缓存文件\n"
+                info_text += "\n提示: GPU缓存用于加速Angle-based RCS训练数据加载\n"
+                info_text += "  • 首次加载数据时自动创建缓存\n"
+                info_text += "  • 缓存包含预计算的索引和GPU tensor\n"
+                info_text += "  • 下次加载相同配置时直接使用缓存（数秒内完成）\n"
+            else:
+                info_text += "-" * 80 + "\n"
+                info_text += "缓存文件列表:\n"
+                info_text += "-" * 80 + "\n\n"
+
+                for file_info in cache_info['files']:
+                    info_text += f"文件名: {file_info['name']}\n"
+                    info_text += f"  大小: {file_info['size_mb']:.1f} MB\n\n"
+
+                info_text += "\n" + "=" * 80 + "\n"
+                info_text += "缓存说明:\n"
+                info_text += "=" * 80 + "\n"
+                info_text += "• 每个缓存文件对应一个特定的训练/验证数据集配置\n"
+                info_text += "• 缓存键基于: 数据形状、频率数、训练比例、随机种子等\n"
+                info_text += "• 缓存包含:\n"
+                info_text += "    - theta_array, phi_array (角度数据)\n"
+                info_text += "    - sample_idx, i, j, freq_idx (索引数据)\n"
+                info_text += "    - rcs_data, param_data (RCS和参数)\n"
+                info_text += "    - 标准化统计信息 (param_mean, param_std)\n"
+                info_text += "• 首次加载需计算3,974,880个索引（耗时较长）\n"
+                info_text += "• 有缓存时直接加载到GPU（几秒钟完成）\n"
+                info_text += "• 配置改变时自动创建新缓存\n"
+
+            cache_text.insert(tk.END, info_text)
+            cache_text.configure(state=tk.DISABLED)
+
+            # 添加关闭按钮
+            button_frame = ttk.Frame(cache_window)
+            button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+            ttk.Button(button_frame, text="关闭", command=cache_window.destroy).pack(side=tk.RIGHT)
+
+            self.app.log_message(f"✅ 查看GPU缓存信息: {cache_info['num_files']}个文件, {cache_info['total_size_mb']:.1f}MB")
+
+        except Exception as e:
+            error_msg = f"显示GPU缓存信息失败: {str(e)}"
+            self.app.log_message(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
+    def clear_gpu_cache(self):
+        """清除GPU缓存（Angle-based RCS数据缓存）"""
+        try:
+            from angle_based_rcs.data import AngleRCSDataCache
+
+            # 确认对话框
+            result = messagebox.askyesno(
+                "确认清除",
+                "确定要清除所有GPU缓存吗？\n\n"
+                "这将删除Angle-based RCS训练数据的预计算索引。\n"
+                "下次加载数据时需要重新计算（耗时较长）。\n\n"
+                "数据缓存（CSV缓存）不受影响。"
+            )
+
+            if result:
+                self.app.log_message("正在清除GPU缓存...")
+
+                # 创建缓存管理器
+                cache_manager = AngleRCSDataCache()
+
+                # 获取清除前的信息
+                cache_info_before = cache_manager.get_cache_info()
+                num_files = cache_info_before['num_files']
+                total_size = cache_info_before['total_size_mb']
+
+                # 清除缓存
+                cache_manager.clear_cache()
+
+                self.app.log_message(f"✅ GPU缓存清除完成: {num_files}个文件, {total_size:.1f}MB")
+                messagebox.showinfo("完成", f"GPU缓存已清除\n\n清除了 {num_files} 个文件\n释放 {total_size:.1f} MB 磁盘空间")
+
+        except Exception as e:
+            error_msg = f"清除GPU缓存失败: {str(e)}"
             self.app.log_message(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
