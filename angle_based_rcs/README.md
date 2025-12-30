@@ -2,7 +2,7 @@
 
 > 基于角度编码的单点RCS预测系统（类NeRF架构）
 
-**版本**: v1.0
+**版本**: v1.1
 **创建日期**: 2025-01
 **状态**: ✅ 可用（观察期）
 
@@ -405,6 +405,51 @@ def __getitem__(self, idx):
     }
 ```
 
+**智能缓存机制**（v1.1新增⭐）：
+
+GPU预加载会预计算3,974,880个数据点的索引（CPU单核循环，30-120秒），为避免每次训练都重复这个过程，系统会自动缓存预处理结果：
+
+**缓存策略**：
+- 首次运行：预计算索引 → 保存到 `angle_rcs_cache/` 目录
+- 后续运行：直接加载缓存 → 跳过预计算（<5秒）
+- 缓存键：基于数据配置（样本数、频率数、划分比例、随机种子等）
+- 缓存文件：~240-300 MB × 2（训练集 + 测试集）
+
+**预期输出**：
+```
+# 首次运行（无缓存）
+[AngleRCSDataset] 未发现缓存，开始预加载... (train)
+[AngleRCSDataset] 预计算索引: 3,974,880个数据点...
+[AngleRCSDataset] 进度: 397,488/3,974,880 (10%)
+...
+[AngleRCSDataset] GPU预加载完成: 3,974,880个数据点
+[AngleRCSDataset] 保存缓存...
+[AngleRCSDataCache] 缓存已保存: 1a2b3c4d_train.pt (280.5 MB)
+
+# 后续运行（有缓存）
+[AngleRCSDataset] 发现缓存，直接加载... (train)
+[AngleRCSDataCache] 缓存已加载: 1a2b3c4d_train.pt (280.5 MB)
+[AngleRCSDataset] 缓存加载完成: 3,974,880个数据点
+```
+
+**缓存管理**：
+```python
+# 查看缓存信息
+from angle_based_rcs.data import AngleRCSDataCache
+cache = AngleRCSDataCache()
+info = cache.get_cache_info()
+print(f"缓存文件数: {info['num_files']}")
+print(f"总大小: {info['total_size_mb']:.1f} MB")
+
+# 清空所有缓存（如需重新预处理）
+cache.clear_cache()
+```
+
+**注意事项**：
+- ⚠️ 更改数据配置（如训练集比例、随机种子）会生成新的缓存文件
+- ⚠️ 缓存文件基于MD5哈希，旧配置的缓存不会自动清理
+- ✅ 首次预加载时会显示进度（每10%输出），避免"卡住"的错觉
+
 ### 2. 多进程数据加载（无GPU预加载时）
 
 **配置**：
@@ -662,6 +707,7 @@ angle_based_rcs/
 **性能优化**：
 - ✅ 多进程数据加载（num_workers=4，提升3-5倍）
 - ✅ GPU预加载（提升2-3倍，GPU利用率80-95%）
+- ✅ 智能缓存（首次预加载后缓存，后续<5秒启动）⭐ v1.1
 - ✅ 批量推理（~50ms重建91×91网格）
 
 **文档**：

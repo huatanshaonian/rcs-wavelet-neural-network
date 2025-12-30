@@ -27,8 +27,10 @@ if project_root not in sys.path:
 
 try:
     from .angle_sampler import AngleSampler
+    from .data_cache import AngleRCSDataCache
 except ImportError:
     from angle_sampler import AngleSampler
+    from data_cache import AngleRCSDataCache
 
 from autoencoder.utils.data_adapters import RCS_DataAdapter
 
@@ -61,7 +63,12 @@ class AngleRCSDataset(Dataset):
                  indices: np.ndarray,
                  data_adapter: Optional[RCS_DataAdapter] = None,
                  normalize_params: bool = True,
-                 preload_to_gpu: bool = False):
+                 preload_to_gpu: bool = False,
+                 # 缓存相关参数（用于计算缓存键）
+                 train_split: float = 0.8,
+                 random_seed: int = 42,
+                 train_subset_size: Optional[int] = None,
+                 is_train: bool = True):
 
         self.sampler = sampler
         self.indices = indices  # 全局索引数组
@@ -88,48 +95,109 @@ class AngleRCSDataset(Dataset):
 
         # GPU预加载（如果启用）
         if preload_to_gpu and torch.cuda.is_available():
-            print("[AngleRCSDataset] 预加载数据到GPU...")
             device = torch.device('cuda')
-
-            # 转换RCS数据到GPU [N, 91, 91, num_freq]
-            self.rcs_data = torch.from_numpy(rcs_data).float().to(device)
-
-            # 转换参数数据到GPU [N, 9]
-            if normalize_params:
-                params_norm = (param_data - self.param_mean) / self.param_std
-                self.param_data = torch.from_numpy(params_norm).float().to(device)
-            else:
-                self.param_data = torch.from_numpy(param_data).float().to(device)
-
-            # 预计算所有数据点（提前解码，避免__getitem__中重复计算）
             num_points = len(indices)
-            print(f"[AngleRCSDataset] 预计算索引: {num_points:,}个数据点...")
 
-            self.theta_array = torch.zeros(num_points, dtype=torch.float32, device=device)
-            self.phi_array = torch.zeros(num_points, dtype=torch.float32, device=device)
-            self.sample_idx_array = torch.zeros(num_points, dtype=torch.long, device=device)
-            self.i_array = torch.zeros(num_points, dtype=torch.long, device=device)
-            self.j_array = torch.zeros(num_points, dtype=torch.long, device=device)
-            self.freq_idx_array = torch.zeros(num_points, dtype=torch.long, device=device)
+            # 初始化缓存管理器
+            cache_manager = AngleRCSDataCache()
 
-            # 批量解码（显示进度）
-            progress_interval = max(1, num_points // 10)  # 每10%输出一次
-            for idx, global_idx in enumerate(indices):
-                data_point = sampler.global_index_to_data_point(global_idx)
-                self.theta_array[idx] = data_point.theta
-                self.phi_array[idx] = data_point.phi
-                self.sample_idx_array[idx] = data_point.sample_idx
-                self.i_array[idx] = data_point.i
-                self.j_array[idx] = data_point.j
-                self.freq_idx_array[idx] = data_point.freq_idx
+            # 计算缓存键
+            cache_key = cache_manager._compute_cache_key(
+                rcs_shape=rcs_data.shape,
+                param_shape=param_data.shape,
+                num_frequencies=sampler.num_frequencies,
+                train_split=train_split,
+                random_seed=random_seed,
+                train_subset_size=train_subset_size,
+                normalize_params=normalize_params,
+                is_train=is_train
+            )
+            split = 'train' if is_train else 'val'
 
-                # 显示进度
-                if (idx + 1) % progress_interval == 0 or (idx + 1) == num_points:
-                    progress = 100.0 * (idx + 1) / num_points
-                    print(f"[AngleRCSDataset] 进度: {idx+1:,}/{num_points:,} ({progress:.0f}%)")
+            # 检查缓存是否存在
+            if cache_manager.has_cache(cache_key, split):
+                print(f"[AngleRCSDataset] 发现缓存，直接加载... ({split})")
 
-            print(f"[AngleRCSDataset] GPU预加载完成: {num_points:,}个数据点")
-            print(f"[AngleRCSDataset] GPU显存占用: ~{self._estimate_gpu_memory():.1f} MB")
+                # 从缓存加载所有数据
+                cached_data = cache_manager.load_cache(cache_key, split, device='cuda')
+
+                self.theta_array = cached_data['theta_array']
+                self.phi_array = cached_data['phi_array']
+                self.sample_idx_array = cached_data['sample_idx_array']
+                self.i_array = cached_data['i_array']
+                self.j_array = cached_data['j_array']
+                self.freq_idx_array = cached_data['freq_idx_array']
+                self.rcs_data = cached_data['rcs_data']
+                self.param_data = cached_data['param_data']
+
+                # 恢复标准化参数（如果有）
+                if 'param_mean' in cached_data:
+                    self.param_mean = cached_data['param_mean']
+                    self.param_std = cached_data['param_std']
+
+                print(f"[AngleRCSDataset] 缓存加载完成: {num_points:,}个数据点")
+                print(f"[AngleRCSDataset] GPU显存占用: ~{self._estimate_gpu_memory():.1f} MB")
+            else:
+                print(f"[AngleRCSDataset] 未发现缓存，开始预加载... ({split})")
+
+                # 转换RCS数据到GPU [N, 91, 91, num_freq]
+                self.rcs_data = torch.from_numpy(rcs_data).float().to(device)
+
+                # 转换参数数据到GPU [N, 9]
+                if normalize_params:
+                    params_norm = (param_data - self.param_mean) / self.param_std
+                    self.param_data = torch.from_numpy(params_norm).float().to(device)
+                else:
+                    self.param_data = torch.from_numpy(param_data).float().to(device)
+
+                # 预计算所有数据点（提前解码，避免__getitem__中重复计算）
+                print(f"[AngleRCSDataset] 预计算索引: {num_points:,}个数据点...")
+
+                self.theta_array = torch.zeros(num_points, dtype=torch.float32, device=device)
+                self.phi_array = torch.zeros(num_points, dtype=torch.float32, device=device)
+                self.sample_idx_array = torch.zeros(num_points, dtype=torch.long, device=device)
+                self.i_array = torch.zeros(num_points, dtype=torch.long, device=device)
+                self.j_array = torch.zeros(num_points, dtype=torch.long, device=device)
+                self.freq_idx_array = torch.zeros(num_points, dtype=torch.long, device=device)
+
+                # 批量解码（显示进度）
+                progress_interval = max(1, num_points // 10)  # 每10%输出一次
+                for idx, global_idx in enumerate(indices):
+                    data_point = sampler.global_index_to_data_point(global_idx)
+                    self.theta_array[idx] = data_point.theta
+                    self.phi_array[idx] = data_point.phi
+                    self.sample_idx_array[idx] = data_point.sample_idx
+                    self.i_array[idx] = data_point.i
+                    self.j_array[idx] = data_point.j
+                    self.freq_idx_array[idx] = data_point.freq_idx
+
+                    # 显示进度
+                    if (idx + 1) % progress_interval == 0 or (idx + 1) == num_points:
+                        progress = 100.0 * (idx + 1) / num_points
+                        print(f"[AngleRCSDataset] 进度: {idx+1:,}/{num_points:,} ({progress:.0f}%)")
+
+                print(f"[AngleRCSDataset] GPU预加载完成: {num_points:,}个数据点")
+                print(f"[AngleRCSDataset] GPU显存占用: ~{self._estimate_gpu_memory():.1f} MB")
+
+                # 保存到缓存
+                print("[AngleRCSDataset] 保存缓存...")
+                cache_data = {
+                    'theta_array': self.theta_array,
+                    'phi_array': self.phi_array,
+                    'sample_idx_array': self.sample_idx_array,
+                    'i_array': self.i_array,
+                    'j_array': self.j_array,
+                    'freq_idx_array': self.freq_idx_array,
+                    'rcs_data': self.rcs_data,
+                    'param_data': self.param_data,
+                }
+
+                # 保存标准化参数（如果有）
+                if normalize_params:
+                    cache_data['param_mean'] = self.param_mean
+                    cache_data['param_std'] = self.param_std
+
+                cache_manager.save_cache(cache_key, split, cache_data)
         else:
             # 常规模式：保持numpy数组
             self.rcs_data = rcs_data  # [N, 91, 91, num_freq]
@@ -310,7 +378,12 @@ def create_dataloaders(
         sampler=sampler,
         indices=train_indices,
         normalize_params=normalize_params,
-        preload_to_gpu=preload_to_gpu
+        preload_to_gpu=preload_to_gpu,
+        # 缓存相关参数
+        train_split=train_split,
+        random_seed=random_seed,
+        train_subset_size=train_subset_size,
+        is_train=True
     )
 
     test_dataset = AngleRCSDataset(
@@ -319,7 +392,12 @@ def create_dataloaders(
         sampler=sampler,
         indices=sampler.test_indices,
         normalize_params=normalize_params,
-        preload_to_gpu=preload_to_gpu
+        preload_to_gpu=preload_to_gpu,
+        # 缓存相关参数
+        train_split=train_split,
+        random_seed=random_seed,
+        train_subset_size=train_subset_size,
+        is_train=False
     )
 
     # 创建DataLoader
