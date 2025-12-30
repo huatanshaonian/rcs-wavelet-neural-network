@@ -754,7 +754,7 @@ class AngleRCSTrainer:
         log("=" * 80)
 
         # 保存最终checkpoint
-        self.save_checkpoint('final_model.pth', best_model_state)
+        self.save_checkpoint('final_model.pth', best_model_state, log_fn=log)
 
         return {
             'train_losses': self.history['train_loss'],
@@ -765,7 +765,7 @@ class AngleRCSTrainer:
             'total_time': total_time
         }
 
-    def save_checkpoint(self, filename: str, state_dict: Optional[Dict] = None):
+    def save_checkpoint(self, filename: str, state_dict: Optional[Dict] = None, log_fn=None):
         """保存checkpoint"""
         if state_dict is None:
             state_dict = {
@@ -775,9 +775,12 @@ class AngleRCSTrainer:
 
         filepath = os.path.join(self.checkpoint_dir, filename)
         torch.save(state_dict, filepath)
-        log_fn(f"✅ Checkpoint保存: {filepath}")
+        if log_fn:
+            log_fn(f"✅ Checkpoint保存: {filepath}")
+        else:
+            print(f"✅ Checkpoint保存: {filepath}")
 
-    def load_checkpoint(self, filename: str):
+    def load_checkpoint(self, filename: str, log_fn=None):
         """加载checkpoint"""
         filepath = os.path.join(self.checkpoint_dir, filename)
         checkpoint = torch.load(filepath, map_location=self.device)
@@ -786,7 +789,10 @@ class AngleRCSTrainer:
         if 'history' in checkpoint:
             self.history = checkpoint['history']
 
-        log_fn(f"✅ Checkpoint加载: {filepath}")
+        if log_fn:
+            log_fn(f"✅ Checkpoint加载: {filepath}")
+        else:
+            print(f"✅ Checkpoint加载: {filepath}")
         return checkpoint
 
     def stop(self):
