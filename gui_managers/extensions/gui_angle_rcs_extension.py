@@ -321,6 +321,9 @@ class AngleRCSExtension:
         # 第五行按钮
         ttk.Button(button_frame, text="可视化测试", command=self._visualize_test_data).grid(row=4, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
 
+        # 第六行按钮
+        ttk.Button(button_frame, text="初始化Loss归一化", command=self._initialize_loss_normalization).grid(row=5, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
+
         # 配置列权重
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
@@ -531,10 +534,19 @@ class AngleRCSExtension:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             self._log(f"使用设备: {device}")
 
+            # 获取loss归一化系数（如果存在）
+            loss_normalization_factor = self.angle_rcs_system.get('loss_normalization_factor', 1.0)
+
+            if loss_normalization_factor != 1.0:
+                self._log(f"🔧 使用Loss归一化系数: {loss_normalization_factor:.6f}")
+            else:
+                self._log("⚠️ 未初始化Loss归一化（使用默认系数1.0）")
+
             self.trainer = AngleRCSTrainer(
                 model=self.angle_rcs_system['model'],
                 device=device,
-                checkpoint_dir='./angle_rcs_checkpoints'
+                checkpoint_dir='./angle_rcs_checkpoints',
+                loss_normalization_factor=loss_normalization_factor
             )
 
             self._log("训练器配置:")
@@ -740,6 +752,95 @@ class AngleRCSExtension:
 
         # TODO: 实现评估逻辑
         messagebox.showinfo("提示", "评估功能待实现")
+
+    def _initialize_loss_normalization(self):
+        """初始化Loss归一化系数（使第一个epoch的loss归一化为1.0）"""
+        try:
+            # 检查前置条件
+            if self.angle_rcs_system is None:
+                messagebox.showwarning("警告", "请先创建模型！")
+                return
+
+            if self.train_loader is None:
+                messagebox.showwarning("警告", "请先加载数据！")
+                return
+
+            self._log("=" * 60)
+            self._log("🔧 开始初始化Loss归一化...")
+            self._log("=" * 60)
+
+            import torch
+            import torch.nn as nn
+
+            # 获取模型和设备
+            model = self.angle_rcs_system['model']
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            model.to(device)
+            model.eval()
+
+            # 创建损失函数（MSE）
+            criterion = nn.MSELoss()
+
+            # 计算第一个epoch的平均loss
+            total_loss = 0.0
+            total_samples = 0
+
+            self._log("🔄 计算初始loss（在训练数据上）...")
+            self._log(f"  • 设备: {device}")
+            self._log(f"  • 训练批次数: {len(self.train_loader)}")
+
+            with torch.no_grad():
+                for batch_idx, batch in enumerate(self.train_loader, 1):
+                    # 提取数据
+                    theta = batch['theta'].to(device)
+                    phi = batch['phi'].to(device)
+                    params = batch['params'].to(device)
+                    freq_idx = batch['freq_idx'].to(device)
+                    target_rcs = batch['target_rcs'].to(device)
+
+                    batch_size = theta.size(0)
+
+                    # 前向传播
+                    rcs_pred = model(theta, phi, params, freq_idx).squeeze()
+
+                    # 计算loss
+                    loss = criterion(rcs_pred, target_rcs)
+
+                    # sample-weighted累加
+                    total_loss += loss.item() * batch_size
+                    total_samples += batch_size
+
+                    # 每100个batch打印进度
+                    if batch_idx % 100 == 0:
+                        self._log(f"  进度: {batch_idx}/{len(self.train_loader)} batches...")
+
+            # 计算平均loss
+            initial_loss = total_loss / total_samples
+
+            # 计算归一化系数（使loss归一化为1.0）
+            loss_normalization_factor = 1.0 / initial_loss
+
+            # 保存到angle_rcs_system
+            self.angle_rcs_system['loss_normalization_factor'] = loss_normalization_factor
+
+            self._log("")
+            self._log(f"✅ Loss归一化初始化完成！")
+            self._log(f"  • 初始Loss: {initial_loss:.6f}")
+            self._log(f"  • 归一化系数: {loss_normalization_factor:.6f}")
+            self._log(f"  • 归一化后Loss: {initial_loss * loss_normalization_factor:.6f}")
+            self._log("=" * 60)
+
+            messagebox.showinfo("成功",
+                f"Loss归一化初始化成功！\n\n"
+                f"初始Loss: {initial_loss:.6f}\n"
+                f"归一化系数: {loss_normalization_factor:.6f}\n"
+                f"归一化后Loss: 1.0")
+
+        except Exception as e:
+            import traceback
+            error_msg = f"初始化Loss归一化失败: {str(e)}\n{traceback.format_exc()}"
+            self._log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
 
     def _visualize_prediction(self):
         """可视化预测结果（已弃用，使用_visualize_test_data）"""

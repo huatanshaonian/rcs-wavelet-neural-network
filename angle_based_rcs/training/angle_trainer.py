@@ -99,10 +99,12 @@ class AngleRCSTrainer:
     def __init__(self,
                  model: AngleRCSNetwork,
                  device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
-                 checkpoint_dir: str = './checkpoints'):
+                 checkpoint_dir: str = './checkpoints',
+                 loss_normalization_factor: float = 1.0):
         self.model = model.to(device)
         self.device = device
         self.checkpoint_dir = checkpoint_dir
+        self.loss_normalization_factor = loss_normalization_factor
 
         # 创建checkpoint目录
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -289,6 +291,9 @@ class AngleRCSTrainer:
                     optimizer.zero_grad()
                     rcs_pred = self.model(theta, phi, params, freq_idxs).squeeze()
                     loss = criterion(rcs_pred, target_rcs)
+                    # ⭐ 在backward前应用归一化（真正影响梯度和训练）
+                    if self.loss_normalization_factor != 1.0:
+                        loss = loss * self.loss_normalization_factor
                     loss.backward()
                     return loss
 
@@ -299,6 +304,11 @@ class AngleRCSTrainer:
                 optimizer.zero_grad()
                 rcs_pred = self.model(theta, phi, params, freq_idxs).squeeze()
                 loss = criterion(rcs_pred, target_rcs)
+
+                # ⭐ 在backward前应用归一化（真正影响梯度和训练）
+                if self.loss_normalization_factor != 1.0:
+                    loss = loss * self.loss_normalization_factor
+
                 loss.backward()
                 optimizer.step()
 
@@ -409,6 +419,9 @@ class AngleRCSTrainer:
                     optimizer.zero_grad()
                     rcs_pred = self.model(theta, phi, params, freq_idx).squeeze()
                     loss = criterion(rcs_pred, target_rcs)
+                    # ⭐ 在backward前应用归一化
+                    if self.loss_normalization_factor != 1.0:
+                        loss = loss * self.loss_normalization_factor
                     loss.backward()
                     return loss
 
@@ -419,6 +432,11 @@ class AngleRCSTrainer:
                 optimizer.zero_grad()
                 rcs_pred = self.model(theta, phi, params, freq_idx).squeeze()
                 loss = criterion(rcs_pred, target_rcs)
+
+                # ⭐ 在backward前应用归一化
+                if self.loss_normalization_factor != 1.0:
+                    loss = loss * self.loss_normalization_factor
+
                 loss.backward()
                 optimizer.step()
 
@@ -500,6 +518,10 @@ class AngleRCSTrainer:
                 rcs_pred = self.model(theta, phi, params, freq_idxs).squeeze()
                 loss = criterion(rcs_pred, target_rcs)
 
+                # ⭐ 应用归一化（验证时也需要一致）
+                if self.loss_normalization_factor != 1.0:
+                    loss = loss * self.loss_normalization_factor
+
                 # 延迟同步：累积loss tensor
                 total_loss += loss.detach() * batch_size_actual
                 total_samples += batch_size_actual
@@ -565,6 +587,10 @@ class AngleRCSTrainer:
 
                 rcs_pred = self.model(theta, phi, params, freq_idx).squeeze()
                 loss = criterion(rcs_pred, target_rcs)
+
+                # ⭐ 应用归一化（验证时也需要一致）
+                if self.loss_normalization_factor != 1.0:
+                    loss = loss * self.loss_normalization_factor
 
                 # 延迟同步：累积loss tensor（不触发CPU-GPU传输）
                 total_loss += loss.detach() * batch_size
