@@ -103,6 +103,8 @@ class AngleRCSDataset(Dataset):
 
             # 预计算所有数据点（提前解码，避免__getitem__中重复计算）
             num_points = len(indices)
+            print(f"[AngleRCSDataset] 预计算索引: {num_points:,}个数据点...")
+
             self.theta_array = torch.zeros(num_points, dtype=torch.float32, device=device)
             self.phi_array = torch.zeros(num_points, dtype=torch.float32, device=device)
             self.sample_idx_array = torch.zeros(num_points, dtype=torch.long, device=device)
@@ -110,6 +112,8 @@ class AngleRCSDataset(Dataset):
             self.j_array = torch.zeros(num_points, dtype=torch.long, device=device)
             self.freq_idx_array = torch.zeros(num_points, dtype=torch.long, device=device)
 
+            # 批量解码（显示进度）
+            progress_interval = max(1, num_points // 10)  # 每10%输出一次
             for idx, global_idx in enumerate(indices):
                 data_point = sampler.global_index_to_data_point(global_idx)
                 self.theta_array[idx] = data_point.theta
@@ -119,7 +123,12 @@ class AngleRCSDataset(Dataset):
                 self.j_array[idx] = data_point.j
                 self.freq_idx_array[idx] = data_point.freq_idx
 
-            print(f"[AngleRCSDataset] GPU预加载完成: {num_points}个数据点")
+                # 显示进度
+                if (idx + 1) % progress_interval == 0 or (idx + 1) == num_points:
+                    progress = 100.0 * (idx + 1) / num_points
+                    print(f"[AngleRCSDataset] 进度: {idx+1:,}/{num_points:,} ({progress:.0f}%)")
+
+            print(f"[AngleRCSDataset] GPU预加载完成: {num_points:,}个数据点")
             print(f"[AngleRCSDataset] GPU显存占用: ~{self._estimate_gpu_memory():.1f} MB")
         else:
             # 常规模式：保持numpy数组
