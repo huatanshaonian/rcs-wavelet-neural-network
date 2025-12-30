@@ -44,6 +44,13 @@ class AngleRCSExtension:
         self.training_thread = None
         self.is_training = False
 
+        # 数据加载相关
+        self.train_loader = None
+        self.val_loader = None
+        self.sampler = None
+        self.rcs_data = None  # 原始RCS数据
+        self.param_data = None  # 原始参数数据
+
         # 扩展变量
         self._init_extension_vars()
 
@@ -296,18 +303,19 @@ class AngleRCSExtension:
 
         # 第一行按钮
         ttk.Button(button_frame, text="创建模型", command=self._create_model).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-        ttk.Button(button_frame, text="开始训练", command=self._start_training).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="加载数据", command=self._load_data).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
 
         # 第二行按钮
-        ttk.Button(button_frame, text="停止训练", command=self._stop_training).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-        ttk.Button(button_frame, text="保存模型", command=self._save_model).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="开始训练", command=self._start_training).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="停止训练", command=self._stop_training).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
 
         # 第三行按钮
-        ttk.Button(button_frame, text="加载模型", command=self._load_model).grid(row=2, column=0, sticky="ew", padx=2, pady=2)
-        ttk.Button(button_frame, text="评估模型", command=self._evaluate_model).grid(row=2, column=1, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="保存模型", command=self._save_model).grid(row=2, column=0, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="加载模型", command=self._load_model).grid(row=2, column=1, sticky="ew", padx=2, pady=2)
 
         # 第四行按钮
-        ttk.Button(button_frame, text="可视化预测", command=self._visualize_prediction).grid(row=3, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="评估模型", command=self._evaluate_model).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="可视化测试", command=self._visualize_test_data).grid(row=3, column=1, sticky="ew", padx=2, pady=2)
 
         # 配置列权重
         button_frame.columnconfigure(0, weight=1)
@@ -336,9 +344,9 @@ class AngleRCSExtension:
         self.curve_canvas_frame = ttk.Frame(curve_frame)
         self.curve_canvas_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 3. 预测可视化标签页
+        # 3. 可视化测试标签页
         viz_frame = ttk.Frame(self.result_notebook)
-        self.result_notebook.add(viz_frame, text="预测可视化")
+        self.result_notebook.add(viz_frame, text="可视化测试")
 
         # 可视化显示区域
         self.viz_canvas_frame = ttk.Frame(viz_frame)
@@ -408,19 +416,94 @@ class AngleRCSExtension:
             self._log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
+    def _load_data(self):
+        """加载数据"""
+        if self.angle_rcs_system is None:
+            messagebox.showwarning("警告", "请先创建模型！")
+            return
+
+        try:
+            from angle_based_rcs.data import create_dataloaders
+
+            self._log("=" * 60)
+            self._log("开始加载数据...")
+            self._log("=" * 60)
+
+            # 检查主GUI是否有数据
+            if not hasattr(self.main_gui, 'rcs_data') or self.main_gui.rcs_data is None:
+                messagebox.showwarning("警告", "请先在主界面加载RCS数据！")
+                return
+
+            if not hasattr(self.main_gui, 'parameters') or self.main_gui.parameters is None:
+                messagebox.showwarning("警告", "请先在主界面加载设计参数！")
+                return
+
+            # 保存原始数据引用（用于可视化测试）
+            self.rcs_data = self.main_gui.rcs_data
+            self.param_data = self.main_gui.parameters
+
+            # 获取配置
+            num_frequencies = self.angle_rcs_system['num_frequencies']
+            train_subset_size = self.angle_rcs_subset_size.get() if self.angle_rcs_use_subset.get() else None
+
+            self._log(f"数据配置:")
+            self._log(f"  • RCS数据形状: {self.rcs_data.shape}")
+            self._log(f"  • 参数数据形状: {self.param_data.shape}")
+            self._log(f"  • 频率数量: {num_frequencies}")
+            self._log(f"  • 训练集比例: {self.angle_rcs_train_split.get()}")
+            self._log(f"  • 标准化参数: {self.angle_rcs_normalize_params.get()}")
+            self._log(f"  • GPU预加载: {self.angle_rcs_preload_gpu.get()}")
+            if train_subset_size:
+                self._log(f"  • 训练子集大小: {train_subset_size:,}")
+            self._log("")
+
+            # 创建DataLoader
+            self.train_loader, self.val_loader, self.sampler = create_dataloaders(
+                rcs_data=self.rcs_data,
+                param_data=self.param_data,
+                batch_size=self.angle_rcs_batch_size.get(),
+                num_frequencies=num_frequencies,
+                train_split=self.angle_rcs_train_split.get(),
+                random_seed=42,
+                train_subset_size=train_subset_size,
+                normalize_params=self.angle_rcs_normalize_params.get(),
+                num_workers=0,  # 固定为0（单进程）
+                preload_to_gpu=self.angle_rcs_preload_gpu.get()
+            )
+
+            # 统计信息
+            total_train = len(self.train_loader.dataset)
+            total_val = len(self.val_loader.dataset)
+            train_batches = len(self.train_loader)
+            val_batches = len(self.val_loader)
+
+            self._log(f"✅ 数据加载成功！")
+            self._log(f"  • 训练样本数: {total_train:,}")
+            self._log(f"  • 验证样本数: {total_val:,}")
+            self._log(f"  • 训练批次数: {train_batches:,}")
+            self._log(f"  • 验证批次数: {val_batches:,}")
+            self._log("")
+
+            messagebox.showinfo("成功", f"数据加载成功！\n训练样本: {total_train:,}\n验证样本: {total_val:,}")
+
+        except Exception as e:
+            import traceback
+            error_msg = f"数据加载失败: {str(e)}\n{traceback.format_exc()}"
+            self._log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
+
     def _start_training(self):
         """开始训练"""
         if self.angle_rcs_system is None:
             messagebox.showwarning("警告", "请先创建模型！")
             return
 
-        if self.is_training:
-            messagebox.showwarning("警告", "训练正在进行中！")
+        if self.train_loader is None or self.val_loader is None:
+            messagebox.showwarning("警告", "请先加载数据！")
             return
 
-        # 检查数据
-        if not hasattr(self.main_gui, 'rcs_data') or self.main_gui.rcs_data is None:
-            messagebox.showwarning("警告", "请先加载数据！")
+        if self.is_training:
+            messagebox.showwarning("警告", "训练正在进行中！")
             return
 
         # 在新线程中启动训练
@@ -433,37 +516,15 @@ class AngleRCSExtension:
     def _train_model_thread(self):
         """训练线程（后台执行）"""
         try:
-            from angle_based_rcs.data.angle_dataset import create_dataloaders
             from angle_based_rcs.training.angle_trainer import AngleRCSTrainer
 
             self._log("=" * 60)
             self._log("开始训练Angle-based RCS模型")
             self._log("=" * 60)
 
-            # 获取数据
-            rcs_data = self.main_gui.rcs_data  # [N, 91, 91, num_freq]
-            param_data = self.main_gui.param_data  # [N, 9]
-
-            self._log(f"数据形状: RCS {rcs_data.shape}, 参数 {param_data.shape}")
-
-            # 创建DataLoader
-            train_subset_size = self.angle_rcs_subset_size.get() if self.angle_rcs_use_subset.get() else None
-
-            train_loader, val_loader, sampler = create_dataloaders(
-                rcs_data=rcs_data,
-                param_data=param_data,
-                batch_size=self.angle_rcs_batch_size.get(),
-                num_frequencies=self.angle_rcs_system['num_frequencies'],
-                train_split=self.angle_rcs_train_split.get(),
-                random_seed=42,
-                train_subset_size=train_subset_size,
-                normalize_params=self.angle_rcs_normalize_params.get(),
-                num_workers=0,  # 固定为0（单进程），GPU预加载时自动优化
-                preload_to_gpu=self.angle_rcs_preload_gpu.get()
-            )
-
-            self._log(f"训练集: {len(train_loader)} batches")
-            self._log(f"验证集: {len(val_loader)} batches")
+            # 使用已加载的DataLoader
+            self._log(f"训练集: {len(self.train_loader)} batches, {len(self.train_loader.dataset):,} samples")
+            self._log(f"验证集: {len(self.val_loader)} batches, {len(self.val_loader.dataset):,} samples")
             self._log("")
 
             # 创建训练器
@@ -485,8 +546,8 @@ class AngleRCSExtension:
 
             # 训练（参数传给train方法）
             history = trainer.train(
-                train_loader=train_loader,
-                val_loader=val_loader,
+                train_loader=self.train_loader,
+                val_loader=self.val_loader,
                 epochs=self.angle_rcs_epochs.get(),
                 lr=self.angle_rcs_lr.get(),
                 optimizer_type=self.angle_rcs_optimizer.get(),
@@ -628,13 +689,114 @@ class AngleRCSExtension:
         messagebox.showinfo("提示", "评估功能待实现")
 
     def _visualize_prediction(self):
-        """可视化预测结果"""
-        if self.angle_rcs_system is None:
-            messagebox.showwarning("警告", "请先创建或加载模型！")
+        """可视化预测结果（已弃用，使用_visualize_test_data）"""
+        messagebox.showinfo("提示", "请使用'可视化测试'按钮")
+
+    def _visualize_test_data(self):
+        """可视化测试数据（验证数据加载是否正确）"""
+        if self.rcs_data is None or self.param_data is None:
+            messagebox.showwarning("警告", "请先加载数据！")
             return
 
-        # TODO: 实现可视化逻辑
-        messagebox.showinfo("提示", "可视化功能待实现")
+        try:
+            self._log("=" * 60)
+            self._log("开始可视化测试数据（样本001）")
+            self._log("=" * 60)
+
+            # 提取001样本（sample_idx=0）的所有角度RCS数据
+            sample_idx = 0
+            rcs_sample = self.rcs_data[sample_idx]  # [91, 91, num_freq]
+            num_frequencies = rcs_sample.shape[-1]
+
+            self._log(f"样本索引: {sample_idx}")
+            self._log(f"RCS数据形状: {rcs_sample.shape}")
+            self._log(f"频率数量: {num_frequencies}")
+
+            # 转换为dB坐标
+            def to_db(rcs_linear):
+                """将线性RCS转换为dB"""
+                rcs_db = np.where(rcs_linear > 0, 10 * np.log10(rcs_linear), -100)
+                return rcs_db
+
+            # 清除旧图
+            for widget in self.viz_canvas_frame.winfo_children():
+                widget.destroy()
+
+            # 创建图形：每个频率一个子图
+            fig, axes = plt.subplots(1, num_frequencies, figsize=(5 * num_frequencies, 4))
+            if num_frequencies == 1:
+                axes = [axes]  # 统一为列表
+
+            # 频率标签
+            freq_labels = {
+                0: '1.5 GHz',
+                1: '3.0 GHz',
+                2: '6.0 GHz'
+            }
+
+            # 角度范围
+            theta_range = np.linspace(45, 135, 91)
+            phi_range = np.linspace(-45, 45, 91)
+
+            # 绘制每个频率的RCS热图
+            for freq_idx in range(num_frequencies):
+                ax = axes[freq_idx]
+
+                # 提取当前频率的RCS数据并转换为dB
+                rcs_freq = rcs_sample[:, :, freq_idx]  # [91, 91]
+                rcs_db = to_db(rcs_freq)
+
+                # 统计信息
+                valid_mask = rcs_db > -100
+                if valid_mask.sum() > 0:
+                    min_val = rcs_db[valid_mask].min()
+                    max_val = rcs_db[valid_mask].max()
+                    mean_val = rcs_db[valid_mask].mean()
+                else:
+                    min_val = max_val = mean_val = -100
+
+                self._log(f"  频率 {freq_labels.get(freq_idx, f'{freq_idx}')}:")
+                self._log(f"    - 范围: [{min_val:.2f}, {max_val:.2f}] dB")
+                self._log(f"    - 均值: {mean_val:.2f} dB")
+
+                # 绘制热图
+                im = ax.imshow(
+                    rcs_db.T,  # 转置：theta为x轴，phi为y轴
+                    extent=[theta_range[0], theta_range[-1], phi_range[0], phi_range[-1]],
+                    origin='lower',
+                    aspect='auto',
+                    cmap='jet',
+                    vmin=min_val,
+                    vmax=max_val
+                )
+
+                ax.set_xlabel('θ (度)')
+                ax.set_ylabel('φ (度)')
+                ax.set_title(f'{freq_labels.get(freq_idx, f"Freq {freq_idx}")} - 样本001\n范围: [{min_val:.1f}, {max_val:.1f}] dB')
+                ax.grid(True, alpha=0.3, linestyle='--')
+
+                # 添加颜色条
+                plt.colorbar(im, ax=ax, label='RCS (dB)')
+
+            plt.tight_layout()
+
+            # 嵌入到GUI
+            canvas = FigureCanvasTkAgg(fig, master=self.viz_canvas_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            self._log("")
+            self._log("✅ 可视化完成！数据加载流程验证成功。")
+            self._log("=" * 60)
+
+            # 切换到可视化测试标签页
+            self.result_notebook.select(2)  # 第3个标签页（索引2）
+
+        except Exception as e:
+            import traceback
+            error_msg = f"可视化失败: {str(e)}\n{traceback.format_exc()}"
+            self._log(f"❌ {error_msg}")
+            messagebox.showerror("错误", error_msg)
 
     def _plot_training_curves(self):
         """绘制训练曲线"""
