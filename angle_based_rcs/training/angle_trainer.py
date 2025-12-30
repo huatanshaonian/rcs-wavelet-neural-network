@@ -115,7 +115,8 @@ class AngleRCSTrainer:
         }
 
         # 停止标志
-        self.stop_flag = False
+        self.stop_flag = False  # 优雅停止（等待epoch完成）
+        self.immediate_stop_flag = False  # 急停（立即停止）
 
     def _create_optimizer_and_scheduler(self,
                                         lr: float = 1e-4,
@@ -224,17 +225,26 @@ class AngleRCSTrainer:
             平均训练损失
         """
         self.model.train()
-        total_loss = 0.0
         total_samples = 0
         num_batches = len(train_loader)
 
-        # 检测GPU预加载模式（仅第一个batch检测一次）
-        gpu_preloaded = None
+        # 预先检测GPU预加载模式（避免循环内条件判断）
+        first_batch = next(iter(train_loader))
+        gpu_preloaded = (first_batch['theta'].device.type == 'cuda')
+
+        # 初始化total_loss为tensor或float（根据是否使用LBFGS）
+        if is_lbfgs:
+            total_loss = 0.0  # LBFGS必须用.item()，保持float
+        else:
+            # 标准优化器：使用tensor累积（延迟同步）
+            total_loss = torch.tensor(0.0, device=self.device if gpu_preloaded else 'cpu')
 
         for batch_idx, batch in enumerate(train_loader, 1):
-            # 首次迭代时检测GPU预加载模式
-            if gpu_preloaded is None:
-                gpu_preloaded = (batch['theta'].device.type == 'cuda')
+            # 检查急停标志
+            if self.immediate_stop_flag:
+                if log_fn:
+                    log_fn(f"\n🛑 急停触发! (Epoch {epoch}, Batch {batch_idx}/{num_batches})")
+                raise KeyboardInterrupt("训练被急停中断")
 
             # 数据移动优化：GPU预加载模式直接使用，常规模式才.to(device)
             if gpu_preloaded:
@@ -264,7 +274,7 @@ class AngleRCSTrainer:
                     return loss
 
                 loss = optimizer.step(closure)
-                total_loss += loss.item() * batch_size
+                total_loss += loss.item() * batch_size  # LBFGS强制同步
             else:
                 # 标准优化器
                 optimizer.zero_grad()
@@ -273,23 +283,22 @@ class AngleRCSTrainer:
                 loss.backward()
                 optimizer.step()
 
-                # 延迟同步优化：不是每个batch都调用loss.item()
-                # 累积loss tensor，定期同步（减少GPU-CPU同步次数）
+                # 延迟同步：累积loss tensor（不触发CPU-GPU传输）
                 total_loss += loss.detach() * batch_size
 
             total_samples += batch_size
 
-            # 定期输出batch进度（此时才同步loss）
+            # 定期输出batch进度（临时同步，但不改变total_loss类型）
             if log_fn and print_batch_every > 0 and batch_idx % print_batch_every == 0:
-                # 仅在需要输出时同步
                 if isinstance(total_loss, torch.Tensor):
-                    total_loss = total_loss.item()
-                current_avg_loss = total_loss / total_samples
+                    current_avg_loss = (total_loss / total_samples).item()  # 临时读取，不修改total_loss
+                else:
+                    current_avg_loss = total_loss / total_samples
                 progress_pct = 100.0 * batch_idx / num_batches
                 log_fn(f"  Epoch {epoch} - Batch [{batch_idx:4d}/{num_batches}] ({progress_pct:5.1f}%) | "
                        f"Avg Loss: {current_avg_loss:.6f}")
 
-        # 最终同步（如果还未同步）
+        # 最终同步
         if isinstance(total_loss, torch.Tensor):
             total_loss = total_loss.item()
 
@@ -309,18 +318,17 @@ class AngleRCSTrainer:
             平均验证损失
         """
         self.model.eval()
-        total_loss = 0.0
         total_samples = 0
 
-        # 检测GPU预加载模式（仅第一个batch检测一次）
-        gpu_preloaded = None
+        # 预先检测GPU预加载模式（避免循环内条件判断）
+        first_batch = next(iter(val_loader))
+        gpu_preloaded = (first_batch['theta'].device.type == 'cuda')
+
+        # 初始化total_loss为tensor（延迟同步）
+        total_loss = torch.tensor(0.0, device=self.device if gpu_preloaded else 'cpu')
 
         with torch.no_grad():
             for batch in val_loader:
-                # 首次迭代时检测GPU预加载模式
-                if gpu_preloaded is None:
-                    gpu_preloaded = (batch['theta'].device.type == 'cuda')
-
                 # 数据移动优化：GPU预加载模式直接使用，常规模式才.to(device)
                 if gpu_preloaded:
                     # 数据已在GPU，零拷贝直接使用
@@ -342,13 +350,12 @@ class AngleRCSTrainer:
                 rcs_pred = self.model(theta, phi, params, freq_idx).squeeze()
                 loss = criterion(rcs_pred, target_rcs)
 
-                # 延迟同步：累积loss tensor
+                # 延迟同步：累积loss tensor（不触发CPU-GPU传输）
                 total_loss += loss.detach() * batch_size
                 total_samples += batch_size
 
         # 最终同步
-        if isinstance(total_loss, torch.Tensor):
-            total_loss = total_loss.item()
+        total_loss = total_loss.item()
 
         return total_loss / total_samples
 
@@ -542,19 +549,30 @@ class AngleRCSTrainer:
 
     def stop(self):
         """
-        停止训练
+        优雅停止训练
 
         设置停止标志，训练循环会在下一个epoch开始前检查并退出。
+        已完成的epoch数据会被保留，最佳模型会被恢复。
         """
         self.stop_flag = True
 
+    def immediate_stop(self):
+        """
+        立即停止训练（急停）
+
+        设置急停标志，训练循环会在下一个batch开始前立即退出。
+        当前epoch的训练进度会丢失，但之前的最佳模型仍会被保留。
+        """
+        self.immediate_stop_flag = True
+
     def reset_stop_flag(self):
         """
-        重置停止标志
+        重置所有停止标志
 
         在开始新的训练前调用，确保停止标志为False。
         """
         self.stop_flag = False
+        self.immediate_stop_flag = False
 
 
 if __name__ == "__main__":

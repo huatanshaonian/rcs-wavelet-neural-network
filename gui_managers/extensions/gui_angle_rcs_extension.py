@@ -311,12 +311,15 @@ class AngleRCSExtension:
         ttk.Button(button_frame, text="停止训练", command=self._stop_training).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
 
         # 第三行按钮
-        ttk.Button(button_frame, text="保存模型", command=self._save_model).grid(row=2, column=0, sticky="ew", padx=2, pady=2)
-        ttk.Button(button_frame, text="加载模型", command=self._load_model).grid(row=2, column=1, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="急停", command=self._immediate_stop_training, style="Danger.TButton").grid(row=2, column=0, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="保存模型", command=self._save_model).grid(row=2, column=1, sticky="ew", padx=2, pady=2)
 
         # 第四行按钮
-        ttk.Button(button_frame, text="评估模型", command=self._evaluate_model).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
-        ttk.Button(button_frame, text="可视化测试", command=self._visualize_test_data).grid(row=3, column=1, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="加载模型", command=self._load_model).grid(row=3, column=0, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="评估模型", command=self._evaluate_model).grid(row=3, column=1, sticky="ew", padx=2, pady=2)
+
+        # 第五行按钮
+        ttk.Button(button_frame, text="可视化测试", command=self._visualize_test_data).grid(row=4, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
 
         # 配置列权重
         button_frame.columnconfigure(0, weight=1)
@@ -573,6 +576,18 @@ class AngleRCSExtension:
             # 绘制训练曲线
             self.main_gui.after(0, self._plot_training_curves)
 
+        except KeyboardInterrupt:
+            # 急停中断
+            self._log("")
+            self._log("=" * 60)
+            self._log("🛑 训练被急停中断")
+            self._log("=" * 60)
+            self._log("提示：之前的最佳模型已保留")
+
+            # 仍然绘制训练曲线（已完成的部分）
+            if self.training_history is not None:
+                self.main_gui.after(0, self._plot_training_curves)
+
         except Exception as e:
             error_msg = f"训练失败: {str(e)}"
             self._log(f"❌ {error_msg}")
@@ -583,7 +598,7 @@ class AngleRCSExtension:
             self.is_training = False
 
     def _stop_training(self):
-        """停止训练"""
+        """停止训练（优雅停止）"""
         if not self.is_training:
             messagebox.showinfo("提示", "当前没有正在进行的训练")
             return
@@ -604,6 +619,33 @@ class AngleRCSExtension:
             self._log("⏹️ 用户请求停止训练...")
             self.trainer.stop()
             self._log("已发送停止信号，等待当前epoch完成...")
+
+    def _immediate_stop_training(self):
+        """急停训练（立即停止）"""
+        if not self.is_training:
+            messagebox.showinfo("提示", "当前没有正在进行的训练")
+            return
+
+        if self.trainer is None:
+            messagebox.showwarning("警告", "训练器未初始化")
+            return
+
+        # 请求用户确认（警告更严厉）
+        result = messagebox.askyesno(
+            "⚠️ 确认急停",
+            "确定要立即停止训练吗？\n\n"
+            "⚠️ 警告：\n"
+            "• 当前batch将立即中断\n"
+            "• 当前epoch的训练进度会丢失\n"
+            "• 之前的最佳模型会被保留\n\n"
+            "建议使用'停止训练'等待epoch完成",
+            icon='warning'
+        )
+
+        if result:
+            self._log("🛑 用户请求急停训练...")
+            self.trainer.immediate_stop()
+            self._log("已发送急停信号，训练将立即中断...")
 
     def _save_model(self):
         """保存模型"""
