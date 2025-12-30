@@ -126,6 +126,7 @@ class NetworkRegistry:
 
     _networks: Dict[str, type] = {}
     _losses: Dict[str, type] = {}
+    _auto_discovered: set = set()  # 记录已自动发现的模块，防止重复
 
     @classmethod
     def register_network(cls, network_class: type):
@@ -221,8 +222,12 @@ class NetworkRegistry:
 
     @classmethod
     def auto_discover_networks(cls, module_names: List[str]):
-        """自动发现并注册网络"""
+        """自动发现并注册网络（防重复执行）"""
         for module_name in module_names:
+            # 检查是否已经发现过此模块
+            if module_name in cls._auto_discovered:
+                continue  # 静默跳过已发现的模块
+
             try:
                 module = importlib.import_module(module_name)
 
@@ -237,6 +242,9 @@ class NetworkRegistry:
                         obj != BaseLoss and
                         not inspect.isabstract(obj)):
                         cls.register_loss(obj)
+
+                # 标记此模块已发现
+                cls._auto_discovered.add(module_name)
 
             except ImportError as e:
                 print(f"Warning: Could not import module '{module_name}': {e}")
