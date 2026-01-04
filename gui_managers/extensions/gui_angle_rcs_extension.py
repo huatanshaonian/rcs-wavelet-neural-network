@@ -654,7 +654,7 @@ class AngleRCSExtension:
             self._log("=" * 60)
 
             # 绘制训练曲线
-            self.main_gui.after(0, self._plot_training_curves)
+            self.main_gui.root.after(0, self._plot_training_curves)
 
         except KeyboardInterrupt:
             # 急停中断
@@ -666,7 +666,7 @@ class AngleRCSExtension:
 
             # 仍然绘制训练曲线（已完成的部分）
             if self.training_history is not None:
-                self.main_gui.after(0, self._plot_training_curves)
+                self.main_gui.root.after(0, self._plot_training_curves)
 
         except Exception as e:
             error_msg = f"训练失败: {str(e)}"
