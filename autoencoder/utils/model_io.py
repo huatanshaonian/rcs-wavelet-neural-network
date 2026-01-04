@@ -462,7 +462,7 @@ def validate_model_config(
             return False, f"配置缺少必需字段: '{field}'"
 
     # 验证字段值的合法性
-    valid_modes = ['wavelet', 'direct']
+    valid_modes = ['wavelet', 'direct', 'differentiable_wavelet']
     if config['mode'] not in valid_modes:
         return False, f"无效的mode: {config['mode']}（有效值: {valid_modes}）"
 
