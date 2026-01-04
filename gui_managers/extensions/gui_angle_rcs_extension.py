@@ -364,7 +364,8 @@ class AngleRCSExtension:
         ttk.Button(button_frame, text="评估模型", command=self._evaluate_model).grid(row=3, column=1, sticky="ew", padx=2, pady=2)
 
         # 第五行按钮
-        ttk.Button(button_frame, text="可视化测试", command=self._visualize_test_data).grid(row=4, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="查看训练曲线", command=self._show_training_curves).grid(row=4, column=0, sticky="ew", padx=2, pady=2)
+        ttk.Button(button_frame, text="可视化测试", command=self._visualize_test_data).grid(row=4, column=1, sticky="ew", padx=2, pady=2)
 
         # 第六行按钮
         ttk.Button(button_frame, text="初始化Loss归一化", command=self._initialize_loss_normalization).grid(row=5, column=0, columnspan=2, sticky="ew", padx=2, pady=2)
@@ -645,16 +646,16 @@ class AngleRCSExtension:
                 lr_decay_factor=self.angle_rcs_lr_decay_factor.get()  # multi_stage LR衰减因子
             )
 
-            # 保存训练历史
-            self.training_history = history
+            # 保存训练历史（转换为统一格式）
+            self.training_history = self._convert_training_history_format(history)
 
             self._log("")
             self._log("=" * 60)
             self._log("✅ 训练完成！")
             self._log("=" * 60)
 
-            # 绘制训练曲线
-            self.main_gui.root.after(0, self._plot_training_curves)
+            # 使用统一的可视化系统绘制训练曲线
+            self.main_gui.root.after(0, self._show_training_curves)
 
         except KeyboardInterrupt:
             # 急停中断
@@ -666,7 +667,7 @@ class AngleRCSExtension:
 
             # 仍然绘制训练曲线（已完成的部分）
             if self.training_history is not None:
-                self.main_gui.root.after(0, self._plot_training_curves)
+                self.main_gui.root.after(0, self._show_training_curves)
 
         except Exception as e:
             error_msg = f"训练失败: {str(e)}"
@@ -827,9 +828,14 @@ class AngleRCSExtension:
                     'num_frequencies': config['num_frequencies']
                 }
 
-                # 恢复训练历史
+                # 恢复训练历史（转换为统一格式）
                 if 'training_history' in checkpoint:
-                    self.training_history = checkpoint['training_history']
+                    raw_history = checkpoint['training_history']
+                    # 如果是旧格式（已转换），直接使用；否则转换
+                    if 'epochs' in raw_history:
+                        self.training_history = raw_history
+                    else:
+                        self.training_history = self._convert_training_history_format(raw_history)
 
                 # 更新GUI配置
                 self.angle_rcs_model_type.set('SimpleMLP_Baseline')
@@ -843,6 +849,12 @@ class AngleRCSExtension:
                 self._log(f"  • 归一化角度: {config['normalize_angles']}")
                 self._log(f"  • OneHot频率: {config['use_onehot_freq']}")
                 self._log(f"  • 傅里叶L: {config['fourier_L']}")
+
+                # 如果有训练历史，自动绘制训练曲线
+                if self.training_history is not None:
+                    self._log(f"  • 训练历史: {len(self.training_history.get('epochs', []))} epochs")
+                    self.main_gui.root.after(100, self._show_training_curves)
+
                 messagebox.showinfo("成功", f"SimpleMLP_Baseline模型已加载:\n{file_path}")
 
             else:
@@ -860,9 +872,14 @@ class AngleRCSExtension:
                     'num_frequencies': config['num_frequencies']
                 }
 
-                # 恢复训练历史
+                # 恢复训练历史（转换为统一格式）
                 if 'training_history' in checkpoint:
-                    self.training_history = checkpoint['training_history']
+                    raw_history = checkpoint['training_history']
+                    # 如果是旧格式（已转换），直接使用；否则转换
+                    if 'epochs' in raw_history:
+                        self.training_history = raw_history
+                    else:
+                        self.training_history = self._convert_training_history_format(raw_history)
 
                 # 更新GUI配置
                 self.angle_rcs_model_type.set('AngleRCSNetwork')
@@ -873,6 +890,12 @@ class AngleRCSExtension:
 
                 self._log(f"✅ AngleRCSNetwork模型已加载: {file_path}")
                 self._log(f"  • L={config['angle_L']}, embed_dim={config['param_embed_dim']}")
+
+                # 如果有训练历史，自动绘制训练曲线
+                if self.training_history is not None:
+                    self._log(f"  • 训练历史: {len(self.training_history.get('epochs', []))} epochs")
+                    self.main_gui.root.after(100, self._show_training_curves)
+
                 messagebox.showinfo("成功", f"AngleRCSNetwork模型已加载:\n{file_path}")
 
         except Exception as e:
@@ -1090,8 +1113,74 @@ class AngleRCSExtension:
             self._log(f"❌ {error_msg}")
             messagebox.showerror("错误", error_msg)
 
-    def _plot_training_curves(self):
-        """绘制训练曲线"""
+    def _convert_training_history_format(self, history):
+        """
+        将训练器返回的历史格式转换为HistoryPlotter期望的格式
+
+        训练器格式：
+        {
+            'train_losses': [...],
+            'val_losses': [...],
+            'learning_rates': [...],
+            'best_epoch': ...,
+            'best_val_loss': ...
+        }
+
+        HistoryPlotter格式：
+        {
+            'epochs': [...],
+            'train_loss': [...],
+            'val_loss': [...],
+            'learning_rates': [...]
+        }
+        """
+        if history is None:
+            return None
+
+        # 转换格式
+        num_epochs = len(history.get('train_losses', []))
+        converted = {
+            'epochs': list(range(1, num_epochs + 1)),
+            'train_loss': history.get('train_losses', []),
+            'val_loss': history.get('val_losses', []),
+            'learning_rates': history.get('learning_rates', []),
+            'best_epoch': history.get('best_epoch', 0),
+            'best_val_loss': history.get('best_val_loss', 0)
+        }
+
+        return converted
+
+    def _show_training_curves(self):
+        """使用统一的可视化系统显示训练曲线"""
+        if self.training_history is None:
+            messagebox.showwarning("警告", "没有训练历史数据")
+            return
+
+        try:
+            # 临时保存到main_gui，供HistoryPlotter使用
+            original_history = getattr(self.main_gui, 'training_history', None)
+            self.main_gui.training_history = self.training_history
+
+            # 使用统一的可视化管理器
+            if hasattr(self.main_gui, 'visualization_manager'):
+                self.main_gui.visualization_manager.history_plotter.plot_training_history()
+            else:
+                self._log("⚠️ 可视化管理器不可用，使用简单绘图")
+                self._plot_training_curves_fallback()
+
+            # 恢复原始历史
+            if original_history is not None:
+                self.main_gui.training_history = original_history
+            elif hasattr(self.main_gui, 'training_history'):
+                delattr(self.main_gui, 'training_history')
+
+        except Exception as e:
+            self._log(f"显示训练曲线失败: {str(e)}")
+            import traceback
+            self._log(traceback.format_exc())
+
+    def _plot_training_curves_fallback(self):
+        """简单的训练曲线绘制（后备方案）"""
         if self.training_history is None:
             return
 
@@ -1104,8 +1193,9 @@ class AngleRCSExtension:
             fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
             # 绘制损失曲线
-            axes[0].plot(self.training_history['train_loss'], label='Train Loss', linewidth=2)
-            axes[0].plot(self.training_history['val_loss'], label='Val Loss', linewidth=2)
+            epochs = self.training_history.get('epochs', range(1, len(self.training_history['train_loss']) + 1))
+            axes[0].plot(epochs, self.training_history['train_loss'], label='Train Loss', linewidth=2)
+            axes[0].plot(epochs, self.training_history['val_loss'], label='Val Loss', linewidth=2)
             axes[0].set_xlabel('Epoch')
             axes[0].set_ylabel('Loss (MSE)')
             axes[0].set_title('Training and Validation Loss')
@@ -1114,7 +1204,7 @@ class AngleRCSExtension:
 
             # 绘制学习率曲线
             if 'learning_rates' in self.training_history:
-                axes[1].plot(self.training_history['learning_rates'], linewidth=2, color='orange')
+                axes[1].plot(epochs, self.training_history['learning_rates'], linewidth=2, color='orange')
                 axes[1].set_xlabel('Epoch')
                 axes[1].set_ylabel('Learning Rate')
                 axes[1].set_title('Learning Rate Schedule')
