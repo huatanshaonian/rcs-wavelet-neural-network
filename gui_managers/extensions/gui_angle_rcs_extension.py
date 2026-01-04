@@ -57,11 +57,19 @@ class AngleRCSExtension:
 
     def _init_extension_vars(self):
         """初始化扩展变量"""
+        # 模型类型选择
+        self.angle_rcs_model_type = tk.StringVar(value="AngleRCSNetwork")  # 模型类型
+
         # 模型配置
         self.angle_rcs_L = tk.IntVar(value=16)  # 傅里叶频率数量
         self.angle_rcs_param_embed_dim = tk.IntVar(value=128)  # 参数嵌入维度
         self.angle_rcs_activation = tk.StringVar(value="sin")  # 激活函数
         self.angle_rcs_dropout = tk.DoubleVar(value=0.1)  # Dropout率
+
+        # SimpleMLP_Baseline专属配置
+        self.angle_rcs_normalize_angles = tk.BooleanVar(value=True)  # 是否归一化角度
+        self.angle_rcs_use_onehot_freq = tk.BooleanVar(value=True)  # 是否使用one-hot编码频率
+        self.angle_rcs_fourier_L = tk.IntVar(value=0)  # 傅里叶L值（0=不使用）
 
         # 训练配置
         self.angle_rcs_epochs = tk.IntVar(value=200)  # 训练轮数
@@ -158,27 +166,64 @@ class AngleRCSExtension:
         model_frame = ttk.Frame(model_group)
         model_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # 傅里叶频率数量
-        ttk.Label(model_frame, text="傅里叶频率L:").grid(row=0, column=0, sticky="w")
-        ttk.Entry(model_frame, textvariable=self.angle_rcs_L, width=8).grid(row=0, column=1, sticky="w")
-        ttk.Label(model_frame, text="(8/16/32)").grid(row=0, column=2, sticky="w", padx=(5, 0))
+        # 模型类型选择
+        ttk.Label(model_frame, text="模型类型:").grid(row=0, column=0, sticky="w")
+        model_type_combo = ttk.Combobox(model_frame, textvariable=self.angle_rcs_model_type,
+                                       values=["AngleRCSNetwork", "SimpleMLP_Baseline"],
+                                       state="readonly", width=18)
+        model_type_combo.grid(row=0, column=1, columnspan=2, sticky="ew")
+
+        # 分隔线
+        ttk.Separator(model_frame, orient='horizontal').grid(row=1, column=0, columnspan=3, sticky="ew", pady=5)
+
+        # === AngleRCSNetwork专属配置 ===
+        # 傅里叶频率数量（AngleEncoder用）
+        ttk.Label(model_frame, text="角度傅里叶L:").grid(row=2, column=0, sticky="w")
+        ttk.Entry(model_frame, textvariable=self.angle_rcs_L, width=8).grid(row=2, column=1, sticky="w")
+        ttk.Label(model_frame, text="(8/16/32)").grid(row=2, column=2, sticky="w", padx=(5, 0))
 
         # 参数嵌入维度
-        ttk.Label(model_frame, text="参数嵌入维度:").grid(row=1, column=0, sticky="w", pady=(5, 0))
-        ttk.Entry(model_frame, textvariable=self.angle_rcs_param_embed_dim, width=8).grid(row=1, column=1, sticky="w", pady=(5, 0))
-        ttk.Label(model_frame, text="(64/128/256)").grid(row=1, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
+        ttk.Label(model_frame, text="参数嵌入维度:").grid(row=3, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(model_frame, textvariable=self.angle_rcs_param_embed_dim, width=8).grid(row=3, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(model_frame, text="(64/128/256)").grid(row=3, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
 
+        # 分隔线
+        ttk.Separator(model_frame, orient='horizontal').grid(row=4, column=0, columnspan=3, sticky="ew", pady=5)
+
+        # === SimpleMLP_Baseline专属配置 ===
+        ttk.Label(model_frame, text="【SimpleMLP配置】", font=("", 8, "bold")).grid(row=5, column=0, columnspan=3, sticky="w")
+
+        # 归一化角度
+        normalize_cb = ttk.Checkbutton(model_frame, text="归一化角度到[-1,1]",
+                                      variable=self.angle_rcs_normalize_angles)
+        normalize_cb.grid(row=6, column=0, columnspan=3, sticky="w", pady=(5, 0))
+
+        # OneHot频率编码
+        onehot_cb = ttk.Checkbutton(model_frame, text="使用OneHot编码频率",
+                                   variable=self.angle_rcs_use_onehot_freq)
+        onehot_cb.grid(row=7, column=0, columnspan=3, sticky="w", pady=(2, 0))
+
+        # 傅里叶L值
+        ttk.Label(model_frame, text="傅里叶L:").grid(row=8, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(model_frame, textvariable=self.angle_rcs_fourier_L, width=8).grid(row=8, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(model_frame, text="(0/4/8/16)").grid(row=8, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
+        ttk.Label(model_frame, text="💡 0=不使用傅里叶编码", font=("", 7)).grid(row=9, column=0, columnspan=3, sticky="w")
+
+        # 分隔线
+        ttk.Separator(model_frame, orient='horizontal').grid(row=10, column=0, columnspan=3, sticky="ew", pady=5)
+
+        # === 通用配置 ===
         # 激活函数
-        ttk.Label(model_frame, text="激活函数:").grid(row=2, column=0, sticky="w", pady=(5, 0))
+        ttk.Label(model_frame, text="激活函数:").grid(row=11, column=0, sticky="w", pady=(5, 0))
         activation_combo = ttk.Combobox(model_frame, textvariable=self.angle_rcs_activation,
-                                       values=["sin", "relu", "gelu", "swish", "tanh", "mish"],
+                                       values=["sin", "relu", "leaky_relu", "gelu", "swish", "tanh", "mish"],
                                        state="readonly", width=12)
-        activation_combo.grid(row=2, column=1, columnspan=2, sticky="ew", pady=(5, 0))
+        activation_combo.grid(row=11, column=1, columnspan=2, sticky="ew", pady=(5, 0))
 
         # Dropout率
-        ttk.Label(model_frame, text="Dropout率:").grid(row=3, column=0, sticky="w", pady=(5, 0))
-        ttk.Entry(model_frame, textvariable=self.angle_rcs_dropout, width=8).grid(row=3, column=1, sticky="w", pady=(5, 0))
-        ttk.Label(model_frame, text="(0.1-0.2)").grid(row=3, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
+        ttk.Label(model_frame, text="Dropout率:").grid(row=12, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(model_frame, textvariable=self.angle_rcs_dropout, width=8).grid(row=12, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(model_frame, text="(0.1-0.2)").grid(row=12, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
 
         # 2. 训练配置组
         training_group = ttk.LabelFrame(left_column, text="🎯 训练配置")
@@ -379,28 +424,54 @@ class AngleRCSExtension:
     def _create_model(self):
         """创建Angle-based RCS模型"""
         try:
-            from angle_based_rcs.models.angle_rcs_network import AngleRCSNetwork
-
             # 获取频率数量
             if not hasattr(self.main_gui, 'rcs_data') or self.main_gui.rcs_data is None:
                 messagebox.showwarning("警告", "请先加载数据！")
                 return
 
             num_frequencies = self.main_gui.rcs_data.shape[-1]  # 从RCS数据形状获取频率数量
+            model_type = self.angle_rcs_model_type.get()
 
-            # 创建模型
-            model = AngleRCSNetwork(
-                num_frequencies=num_frequencies,
-                angle_L=self.angle_rcs_L.get(),
-                param_dim=9,  # 固定9个设计参数
-                param_embed_dim=self.angle_rcs_param_embed_dim.get(),
-                activation=self.angle_rcs_activation.get(),
-                dropout_rate=self.angle_rcs_dropout.get()
-            )
+            self._log(f"正在创建模型: {model_type}")
+
+            # 根据model_type创建不同的模型
+            if model_type == "SimpleMLP_Baseline":
+                from angle_based_rcs.models.baselines import SimpleMLP_Baseline
+
+                model = SimpleMLP_Baseline(
+                    param_dim=9,
+                    num_frequencies=num_frequencies,
+                    hidden_dims=[256, 512, 512, 256],
+                    activation=self.angle_rcs_activation.get(),
+                    dropout_rate=self.angle_rcs_dropout.get(),
+                    normalize_angles=self.angle_rcs_normalize_angles.get(),
+                    use_onehot_freq=self.angle_rcs_use_onehot_freq.get(),
+                    fourier_L=self.angle_rcs_fourier_L.get()
+                )
+
+                # 记录SimpleMLP配置
+                config_desc = model.get_config_description()
+                self._log(f"  • SimpleMLP配置: {config_desc}")
+
+            else:  # AngleRCSNetwork
+                from angle_based_rcs.models.angle_rcs_network import AngleRCSNetwork
+
+                model = AngleRCSNetwork(
+                    num_frequencies=num_frequencies,
+                    angle_L=self.angle_rcs_L.get(),
+                    param_dim=9,
+                    param_embed_dim=self.angle_rcs_param_embed_dim.get(),
+                    activation=self.angle_rcs_activation.get(),
+                    dropout_rate=self.angle_rcs_dropout.get()
+                )
+
+                self._log(f"  • 角度傅里叶L: {self.angle_rcs_L.get()}")
+                self._log(f"  • 参数嵌入维度: {self.angle_rcs_param_embed_dim.get()}")
 
             # 保存系统
             self.angle_rcs_system = {
                 'model': model,
+                'model_type': model_type,
                 'num_frequencies': num_frequencies
             }
 
@@ -408,9 +479,8 @@ class AngleRCSExtension:
             param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
             self._log(f"✅ 模型创建成功！")
+            self._log(f"  • 模型类型: {model_type}")
             self._log(f"  • 频率数量: {num_frequencies}")
-            self._log(f"  • 傅里叶频率L: {self.angle_rcs_L.get()}")
-            self._log(f"  • 参数嵌入维度: {self.angle_rcs_param_embed_dim.get()}")
             self._log(f"  • 激活函数: {self.angle_rcs_activation.get()}")
             self._log(f"  • Dropout率: {self.angle_rcs_dropout.get()}")
             self._log(f"  • 总参数量: {param_count:,}")
@@ -419,6 +489,8 @@ class AngleRCSExtension:
         except Exception as e:
             error_msg = f"模型创建失败: {str(e)}"
             self._log(f"❌ {error_msg}")
+            import traceback
+            self._log(traceback.format_exc())
             messagebox.showerror("错误", error_msg)
 
     def _load_data(self):
@@ -672,17 +744,40 @@ class AngleRCSExtension:
             if not file_path:
                 return
 
-            # 准备保存内容
-            save_dict = {
-                'model_state_dict': self.angle_rcs_system['model'].state_dict(),
-                'model_config': {
+            # 获取模型类型
+            model_type = self.angle_rcs_model_type.get()
+
+            # 准备保存内容（根据模型类型）
+            if model_type == "SimpleMLP_Baseline":
+                # SimpleMLP_Baseline配置
+                model_config = {
+                    'model_type': 'SimpleMLP_Baseline',
+                    'num_frequencies': self.angle_rcs_system['num_frequencies'],
+                    'param_dim': 9,
+                    'hidden_dims': [256, 512, 512, 256],
+                    'activation': self.angle_rcs_activation.get(),
+                    'dropout_rate': self.angle_rcs_dropout.get(),
+                    'normalize_angles': self.angle_rcs_normalize_angles.get(),
+                    'use_onehot_freq': self.angle_rcs_use_onehot_freq.get(),
+                    'fourier_L': self.angle_rcs_fourier_L.get(),
+                    'theta_range': (45.0, 135.0),
+                    'phi_range': (-45.0, 45.0)
+                }
+            else:
+                # AngleRCSNetwork配置（默认）
+                model_config = {
+                    'model_type': 'AngleRCSNetwork',
                     'num_frequencies': self.angle_rcs_system['num_frequencies'],
                     'angle_L': self.angle_rcs_L.get(),
                     'param_dim': 9,
                     'param_embed_dim': self.angle_rcs_param_embed_dim.get(),
                     'activation': self.angle_rcs_activation.get(),
                     'dropout_rate': self.angle_rcs_dropout.get()
-                },
+                }
+
+            save_dict = {
+                'model_state_dict': self.angle_rcs_system['model'].state_dict(),
+                'model_config': model_config,
                 'training_history': self.training_history
             }
 
@@ -690,7 +785,8 @@ class AngleRCSExtension:
             torch.save(save_dict, file_path)
 
             self._log(f"✅ 模型已保存到: {file_path}")
-            messagebox.showinfo("成功", f"模型已保存到:\n{file_path}")
+            self._log(f"  • 模型类型: {model_type}")
+            messagebox.showinfo("成功", f"模型已保存到:\n{file_path}\n\n模型类型: {model_type}")
 
         except Exception as e:
             error_msg = f"保存失败: {str(e)}"
@@ -700,8 +796,6 @@ class AngleRCSExtension:
     def _load_model(self):
         """加载模型"""
         try:
-            from angle_based_rcs.models.angle_rcs_network import AngleRCSNetwork
-
             # 选择模型文件
             file_path = filedialog.askopenfilename(
                 title="加载模型",
@@ -711,37 +805,81 @@ class AngleRCSExtension:
             if not file_path:
                 return
 
-            # 加载
+            # 加载checkpoint
             checkpoint = torch.load(file_path, map_location='cpu')
 
-            # 创建模型
+            # 获取模型配置
             config = checkpoint['model_config']
-            model = AngleRCSNetwork(**config)
-            model.load_state_dict(checkpoint['model_state_dict'])
+            model_type = config.get('model_type', 'AngleRCSNetwork')  # 向后兼容旧模型
 
-            # 保存系统
-            self.angle_rcs_system = {
-                'model': model,
-                'num_frequencies': config['num_frequencies']
-            }
+            # 根据模型类型创建模型
+            if model_type == 'SimpleMLP_Baseline':
+                from angle_based_rcs.models.baselines import SimpleMLP_Baseline
 
-            # 恢复训练历史
-            if 'training_history' in checkpoint:
-                self.training_history = checkpoint['training_history']
+                # 移除model_type键（不是模型参数）
+                model_params = {k: v for k, v in config.items() if k != 'model_type'}
+                model = SimpleMLP_Baseline(**model_params)
+                model.load_state_dict(checkpoint['model_state_dict'])
 
-            # 更新GUI配置
-            self.angle_rcs_L.set(config['angle_L'])
-            self.angle_rcs_param_embed_dim.set(config['param_embed_dim'])
-            self.angle_rcs_activation.set(config['activation'])
-            self.angle_rcs_dropout.set(config['dropout_rate'])
+                # 保存系统
+                self.angle_rcs_system = {
+                    'model': model,
+                    'num_frequencies': config['num_frequencies']
+                }
 
-            self._log(f"✅ 模型已加载: {file_path}")
-            self._log(f"  • 配置: L={config['angle_L']}, embed_dim={config['param_embed_dim']}")
-            messagebox.showinfo("成功", f"模型已加载:\n{file_path}")
+                # 恢复训练历史
+                if 'training_history' in checkpoint:
+                    self.training_history = checkpoint['training_history']
+
+                # 更新GUI配置
+                self.angle_rcs_model_type.set('SimpleMLP_Baseline')
+                self.angle_rcs_activation.set(config['activation'])
+                self.angle_rcs_dropout.set(config['dropout_rate'])
+                self.angle_rcs_normalize_angles.set(config['normalize_angles'])
+                self.angle_rcs_use_onehot_freq.set(config['use_onehot_freq'])
+                self.angle_rcs_fourier_L.set(config['fourier_L'])
+
+                self._log(f"✅ SimpleMLP_Baseline模型已加载: {file_path}")
+                self._log(f"  • 归一化角度: {config['normalize_angles']}")
+                self._log(f"  • OneHot频率: {config['use_onehot_freq']}")
+                self._log(f"  • 傅里叶L: {config['fourier_L']}")
+                messagebox.showinfo("成功", f"SimpleMLP_Baseline模型已加载:\n{file_path}")
+
+            else:
+                # AngleRCSNetwork（默认）
+                from angle_based_rcs.models.angle_rcs_network import AngleRCSNetwork
+
+                # 移除model_type键（不是模型参数）
+                model_params = {k: v for k, v in config.items() if k != 'model_type'}
+                model = AngleRCSNetwork(**model_params)
+                model.load_state_dict(checkpoint['model_state_dict'])
+
+                # 保存系统
+                self.angle_rcs_system = {
+                    'model': model,
+                    'num_frequencies': config['num_frequencies']
+                }
+
+                # 恢复训练历史
+                if 'training_history' in checkpoint:
+                    self.training_history = checkpoint['training_history']
+
+                # 更新GUI配置
+                self.angle_rcs_model_type.set('AngleRCSNetwork')
+                self.angle_rcs_L.set(config['angle_L'])
+                self.angle_rcs_param_embed_dim.set(config['param_embed_dim'])
+                self.angle_rcs_activation.set(config['activation'])
+                self.angle_rcs_dropout.set(config['dropout_rate'])
+
+                self._log(f"✅ AngleRCSNetwork模型已加载: {file_path}")
+                self._log(f"  • L={config['angle_L']}, embed_dim={config['param_embed_dim']}")
+                messagebox.showinfo("成功", f"AngleRCSNetwork模型已加载:\n{file_path}")
 
         except Exception as e:
+            import traceback
             error_msg = f"加载失败: {str(e)}"
             self._log(f"❌ {error_msg}")
+            self._log(f"详细错误:\n{traceback.format_exc()}")
             messagebox.showerror("错误", error_msg)
 
     def _evaluate_model(self):
