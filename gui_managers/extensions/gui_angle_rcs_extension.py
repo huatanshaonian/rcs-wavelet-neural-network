@@ -406,9 +406,25 @@ class AngleRCSExtension:
         log_frame = ttk.Frame(self.result_notebook)
         self.result_notebook.add(log_frame, text="训练日志")
 
+        # 顶部：系统状态显示区域（紧凑版）
+        status_group = ttk.LabelFrame(log_frame, text="系统状态")
+        status_group.pack(fill=tk.X, padx=5, pady=5)
+
+        # 状态文本（显示5行，紧凑显示完整参数信息）
+        self.status_text = tk.Text(status_group, wrap=tk.NONE, height=5, font=('Courier', 9))
+        status_scrollbar = ttk.Scrollbar(status_group, orient=tk.VERTICAL, command=self.status_text.yview)
+        self.status_text.configure(yscrollcommand=status_scrollbar.set)
+
+        self.status_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        status_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 5), pady=5)
+
+        # 底部：完整日志显示区域
+        log_group = ttk.LabelFrame(log_frame, text="完整日志")
+        log_group.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
         # 日志显示区域
         import tkinter.scrolledtext as scrolledtext
-        self.log_text = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, font=('Courier', 9))
+        self.log_text = scrolledtext.ScrolledText(log_group, wrap=tk.WORD, font=('Courier', 9))
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # 2. 训练曲线标签页
@@ -426,6 +442,116 @@ class AngleRCSExtension:
         # 可视化显示区域
         self.viz_canvas_frame = ttk.Frame(viz_frame)
         self.viz_canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 初始状态更新
+        self._update_angle_status_display()
+
+    def _update_angle_status_display(self):
+        """更新Angle-based RCS系统状态显示"""
+        if not hasattr(self, 'status_text'):
+            return
+
+        try:
+            status_info = []
+
+            # 第1行：模型架构信息
+            if self.angle_rcs_system is not None:
+                model_type = self.angle_rcs_system.get('model_type', 'N/A')
+                num_freq = self.angle_rcs_system.get('num_frequencies', 'N/A')
+
+                # 根据模型类型获取架构参数
+                if model_type == "AngleRCSNetwork":
+                    L = self.angle_rcs_L.get()
+                    param_dim = self.angle_rcs_param_embed_dim.get()
+                    activation = self.angle_rcs_activation.get()
+                    dropout = self.angle_rcs_dropout.get()
+                    arch_info = f"L={L} | ParamDim={param_dim} | Act={activation} | Drop={dropout}"
+                elif model_type == "SimpleMLP_Baseline":
+                    normalize_angles = "✓" if self.angle_rcs_normalize_angles.get() else "✗"
+                    use_onehot = "✓" if self.angle_rcs_use_onehot_freq.get() else "✗"
+                    fourier_L = self.angle_rcs_fourier_L.get()
+                    activation = self.angle_rcs_activation.get()
+                    arch_info = f"NormAngle={normalize_angles} | OneHot={use_onehot} | FourierL={fourier_L} | Act={activation}"
+                else:
+                    arch_info = "N/A"
+
+                status_info.append(f"【模型】类型:{model_type} | 频率数:{num_freq} | {arch_info}")
+            else:
+                status_info.append("【模型】未创建")
+
+            # 第2行：数据配置 + 系统状态
+            model_status = "✓" if self.angle_rcs_system else "✗"
+            data_status = "✓" if (self.rcs_data is not None and self.param_data is not None) else "✗"
+            train_loader_status = "✓" if self.train_loader else "✗"
+
+            data_info = ""
+            if self.rcs_data is not None:
+                num_models = len(self.rcs_data)
+                if self.filter_models is not None:
+                    data_info = f"模型数:{num_models} (单模型测试: {self.filter_models})"
+                else:
+                    data_info = f"模型数:{num_models}"
+
+                # 数据集大小
+                if self.train_loader:
+                    train_size = len(self.train_loader.dataset)
+                    val_size = len(self.val_loader.dataset) if self.val_loader else 0
+                    data_info += f" | 训练:{train_size:,}点 验证:{val_size:,}点"
+
+            status_info.append(f"【数据】{data_info} | 状态: 模型{model_status} 数据{data_status} Loader{train_loader_status}")
+
+            # 第3行：训练配置 + 性能
+            if self.training_history is not None:
+                # 训练配置
+                epochs = self.angle_rcs_epochs.get()
+                batch_size = self.angle_rcs_batch_size.get()
+                lr = self.angle_rcs_lr.get()
+                optimizer = self.angle_rcs_optimizer.get()
+                scheduler = self.angle_rcs_scheduler.get()
+
+                # 训练性能
+                train_losses = self.training_history.get('train_losses', [])
+                val_losses = self.training_history.get('val_losses', [])
+                best_epoch = self.training_history.get('best_epoch', 'N/A')
+                best_val_loss = self.training_history.get('best_val_loss', 'N/A')
+
+                if train_losses and val_losses:
+                    final_train = train_losses[-1]
+                    final_val = val_losses[-1]
+                    perf_str = f" | 最佳:Loss={best_val_loss:.6f}@Epoch{best_epoch} | 最终:Train={final_train:.6f} Val={final_val:.6f}"
+                else:
+                    perf_str = ""
+
+                status_info.append(f"【训练】Epochs={epochs} | Batch={batch_size} | LR={lr} | Optim={optimizer} | Sched={scheduler}{perf_str}")
+            else:
+                status_info.append("【训练】未开始训练")
+
+            # 第4行：数据预处理配置
+            train_split = self.angle_rcs_train_split.get()
+            normalize_params = "✓" if self.angle_rcs_normalize_params.get() else "✗"
+            gpu_preload = "✓" if self.angle_rcs_preload_gpu.get() else "✗"
+            use_subset = "✓" if self.angle_rcs_use_subset.get() else "✗"
+            subset_size = self.angle_rcs_subset_size.get() if self.angle_rcs_use_subset.get() else "N/A"
+
+            status_info.append(f"【配置】训练集={train_split*100:.0f}% | 参数标准化={normalize_params} | GPU预加载={gpu_preload} | 使用子集={use_subset}({subset_size})")
+
+            # 第5行：Loss归一化状态
+            if self.angle_rcs_system and 'loss_normalization_factor' in self.angle_rcs_system:
+                factor = self.angle_rcs_system['loss_normalization_factor']
+                status_info.append(f"【归一化】Loss归一化系数: {factor:.6f}")
+            else:
+                status_info.append("【归一化】未初始化Loss归一化（默认系数=1.0）")
+
+            # 更新显示
+            self.status_text.config(state=tk.NORMAL)
+            self.status_text.delete(1.0, tk.END)
+            self.status_text.insert(tk.END, "\n".join(status_info))
+            self.status_text.config(state=tk.DISABLED)
+
+        except Exception as e:
+            print(f"更新状态显示失败: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_subset_toggle(self):
         """切换子集选项时的回调"""
@@ -515,6 +641,9 @@ class AngleRCSExtension:
             self._log(f"  • Dropout率: {self.angle_rcs_dropout.get()}")
             self._log(f"  • 总参数量: {param_count:,}")
             self._log("")
+
+            # 更新状态显示
+            self._update_angle_status_display()
 
         except Exception as e:
             error_msg = f"模型创建失败: {str(e)}"
@@ -619,6 +748,9 @@ class AngleRCSExtension:
             self._log(f"  • 验证批次数: {val_batches:,}")
             self._log("")
 
+            # 更新状态显示
+            self._update_angle_status_display()
+
         except Exception as e:
             import traceback
             error_msg = f"数据加载失败: {str(e)}\n{traceback.format_exc()}"
@@ -710,6 +842,9 @@ class AngleRCSExtension:
             self._log("=" * 60)
             self._log("✅ 训练完成！")
             self._log("=" * 60)
+
+            # 更新状态显示
+            self._update_angle_status_display()
 
             # 使用统一的可视化系统绘制训练曲线
             self.main_gui.root.after(0, self._show_training_curves)
@@ -924,6 +1059,9 @@ class AngleRCSExtension:
                     self._log(f"  • 训练历史: {len(self.training_history.get('epochs', []))} epochs")
                     self.main_gui.root.after(100, self._show_training_curves)
 
+                # 更新状态显示
+                self._update_angle_status_display()
+
                 messagebox.showinfo("成功", f"SimpleMLP_Baseline模型已加载:\n{file_path}")
 
             else:
@@ -970,6 +1108,9 @@ class AngleRCSExtension:
                 if self.training_history is not None:
                     self._log(f"  • 训练历史: {len(self.training_history.get('epochs', []))} epochs")
                     self.main_gui.root.after(100, self._show_training_curves)
+
+                # 更新状态显示
+                self._update_angle_status_display()
 
                 messagebox.showinfo("成功", f"AngleRCSNetwork模型已加载:\n{file_path}")
 
@@ -1065,6 +1206,9 @@ class AngleRCSExtension:
             self._log(f"  • 归一化系数: {loss_normalization_factor:.6f}")
             self._log(f"  • 归一化后Loss: {initial_loss * loss_normalization_factor:.6f}")
             self._log("=" * 60)
+
+            # 更新状态显示
+            self._update_angle_status_display()
 
             messagebox.showinfo("成功",
                 f"Loss归一化初始化成功！\n\n"
