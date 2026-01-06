@@ -51,6 +51,7 @@ class AngleRCSExtension:
         self.sampler = None
         self.rcs_data = None  # 原始RCS数据
         self.param_data = None  # 原始参数数据
+        self.filter_models = None  # 单模型测试模式的模型索引列表
 
         # 扩展变量
         self._init_extension_vars()
@@ -564,6 +565,9 @@ class AngleRCSExtension:
                     messagebox.showerror("错误", f"模型索引格式错误！\n请使用逗号分隔的整数，如: 0 或 0,1,2\n错误: {e}")
                     return
 
+            # 保存filter_models供可视化使用
+            self.filter_models = filter_models
+
             self._log(f"数据配置:")
             self._log(f"  • RCS数据形状: {self.rcs_data.shape}")
             self._log(f"  • 参数数据形状: {self.param_data.shape}")
@@ -1057,16 +1061,29 @@ class AngleRCSExtension:
             return
 
         try:
+            # 确定实际的模型编号
+            if self.filter_models is not None and len(self.filter_models) > 0:
+                # 单模型测试模式：显示第一个被选中的模型
+                actual_model_idx = self.filter_models[0]
+                model_label = f"model_{actual_model_idx+1:03d}"
+                data_idx = 0  # 过滤后数据的索引0
+            else:
+                # 全模型模式：显示model_001
+                actual_model_idx = 0
+                model_label = "model_001"
+                data_idx = 0
+
             self._log("=" * 60)
-            self._log("开始可视化测试数据（样本001）")
+            self._log(f"开始可视化测试数据（{model_label}）")
             self._log("=" * 60)
 
-            # 提取001样本（sample_idx=0）的所有角度RCS数据
-            sample_idx = 0
-            rcs_sample = self.rcs_data[sample_idx]  # [91, 91, num_freq]
+            # 提取样本的所有角度RCS数据
+            rcs_sample = self.rcs_data[data_idx]  # [91, 91, num_freq]
             num_frequencies = rcs_sample.shape[-1]
 
-            self._log(f"样本索引: {sample_idx}")
+            self._log(f"模型编号: {model_label}")
+            if self.filter_models is not None:
+                self._log(f"  (单模型测试模式，原始索引: {actual_model_idx})")
             self._log(f"RCS数据形状: {rcs_sample.shape}")
             self._log(f"频率数量: {num_frequencies}")
 
@@ -1130,7 +1147,7 @@ class AngleRCSExtension:
 
                 ax.set_xlabel('θ (度)')
                 ax.set_ylabel('φ (度)')
-                ax.set_title(f'{freq_labels.get(freq_idx, f"Freq {freq_idx}")} - 样本001\n范围: [{min_val:.1f}, {max_val:.1f}] dB')
+                ax.set_title(f'{freq_labels.get(freq_idx, f"Freq {freq_idx}")} - {model_label}\n范围: [{min_val:.1f}, {max_val:.1f}] dB')
                 ax.grid(True, alpha=0.3, linestyle='--')
 
                 # 添加颜色条
