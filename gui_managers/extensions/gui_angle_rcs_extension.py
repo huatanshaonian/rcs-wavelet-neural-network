@@ -1236,27 +1236,39 @@ class AngleRCSExtension:
             for widget in self.curve_canvas_frame.winfo_children():
                 widget.destroy()
 
-            # 创建图形
-            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+            # 创建图形（上下布局，增加高度）
+            fig, axes = plt.subplots(2, 1, figsize=(12, 8))
 
-            # 绘制损失曲线
+            # 绘制损失曲线（上图）
             epochs = self.training_history.get('epochs', range(1, len(self.training_history['train_loss']) + 1))
-            axes[0].plot(epochs, self.training_history['train_loss'], label='Train Loss', linewidth=2)
-            axes[0].plot(epochs, self.training_history['val_loss'], label='Val Loss', linewidth=2)
-            axes[0].set_xlabel('Epoch')
-            axes[0].set_ylabel('Loss (MSE)')
-            axes[0].set_title('Training and Validation Loss')
-            axes[0].legend()
-            axes[0].grid(True, alpha=0.3)
+            axes[0].semilogy(epochs, self.training_history['train_loss'], label='Train Loss', linewidth=2, marker='o', markersize=3)
+            axes[0].semilogy(epochs, self.training_history['val_loss'], label='Val Loss', linewidth=2, marker='s', markersize=3)
+            axes[0].set_xlabel('Epoch', fontsize=12, fontweight='bold')
+            axes[0].set_ylabel('Loss (MSE, log scale)', fontsize=12, fontweight='bold')
+            axes[0].set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
+            axes[0].legend(fontsize=11)
+            axes[0].grid(True, alpha=0.3, linestyle='--')
 
-            # 绘制学习率曲线
-            if 'learning_rates' in self.training_history:
-                axes[1].plot(epochs, self.training_history['learning_rates'], linewidth=2, color='orange')
-                axes[1].set_xlabel('Epoch')
-                axes[1].set_ylabel('Learning Rate')
-                axes[1].set_title('Learning Rate Schedule')
-                axes[1].grid(True, alpha=0.3)
+            # 标记最佳epoch
+            if 'best_epoch' in self.training_history and self.training_history['best_epoch'] > 0:
+                best_epoch = self.training_history['best_epoch']
+                best_val_loss = self.training_history.get('best_val_loss', 0)
+                axes[0].axvline(x=best_epoch, color='red', linestyle='--', alpha=0.5, label=f'Best Epoch: {best_epoch}')
+                axes[0].plot(best_epoch, best_val_loss, 'r*', markersize=15, label=f'Best Val Loss: {best_val_loss:.6f}')
+                axes[0].legend(fontsize=11)
+
+            # 绘制学习率曲线（下图）
+            if 'learning_rates' in self.training_history and len(self.training_history['learning_rates']) > 0:
+                axes[1].plot(epochs, self.training_history['learning_rates'], linewidth=2, color='orange', marker='D', markersize=3)
+                axes[1].set_xlabel('Epoch', fontsize=12, fontweight='bold')
+                axes[1].set_ylabel('Learning Rate', fontsize=12, fontweight='bold')
+                axes[1].set_title('Learning Rate Schedule', fontsize=14, fontweight='bold')
+                axes[1].grid(True, alpha=0.3, linestyle='--')
                 axes[1].set_yscale('log')
+            else:
+                axes[1].text(0.5, 0.5, 'No Learning Rate Data', ha='center', va='center',
+                            fontsize=14, fontweight='bold', transform=axes[1].transAxes)
+                axes[1].set_title('Learning Rate Schedule', fontsize=14, fontweight='bold')
 
             plt.tight_layout()
 
