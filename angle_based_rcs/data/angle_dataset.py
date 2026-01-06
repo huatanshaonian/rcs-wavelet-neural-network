@@ -318,6 +318,8 @@ def create_dataloaders(
         train_loader: 训练集DataLoader
         test_loader: 测试集DataLoader
         sampler: AngleSampler对象
+        param_mean: 参数均值 [9,]（如果normalize_params=True）
+        param_std: 参数标准差 [9,]（如果normalize_params=True）
     """
     # 单模型测试模式：过滤数据
     if filter_models is not None:
@@ -442,7 +444,15 @@ def create_dataloaders(
         drop_last=False  # 测试集保留所有数据
     )
 
-    return train_loader, test_loader, sampler
+    # 获取参数标准化统计信息（用于模型保存和可视化）
+    if normalize_params:
+        param_mean = train_dataset.param_mean
+        param_std = train_dataset.param_std
+    else:
+        param_mean = None
+        param_std = None
+
+    return train_loader, test_loader, sampler, param_mean, param_std
 
 
 if __name__ == "__main__":

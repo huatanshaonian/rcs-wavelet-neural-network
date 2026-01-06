@@ -471,11 +471,20 @@ class ComparisonPlotter(BasePlotter):
             freq_idx = freq_map.get(freq_str, 0)
             sample_idx = int(model_id_str) - 1
 
+            # 标准化参数（如果训练时使用了标准化）
+            param_data_for_inference = current_param_data
+            if 'param_mean' in sys and 'param_std' in sys:
+                import numpy as np
+                param_mean = sys['param_mean']
+                param_std = sys['param_std']
+                param_data_for_inference = (current_param_data - param_mean) / param_std
+                print(f"  使用参数标准化: mean={param_mean.ravel()[:3]}, std={param_std.ravel()[:3]}")
+
             pred_rcs = reconstruct_rcs_grid(
                 model=model,
                 sample_idx=sample_idx,
                 freq_idx=freq_idx,
-                param_data=current_param_data,
+                param_data=param_data_for_inference,
                 device=device,
                 theta_range=(theta_values.min(), theta_values.max()),
                 phi_range=(phi_values.min(), phi_values.max()),

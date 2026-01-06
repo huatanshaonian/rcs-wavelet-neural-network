@@ -581,8 +581,8 @@ class AngleRCSExtension:
                 self._log(f"  • 单模型测试: 只使用 {len(filter_models)} 个模型")
             self._log("")
 
-            # 创建DataLoader
-            self.train_loader, self.val_loader, self.sampler = create_dataloaders(
+            # 创建DataLoader（返回标准化统计信息）
+            self.train_loader, self.val_loader, self.sampler, param_mean, param_std = create_dataloaders(
                 rcs_data=self.rcs_data,
                 param_data=self.param_data,
                 batch_size=self.angle_rcs_batch_size.get(),
@@ -595,6 +595,16 @@ class AngleRCSExtension:
                 preload_to_gpu=self.angle_rcs_preload_gpu.get(),
                 filter_models=filter_models  # 传递单模型测试参数
             )
+
+            # 保存标准化统计信息到angle_rcs_system（用于模型保存和可视化）
+            if param_mean is not None:
+                self.angle_rcs_system['param_mean'] = param_mean
+                self.angle_rcs_system['param_std'] = param_std
+                self._log(f"  • 参数标准化统计信息已保存")
+            else:
+                # 确保系统中没有旧的统计信息
+                self.angle_rcs_system.pop('param_mean', None)
+                self.angle_rcs_system.pop('param_std', None)
 
             # 统计信息
             total_train = len(self.train_loader.dataset)
@@ -829,6 +839,12 @@ class AngleRCSExtension:
                 'training_history': self.training_history
             }
 
+            # 保存参数标准化统计信息（如果有）
+            if 'param_mean' in self.angle_rcs_system:
+                save_dict['param_mean'] = self.angle_rcs_system['param_mean']
+                save_dict['param_std'] = self.angle_rcs_system['param_std']
+                self._log(f"  • 参数标准化统计信息已保存到checkpoint")
+
             # 保存
             torch.save(save_dict, file_path)
 
@@ -875,6 +891,12 @@ class AngleRCSExtension:
                     'num_frequencies': config['num_frequencies']
                 }
 
+                # 恢复参数标准化统计信息（如果有）
+                if 'param_mean' in checkpoint:
+                    self.angle_rcs_system['param_mean'] = checkpoint['param_mean']
+                    self.angle_rcs_system['param_std'] = checkpoint['param_std']
+                    self._log(f"  • 参数标准化统计信息已恢复")
+
                 # 恢复训练历史（转换为统一格式）
                 if 'training_history' in checkpoint:
                     raw_history = checkpoint['training_history']
@@ -918,6 +940,12 @@ class AngleRCSExtension:
                     'model': model,
                     'num_frequencies': config['num_frequencies']
                 }
+
+                # 恢复参数标准化统计信息（如果有）
+                if 'param_mean' in checkpoint:
+                    self.angle_rcs_system['param_mean'] = checkpoint['param_mean']
+                    self.angle_rcs_system['param_std'] = checkpoint['param_std']
+                    self._log(f"  • 参数标准化统计信息已恢复")
 
                 # 恢复训练历史（转换为统一格式）
                 if 'training_history' in checkpoint:
