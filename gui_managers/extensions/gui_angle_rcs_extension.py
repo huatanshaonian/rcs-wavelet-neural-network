@@ -1211,28 +1211,15 @@ class AngleRCSExtension:
         return converted
 
     def _show_training_curves(self):
-        """使用统一的可视化系统显示训练曲线"""
+        """显示训练曲线（在Angle-RCS自己的区域）"""
         if self.training_history is None:
             messagebox.showwarning("警告", "没有训练历史数据")
             return
 
         try:
-            # 临时保存到main_gui，供HistoryPlotter使用
-            original_history = getattr(self.main_gui, 'training_history', None)
-            self.main_gui.training_history = self.training_history
-
-            # 使用统一的可视化管理器
-            if hasattr(self.main_gui, 'visualization_manager'):
-                self.main_gui.visualization_manager.history_plotter.plot_training_history()
-            else:
-                self._log("⚠️ 可视化管理器不可用，使用简单绘图")
-                self._plot_training_curves_fallback()
-
-            # 恢复原始历史
-            if original_history is not None:
-                self.main_gui.training_history = original_history
-            elif hasattr(self.main_gui, 'training_history'):
-                delattr(self.main_gui, 'training_history')
+            # Angle-RCS有自己独立的绘图区域（curve_canvas_frame）
+            # 直接在自己的区域绘图，而不是使用主GUI的可视化系统
+            self._plot_training_curves_fallback()
 
         except Exception as e:
             self._log(f"显示训练曲线失败: {str(e)}")
