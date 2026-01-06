@@ -93,6 +93,10 @@ class AngleRCSExtension:
         self.angle_rcs_normalize_params = tk.BooleanVar(value=True)  # 是否标准化参数
         self.angle_rcs_preload_gpu = tk.BooleanVar(value=True)  # 是否预加载数据到GPU（默认开启）
 
+        # 单模型测试模式
+        self.angle_rcs_single_model_mode = tk.BooleanVar(value=False)  # 是否启用单模型测试
+        self.angle_rcs_single_model_indices = tk.StringVar(value="0")  # 模型索引（逗号分隔，如"0"或"0,1,2"）
+
     def extend_angle_rcs_tab(self):
         """扩展Angle-based RCS标签页"""
         # 检查是否已有angle_rcs_frame，如果没有则创建新标签页
@@ -216,14 +220,18 @@ class AngleRCSExtension:
         # 激活函数
         ttk.Label(model_frame, text="激活函数:").grid(row=11, column=0, sticky="w", pady=(5, 0))
         activation_combo = ttk.Combobox(model_frame, textvariable=self.angle_rcs_activation,
-                                       values=["sin", "relu", "leaky_relu", "gelu", "swish", "tanh", "mish"],
+                                       values=["leaky_relu", "relu", "gelu", "swish", "siren", "sin", "tanh", "mish"],
                                        state="readonly", width=12)
         activation_combo.grid(row=11, column=1, columnspan=2, sticky="ew", pady=(5, 0))
 
+        # 激活函数说明
+        ttk.Label(model_frame, text="💡 推荐: leaky_relu(物理) 或 siren(高频)",
+                 font=("", 7), foreground="gray").grid(row=12, column=0, columnspan=3, sticky="w")
+
         # Dropout率
-        ttk.Label(model_frame, text="Dropout率:").grid(row=12, column=0, sticky="w", pady=(5, 0))
-        ttk.Entry(model_frame, textvariable=self.angle_rcs_dropout, width=8).grid(row=12, column=1, sticky="w", pady=(5, 0))
-        ttk.Label(model_frame, text="(0.1-0.2)").grid(row=12, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
+        ttk.Label(model_frame, text="Dropout率:").grid(row=13, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(model_frame, textvariable=self.angle_rcs_dropout, width=8).grid(row=13, column=1, sticky="w", pady=(5, 0))
+        ttk.Label(model_frame, text="(0.1-0.2)").grid(row=13, column=2, sticky="w", padx=(5, 0), pady=(5, 0))
 
         # 2. 训练配置组
         training_group = ttk.LabelFrame(left_column, text="🎯 训练配置")
@@ -326,6 +334,18 @@ class AngleRCSExtension:
         self.subset_entry.grid(row=4, column=1, columnspan=2, sticky="ew", pady=(5, 0))
         self.subset_entry.config(state='disabled')  # 初始禁用
 
+        # 单模型测试模式
+        ttk.Checkbutton(data_frame, text="单模型测试 (快速验证网络表达力)",
+                       variable=self.angle_rcs_single_model_mode,
+                       command=self._on_single_model_toggle).grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 0))
+
+        # 模型索引输入
+        ttk.Label(data_frame, text="模型索引:").grid(row=6, column=0, sticky="w", pady=(5, 0))
+        self.single_model_entry = ttk.Entry(data_frame, textvariable=self.angle_rcs_single_model_indices, width=12)
+        self.single_model_entry.grid(row=6, column=1, columnspan=2, sticky="ew", pady=(5, 0))
+        self.single_model_entry.config(state='disabled')  # 初始禁用
+        ttk.Label(data_frame, text="(如: 0 或 0,1,2)", font=('Courier', 8), foreground="gray").grid(row=7, column=0, columnspan=3, sticky="w")
+
         # 数据说明
         info_text = """
 数据点数量：
@@ -336,9 +356,10 @@ class AngleRCSExtension:
 • 全局混合采样（80-20划分）
 • 支持子集训练（快速验证）
 • GPU预加载: ~300MB显存，极速训练
+• 单模型: 快速验证网络容量（训练提速10倍）
 """
         ttk.Label(data_frame, text=info_text, justify=tk.LEFT,
-                 font=('Courier', 8), foreground="gray").grid(row=5, column=0, columnspan=3, sticky="w", pady=(5, 0))
+                 font=('Courier', 8), foreground="gray").grid(row=8, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
         # 4. 控制按钮组
         control_group = ttk.LabelFrame(right_column, text="🎮 控制")
@@ -411,6 +432,13 @@ class AngleRCSExtension:
             self.subset_entry.config(state='normal')
         else:
             self.subset_entry.config(state='disabled')
+
+    def _on_single_model_toggle(self):
+        """切换单模型测试选项时的回调"""
+        if self.angle_rcs_single_model_mode.get():
+            self.single_model_entry.config(state='normal')
+        else:
+            self.single_model_entry.config(state='disabled')
 
     def _log(self, message):
         """输出日志到日志框和控制台"""
@@ -524,6 +552,18 @@ class AngleRCSExtension:
             num_frequencies = self.angle_rcs_system['num_frequencies']
             train_subset_size = self.angle_rcs_subset_size.get() if self.angle_rcs_use_subset.get() else None
 
+            # 处理单模型测试模式
+            filter_models = None
+            if self.angle_rcs_single_model_mode.get():
+                try:
+                    # 解析模型索引（逗号分隔）
+                    indices_str = self.angle_rcs_single_model_indices.get().strip()
+                    filter_models = [int(idx.strip()) for idx in indices_str.split(',')]
+                    self._log(f"🔍 单模型测试模式启用: 使用模型索引 {filter_models}")
+                except ValueError as e:
+                    messagebox.showerror("错误", f"模型索引格式错误！\n请使用逗号分隔的整数，如: 0 或 0,1,2\n错误: {e}")
+                    return
+
             self._log(f"数据配置:")
             self._log(f"  • RCS数据形状: {self.rcs_data.shape}")
             self._log(f"  • 参数数据形状: {self.param_data.shape}")
@@ -533,6 +573,8 @@ class AngleRCSExtension:
             self._log(f"  • GPU预加载: {self.angle_rcs_preload_gpu.get()}")
             if train_subset_size:
                 self._log(f"  • 训练子集大小: {train_subset_size:,}")
+            if filter_models is not None:
+                self._log(f"  • 单模型测试: 只使用 {len(filter_models)} 个模型")
             self._log("")
 
             # 创建DataLoader
@@ -546,7 +588,8 @@ class AngleRCSExtension:
                 train_subset_size=train_subset_size,
                 normalize_params=self.angle_rcs_normalize_params.get(),
                 num_workers=0,  # 固定为0（单进程）
-                preload_to_gpu=self.angle_rcs_preload_gpu.get()
+                preload_to_gpu=self.angle_rcs_preload_gpu.get(),
+                filter_models=filter_models  # 传递单模型测试参数
             )
 
             # 统计信息

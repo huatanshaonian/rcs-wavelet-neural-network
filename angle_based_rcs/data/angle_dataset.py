@@ -292,7 +292,8 @@ def create_dataloaders(
     train_subset_size: Optional[int] = None,
     normalize_params: bool = True,
     num_workers: int = 0,
-    preload_to_gpu: bool = False
+    preload_to_gpu: bool = False,
+    filter_models: Optional[list] = None
 ) -> Tuple[DataLoader, DataLoader, AngleSampler]:
     """
     创建训练和测试DataLoader
@@ -308,12 +309,32 @@ def create_dataloaders(
         normalize_params: 是否标准化参数（默认: True）
         num_workers: DataLoader工作线程数（默认: 0，GPU预加载时自动设为0）
         preload_to_gpu: 是否预加载全部数据到GPU（默认: False）
+        filter_models: 仅使用指定索引的模型（默认: None，使用全部模型）
+                      例如: [0] 表示只使用model_001
+                            [0, 1, 2] 表示只使用前3个模型
+                      用于快速验证网络表达能力和调试
 
     返回：
         train_loader: 训练集DataLoader
         test_loader: 测试集DataLoader
         sampler: AngleSampler对象
     """
+    # 单模型测试模式：过滤数据
+    if filter_models is not None:
+        print(f"\n{'='*60}")
+        print(f"[单模型测试模式] 启用")
+        print(f"{'='*60}")
+        print(f"原始数据: {len(rcs_data)} 个模型")
+        print(f"过滤后: 只使用 {len(filter_models)} 个模型 (索引: {filter_models})")
+
+        # 过滤数据
+        rcs_data = rcs_data[filter_models]
+        param_data = param_data[filter_models]
+
+        print(f"过滤后RCS数据形状: {rcs_data.shape}")
+        print(f"过滤后参数数据形状: {param_data.shape}")
+        print(f"{'='*60}\n")
+
     # 创建采样器
     num_samples = rcs_data.shape[0]
     sampler = AngleSampler(
